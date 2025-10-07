@@ -41,6 +41,9 @@ class CustomUserManager(BaseUserManager):
 class Rol(BaseModel): # <-- Ahora Rol hereda is_active
     nombre = models.CharField(max_length=50)
 
+    def __str__(self):
+        return self.nombre
+    
 class UserPerfil(BaseModel): 
     nombre = models.CharField(max_length=100)
     def __str__(self): return self.nombre
