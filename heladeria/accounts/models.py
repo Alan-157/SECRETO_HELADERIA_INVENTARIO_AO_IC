@@ -55,7 +55,7 @@ class UsuarioApp(AbstractBaseUser, PermissionsMixin):
     updated_at = models.DateTimeField(auto_now=True)
 
     # Campos de identificación
-    email = models.EmailField(verbose_name='email address', unique=True)
+    email = models.EmailField(verbose_name='email address', unique=True,max_length=191)
     name = models.CharField(max_length=100, blank=False)
     
     # Campos de PermissionsMixin / Status (Manejo de permisos y Admin)
