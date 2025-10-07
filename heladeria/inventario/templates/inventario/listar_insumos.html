@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Listado de Insumos{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">{{ titulo }}</h3>
+
+<p><a href="{% url 'inventario:crear_insumo' %}" class="btn btn-success">Crear Insumo</a></p>
+
+{% if insumos %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Categoría</th>
+                <th>Stock Mínimo</th>
+                <th>Unidad</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for insumo in insumos %}
+            <tr>
+                <td>{{ insumo.nombre }}</td>
+                <td>{{ insumo.categoria.nombre }}</td>
+                <td>{{ insumo.stock_minimo }}</td>
+                <td>{{ insumo.unidad_medida }}</td>
+                <td>
+                    <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-primary">Editar</a>
+                    </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-info">No hay insumos registrados.</div>
+{% endif %}
+{% endblock %}

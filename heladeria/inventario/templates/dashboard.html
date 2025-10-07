@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Categorías{% endblock %}
+{% block content %}
+<h3 class="mb-3">Dashboard de Inventario</h3>
+<p>Bienvenido, {{ user.name|default:user.email }}. Estás logueado con el rol {{ user.usuarioapp.rol.nombre|default:"N/A" }}.</p>
+
+<h4 class="mt-4">Categorías registradas</h4>
+
+    {% if categorias %}
+    <div class="table-responsive">
+        <table class="table table-striped">
+        <thead>
+            <tr>
+            <th>Nombre</th>
+            <th>Descripción</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in categorias %}
+            <tr>
+            <td>{{ c.nombre }}</td>
+            <td>{{ c.descripcion|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-warning text-center" role="alert">
+        No hay categorías registradas.
+    </div>
+    {% endif %}
+{% endblock %}
