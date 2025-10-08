@@ -1,18 +1,7 @@
-from urllib import request
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from .models import Insumo, Categoria
-from django.contrib import messages
 from .forms import InsumoForm
-
-# --- Helper para roles ---
-def user_has_role(user, *roles):
-    if not user.is_authenticated:
-        return False
-    if user.is_superuser:
-        return True
-    nombre = getattr(getattr(user, "rol", None), "nombre", "")
-    return nombre in roles
 
 # --- VISTAS DEL INVENTARIO ---
 
@@ -40,37 +29,36 @@ def listar_insumos(request):
     }
     return render(request, 'inventario/listar_insumos.html', context)
 
-# --- BLOQUEADOS PARA BODEGUERO ---
+
 @login_required
 def crear_insumo(request):
-    """Permite crear un insumo solo a Administrador o Encargado."""
-    if not user_has_role(request.user, "Administrador", "Encargado"):
-        messages.error(request, "No tienes permisos para crear insumos.")
-        return redirect('inventario:listar_insumos')
-
+    """Maneja la creación de un nuevo insumo."""
     form = InsumoForm(request.POST or None)
+    
     if request.method == 'POST' and form.is_valid():
-        form.save()
-        messages.success(request, "Insumo creado correctamente.")
-        return redirect('inventario:listar_insumos')
-
-    context = {'form': form, 'titulo': 'Crear Nuevo Insumo'}
+        form.save() # Guarda el nuevo registro
+        return redirect('inventario:listar_insumos') # Redirige a la lista
+        
+    context = {
+        'form': form,
+        'titulo': 'Crear Nuevo Insumo'
+    }
     return render(request, 'inventario/crear_insumo.html', context)
+
 
 @login_required
 def editar_insumo(request, insumo_id):
-    """Permite editar un insumo solo a Administrador o Encargado."""
-    if not user_has_role(request.user, "Administrador", "Encargado"):
-        messages.error(request, "No tienes permisos para editar insumos.")
-        return redirect('inventario:listar_insumos')
-
+    """Maneja la edición de un insumo existente."""
+    # Obtiene el objeto o lanza 404
     insumo = get_object_or_404(Insumo, id=insumo_id)
-    form = InsumoForm(request.POST or None, instance=insumo)
+    form = InsumoForm(request.POST or None, instance=insumo) # Carga los datos del objeto
+    
     if request.method == 'POST' and form.is_valid():
-        form.save()
-        messages.success(request, f"Insumo '{insumo.nombre}' actualizado correctamente.")
+        form.save() # Actualiza el registro
         return redirect('inventario:listar_insumos')
-
-    context = {'form': form, 'titulo': f'Editar Insumo: {insumo.nombre}'}
+        
+    context = {
+        'form': form,
+        'titulo': f'Editar Insumo: {insumo.nombre}'
+    }
     return render(request, 'inventario/editar_insumo.html', context)
-

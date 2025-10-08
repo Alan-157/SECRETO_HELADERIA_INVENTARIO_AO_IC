@@ -9,7 +9,6 @@ Aplicación Django para gestión de inventario de insumos, lotes, movimientos y 
 - Django 5.x
 - MySQL / MariaDB
 - Python 3.12
-- Docker (opcional)
 - HTML, CSS (en admin y frontend básico)
 
 ## Requisitos Previos
@@ -60,6 +59,12 @@ python manage.py migrate
 python manage.py createsuperuser
 
 ## Cómo cargar las semillas
+# Seed accounts
+python manage.py seed_roles
+python manage.py seed_admin
+python manage.py seed_encargado
+python manage.py seed_bodeguero
+# Seed Inventario
 python manage.py seed_categorias
 python manage.py seed_insumos
 python manage.py seed_bodegas
