@@ -8,37 +8,55 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE("Iniciando la carga de bodegas y ubicaciones..."))
 
         # Definimos los datos de las bodegas y sus direcciones en un solo lugar
-        bodegas_data = {
-            "Bodega Principal": "Gabriel Gonzalez Videla 2777, La Serena",
-            "Bodega Secundaria": "Pasaje Falso 1234, Coquimbo",
-            "Bodega Frutas": "Avenida del Mar 5000, La Serena"
+        data = {
+            "Bodega Principal": {
+                "direccion": "Gabriel Gonzalez Videla 2777, La Serena",
+                "ubicaciones": ["Área General", "Cámara Fría"],
+            },
+            "Bodega Secundaria": {
+                "direccion": "Pasaje Falso 1234, Coquimbo",
+                "ubicaciones": ["Área General"],
+            },
+            "Bodega Frutas": {
+                "direccion": "Avenida del Mar 5000, La Serena",
+                "ubicaciones": ["Área General", "Frutas Congeladas"],
+            },
         }
 
         bodegas_creadas = 0
         ubicaciones_creadas = 0
 
-        for nombre_bodega, direccion_bodega in bodegas_data.items():
-            # 1. Usamos get_or_create para la Ubicacion.
-            # Esto la crea si no existe, o la obtiene si ya existe.
-            ubicacion, fue_creada_ubicacion = Ubicacion.objects.get_or_create(
-                direccion=direccion_bodega,
-                defaults={'nombre': f"Ubicación para {nombre_bodega}"} # Añadimos un nombre descriptivo
-            )
-
-            if fue_creada_ubicacion:
-                self.stdout.write(self.style.SUCCESS(f"Ubicación creada: '{direccion_bodega}'"))
-                ubicaciones_creadas += 1
-
-            # 2. Ahora, con la ubicación asegurada, creamos la Bodega.
-            bodega, fue_creada_bodega = Bodega.objects.get_or_create(
+        for nombre_bodega, info in data.items():
+            # 1) Crear/obtener Bodega con 'nombre' y 'direccion'
+            bodega, bodega_creada = Bodega.objects.get_or_create(
                 nombre=nombre_bodega,
-                defaults={'ubicacion': ubicacion}
+                defaults={"direccion": info["direccion"]},
             )
-
-            if fue_creada_bodega:
-                self.stdout.write(self.style.SUCCESS(f"  -> Bodega creada: '{nombre_bodega}'"))
+            if bodega_creada:
                 bodegas_creadas += 1
+                self.stdout.write(self.style.SUCCESS(f"Bodega creada: '{bodega.nombre}'"))
             else:
-                self.stdout.write(self.style.WARNING(f"Bodega '{nombre_bodega}' ya existía."))
+                # Si la bodega ya existía, puedes opcionalmente sincronizar dirección
+                if bodega.direccion != info["direccion"]:
+                    bodega.direccion = info["direccion"]
+                    bodega.save(update_fields=["direccion"])
+                self.stdout.write(self.style.WARNING(f"Bodega '{bodega.nombre}' ya existía."))
 
-        self.stdout.write(self.style.SUCCESS(f"\nCarga finalizada. Se crearon {bodegas_creadas} bodegas y {ubicaciones_creadas} ubicaciones nuevas."))
+            # 2) Crear ubicaciones por bodega: clave compuesta (bodega, nombre)
+            for nombre_ubic in info["ubicaciones"]:
+                ubic, ubi_creada = Ubicacion.objects.get_or_create(
+                    bodega=bodega,
+                    nombre=nombre_ubic,
+                    defaults={"tipo": "Almacenamiento"},
+                )
+                if ubi_creada:
+                    ubicaciones_creadas += 1
+                    self.stdout.write(self.style.SUCCESS(
+                        f"  -> Ubicación '{nombre_ubic}' creada en '{bodega.nombre}'"
+                    ))
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\nCarga finalizada. Se crearon {bodegas_creadas} bodegas y {ubicaciones_creadas} ubicaciones nuevas."
+            )
+        )

@@ -12,9 +12,9 @@ class Command(BaseCommand):
         # Lista de alertas que queremos crear
         alertas_data = [
             {"insumo_nombre": "Leche Entera", "mensaje": "¡Atención! Stock bajo detectado en leche."},
-            {"insumo_nombre": "Frutilla", "mensaje": "¡Urgente! Frutilla en nivel crítico."},
-            # Puedes agregar más alertas aquí
+            {"insumo_nombre": "Pulpa de Frutilla", "mensaje": "¡Urgente! Frutilla en nivel crítico."},
         ]
+            # Puedes agregar más alertas aquí
 
         # Contador para el resumen final
         alertas_creadas = 0

@@ -91,15 +91,10 @@ elif DB_ENGINE == 'mysql':
         'default': {
             'ENGINE': 'django.db.backends.mysql',
             'NAME': os.environ.get('DB_NAME'), 
-            
-            # --- ¡SOLUCIÓN AL ERROR 1045! ---
-            # ANULAMOS os.environ.get() PARA USAR VALORES FIJOS DE WAMP
-            'USER': 'root',           # <--- ANULAMOS LA LECTURA DE ENV
-            'PASSWORD': '',           # <--- ANULAMOS LA LECTURA (clave vacía)
-            # --------------------------------
-            
-            'HOST': os.environ.get('DB_HOST', 'localhost'),
-            'PORT': os.environ.get('DB_PORT', '3306'),
+            'USER': os.environ.get('DB_USER'),
+            'PASSWORD': os.environ.get('DB_PASSWORD'),
+            'HOST': os.environ.get('DB_HOST'),
+            'PORT': os.environ.get('DB_PORT'),
             'OPTIONS': {
                 'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
                 'charset': 'utf8mb4',
