@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-
 {% block title %}Listado de Insumos{% endblock %}
-
 {% block content %}
 <h3 class="mb-3">{{ titulo }}</h3>
 
-<p><a href="{% url 'inventario:crear_insumo' %}" class="btn btn-success">Crear Insumo</a></p>
+{% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Encargado" %}
+  <p><a href="{% url 'inventario:crear_insumo' %}" class="btn btn-success">Crear Insumo</a></p>
+{% endif %}
 
 {% if insumos %}
 <div class="table-responsive">
