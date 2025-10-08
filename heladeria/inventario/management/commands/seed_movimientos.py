@@ -20,8 +20,8 @@ class Command(BaseCommand):
 
         # --- Movimientos de ENTRADA (simulando compras) ---
         entradas_data = [
-            {'insumo': 'Azúcar', 'cantidad': 100, 'obs': 'Compra a proveedor A'},
-            {'insumo': 'Chocolate Cobertura', 'cantidad': 25, 'obs': 'Nuevo stock'},
+            {"insumo": "Azúcar Granulada", "cantidad": 100, "obs": "Compra a proveedor A"},
+            {"insumo": "Cobertura de Chocolate 70%", "cantidad": 25, "obs": "Nuevo stock"},
         ]
 
         for data in entradas_data:
