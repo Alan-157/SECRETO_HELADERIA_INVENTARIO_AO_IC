@@ -22,12 +22,12 @@ load_dotenv(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-unsafe")
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or "dev-unsafe"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG","False") == "True"
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS =  os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
 
 # Application definition
@@ -78,14 +78,14 @@ WSGI_APPLICATION = 'heladeria.wsgi.application'
 
 DB_ENGINE = os.getenv("DB_ENGINE", "sqlite")
 
-if DB_ENGINE == 'sqlite':
+if "sqlite" in DB_ENGINE:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / os.environ.get('DB_NAME', 'db.sqlite3'),
         }
     }
-elif DB_ENGINE == 'mysql':
+elif "mysql" in DB_ENGINE:
     # --- CONFIGURACIÓN PARA MYSQL ---
     DATABASES = {
         'default': {

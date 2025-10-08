@@ -45,8 +45,10 @@ heladeria_bd (collation: utf8mb4_unicode_ci)
 > Asegúrate de incluir `.env` en tu archivo `.gitignore` antes de subir el proyecto a GitHub.
 
 ```env
+ALLOWED_HOSTS=127.0.0.1,localhost
 DJANGO_DEBUG=True
 DJANGO_SECRET_KEY=
+DB_ENGINE=django.db.backends.mysql
 DB_NAME=heladeria_bd
 DB_USER=root
 DB_PASSWORD=
