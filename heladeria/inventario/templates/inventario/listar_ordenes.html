@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+
+<h3 class="mb-3">{{ titulo }}</h3>
+
+{% if ordenes %}
+
+<div class="table-responsive">
+<table class="table table-striped table-hover">
+<thead>
+<tr>
+<th>ID Orden</th>
+<th>Usuario</th>
+<th>Fecha</th>
+<th>Estado</th>
+</tr>
+</thead>
+<tbody>
+{% for orden in ordenes %}
+<tr>
+<td>#{{ orden.id }}</td>
+<td>{{ orden.usuario.name|default:orden.usuario.email }}</td>
+<td>{{ orden.fecha|date:"d/m/Y" }}</td>
+<td>
+{% if orden.estado == "PENDIENTE" %}
+<span class="badge bg-warning text-dark">{{ orden.get_estado_display }}</span>
+{% elif orden.estado == "EN_CURSO" %}
+<span class="badge bg-info text-dark">{{ orden.get_estado_display }}</span>
+{% elif orden.estado == "CERRADA" %}
+<span class="badge bg-success">{{ orden.get_estado_display }}</span>
+{% else %}
+<span class="badge bg-secondary">{{ orden.get_estado_display }}</span>
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
+<div class="alert alert-info">No hay órdenes de insumo registradas.</div>
+{% endif %}
+{% endblock %}

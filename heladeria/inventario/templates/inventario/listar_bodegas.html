@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Listado de Bodegas{% endblock %}
+
+{% block content %}
+
+<h3 class="mb-3">{{ titulo }}</h3>
+
+{% if bodegas %}
+
+<div class="table-responsive">
+<table class="table table-striped table-hover">
+<thead>
+<tr>
+<th>Nombre de la Bodega</th>
+<th>Dirección</th>
+</tr>
+</thead>
+<tbody>
+{% for bodega in bodegas %}
+<tr>
+<td>{{ bodega.nombre }}</td>
+<td>{{ bodega.direccion }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
+<div class="alert alert-info">No hay bodegas registradas.</div>
+{% endif %}
+{% endblock %}

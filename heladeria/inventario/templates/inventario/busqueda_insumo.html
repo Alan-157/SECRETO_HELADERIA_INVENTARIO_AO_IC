@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Listado de Insumos{% endblock %}
+{% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
 
@@ -13,7 +13,10 @@
 </form>
 </div>
 
+{% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Encargado" %}
+
 <p><a href="{% url 'inventario:crear_insumo' %}" class="btn btn-success">Crear Insumo</a></p>
+{% endif %}
 
 {% if insumos %}
 
@@ -46,7 +49,7 @@
 {% else %}
 <div class="alert alert-info">
 {% if request.GET.q %}
-No se encontraron insumos que coincidan con tu búsqueda "<strong>{{ request.GET.q }}</strong>".
+No se encontraron insumos que coincidan con "<strong>{{ request.GET.q }}</strong>".
 {% else %}
 No hay insumos registrados.
 {% endif %}
