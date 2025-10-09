@@ -14,8 +14,6 @@ ESTADO_ORDEN_CHOICES = [
     ("CANCELADA", "Cancelada"),
 ]
 
-# --- MODELOS DE CATÁLOGO Y ESTRUCTURA (Heredan de BaseModel) ---
-
 # Modelo intermedio necesario para la referencia de Entrada/Salida
 class Ordenresumen(BaseModel): 
     nombre = models.CharField(max_length=100)

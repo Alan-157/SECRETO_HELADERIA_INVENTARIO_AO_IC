@@ -71,7 +71,6 @@ OrdenInsumoDetalleFormSet = inlineformset_factory(
     OrdenInsumo,
     OrdenInsumoDetalle,
     fields=('insumo', 'cantidad_solicitada'),
-    # Aquí está la magia: le decimos que cree 5 filas vacías
     extra=5,
     # No necesitamos poder eliminar en un formulario de creación
     can_delete=False,

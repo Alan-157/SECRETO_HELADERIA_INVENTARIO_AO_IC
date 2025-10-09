@@ -8,9 +8,6 @@ from .models import (
 
 User = get_user_model()
 
-# =====================================================
-# MIXIN DE PERMISOS POR ROL
-# =====================================================
 def rol_name(user):
     try:
         return (user.rol.nombre or "").lower()
@@ -67,7 +64,6 @@ class RoleScopedInventarioAdminMixin:
                 field.queryset = User.objects.filter(pk=request.user.pk)
         return field
 
-# =====================================================
 # ACCIÓN PERSONALIZADA
 # =====================================================
 @admin.action(description="Marcar órdenes de insumo como CERRADAS")
@@ -77,7 +73,6 @@ def marcar_cerrada(modeladmin, request, queryset):
         request, f"{updated} órdenes marcadas como cerradas.", messages.SUCCESS
     )
 
-# =====================================================
 # REGISTROS ADMIN
 # =====================================================
 
