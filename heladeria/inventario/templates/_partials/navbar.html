@@ -10,7 +10,6 @@
 <li class="nav-item">
 <a class="nav-link" href="{% url 'inventario:listar_insumos' %}">Insumos</a>
 </li>
-<!-- NUEVOS ENLACES -->
 <li class="nav-item">
 <a class="nav-link" href="{% url 'inventario:listar_bodegas' %}">Bodegas</a>
 </li>
@@ -18,8 +17,14 @@
 <a class="nav-link" href="{% url 'inventario:listar_movimientos' %}">Movimientos</a>
 </li>
 <li class="nav-item">
-<a class="nav-link" href="#">Órdenes</a>
+<a class="nav-link" href="{% url 'inventario:listar_ordenes' %}">Órdenes</a>
 </li>
+<!-- APARTADO NUEVO CON PERMISOS -->
+{% if request.user.is_superuser or request.user.rol.nombre == "Administrador" %}
+<li class="nav-item">
+<a class="nav-link" href="{% url 'inventario:listar_categorias' %}">Categorías</a>
+</li>
+{% endif %}
 {% endif %}
 </ul>
 <ul class="navbar-nav ms-auto">

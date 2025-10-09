@@ -27,6 +27,7 @@ urlpatterns = [
     path('', dashboard_view, name='dashboard'), # Usado como LOGIN_REDIRECT_URL
 
     # 2. Rutas de la App Inventario (CRUD de Insumos)
+
     path('inventario/', include('inventario.urls', namespace='inventario')),
 
     # 3. Rutas de Autenticación (Login, Logout, Password Change, etc.)

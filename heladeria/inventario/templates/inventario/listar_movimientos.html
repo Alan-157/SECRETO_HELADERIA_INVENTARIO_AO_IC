@@ -1,72 +1,102 @@
 {% extends "base.html" %}
-
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
 
-<h3 class="mb-4">{{ titulo }}</h3>
-
-<div class="row">
-<!-- Columna de Entradas -->
-<div class="col-lg-6 mb-4">
-<h4>Últimas Entradas</h4>
-{% if entradas %}
-<div class="table-responsive">
-<table class="table table-striped table-sm">
-<thead>
-<tr>
-<th>Insumo</th>
-<th>Cantidad</th>
-<th>Fecha</th>
-<th>Usuario</th>
-</tr>
-</thead>
-<tbody>
-{% for entrada in entradas %}
-<tr>
-<td>{{ entrada.insumo.nombre }}</td>
-<td><span class="badge bg-success">+ {{ entrada.cantidad|floatformat:2 }}</span></td>
-<td>{{ entrada.fecha|date:"d/m/Y" }}</td>
-<td>{{ entrada.usuario.name|default:entrada.usuario.email }}</td>
-</tr>
-{% endfor %}
-</tbody>
-</table>
-</div>
-{% else %}
-<div class="alert alert-info">No hay movimientos de entrada registrados.</div>
-{% endif %}
+<div class="card shadow-sm">
+<!-- Encabezado de la tarjeta -->
+<div class="card-header bg-white py-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+<!-- Título y Búsqueda -->
+<div class="d-flex align-items-center">
+<h3 class="mb-0 me-3">{{ titulo }}</h3>
+<form method="get" class="d-flex">
+<input type="text" class="form-control form-control-sm" name="q" placeholder="Buscar por insumo..." value="{{ request.GET.q }}">
+<button class="btn btn-sm btn-outline-secondary ms-2" type="submit">Buscar</button>
+</form>
 </div>
 
-<!-- Columna de Salidas -->
-<div class="col-lg-6 mb-4">
-    <h4>Últimas Salidas</h4>
-    {% if salidas %}
-    <div class="table-responsive">
-        <table class="table table-striped table-sm">
-            <thead>
-                <tr>
-                    <th>Insumo</th>
-                    <th>Cantidad</th>
-                    <th>Fecha</th>
-                    <th>Usuario</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for salida in salidas %}
-                <tr>
-                    <td>{{ salida.insumo.nombre }}</td>
-                    <td><span class="badge bg-danger">- {{ salida.cantidad|floatformat:2 }}</span></td>
-                    <td>{{ salida.fecha_generada|date:"d/m/Y" }}</td>
-                    <td>{{ salida.usuario.name|default:salida.usuario.email }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <!-- Botones de Acción con Permisos -->
+        <div>
+            {% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Encargado" %}
+                <a href="{% url 'inventario:crear_entrada' %}" class="btn btn-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-circle-fill me-1" viewBox="0 0 16 16">
+                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.5 4.5a.5.5 0 0 0-1 0v3h-3a.5.5 0 0 0 0 1h3v3a.5.5 0 0 0 1 0v-3h3a.5.5 0 0 0 0-1h-3v-3z"/>
+                    </svg>
+                    Nueva Entrada
+                </a>
+                <a href="{% url 'inventario:crear_salida' %}" class="btn btn-danger">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-dash-circle-fill me-1" viewBox="0 0 16 16">
+                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM4.5 7.5a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7z"/>
+                    </svg>
+                    Nueva Salida
+                </a>
+            {% endif %}
+        </div>
     </div>
-    {% else %}
-    <div class="alert alert-info">No hay movimientos de salida registrados.</div>
-    {% endif %}
+</div>
+
+<!-- Cuerpo de la tarjeta -->
+<div class="card-body">
+    <div class="row">
+        <!-- Columna de Entradas -->
+        <div class="col-lg-6 border-end">
+            <h4 class="mb-3">Últimas Entradas</h4>
+            {% if entradas %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Insumo</th>
+                                <th class="text-end">Cantidad</th>
+                                <th>Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entrada in entradas %}
+                            <tr>
+                                <td class="fw-bold">{{ entrada.insumo.nombre }}</td>
+                                <td class="text-end text-success fw-bold">+{{ entrada.cantidad|floatformat:2 }}</td>
+                                <td>{{ entrada.fecha }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted">No hay entradas registradas que coincidan con la búsqueda.</p>
+            {% endif %}
+        </div>
+
+        <!-- Columna de Salidas -->
+        <div class="col-lg-6">
+            <h4 class="mb-3">Últimas Salidas</h4>
+            {% if salidas %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>
+                                <th>Insumo</th>
+                                <th class="text-end">Cantidad</th>
+                                <th>Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for salida in salidas %}
+                            <tr>
+                                <td class="fw-bold">{{ salida.insumo.nombre }}</td>
+                                <td class="text-end text-danger fw-bold">-{{ salida.cantidad|floatformat:2 }}</td>
+                                <td>{{ salida.fecha_generada }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted">No hay salidas registradas que coincidan con la búsqueda.</p>
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 </div>

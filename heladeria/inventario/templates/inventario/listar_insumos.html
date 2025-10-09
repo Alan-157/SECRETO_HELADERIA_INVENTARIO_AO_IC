@@ -1,55 +1,99 @@
 {% extends "base.html" %}
-
-{% block title %}Listado de Insumos{% endblock %}
+{% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="card shadow-sm">
+<!-- Encabezado de la tarjeta con título, búsqueda y botón de creación -->
+<div class="card-header bg-white py-3">
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
 <h3 class="mb-0">{{ titulo }}</h3>
+<div class="d-flex align-items-center">
 <!-- Formulario de Búsqueda -->
-<form method="get" class="d-flex" style="width: 300px;">
-<input class="form-control me-2" type="search" placeholder="Buscar por nombre o categoría..." name="q" value="{{ request.GET.q }}">
-<button class="btn btn-outline-secondary" type="submit">Buscar</button>
+<form method="get" class="me-2">
+<div class="input-group">
+<input type="text" class="form-control" name="q" placeholder="Buscar insumo..." value="{{ request.GET.q }}">
+<button class="btn btn-outline-secondary" type="submit">
+<!-- Icono de Lupa -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search" viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/></svg>
+</button>
+</div>
 </form>
-</div>
-
-<p><a href="{% url 'inventario:crear_insumo' %}" class="btn btn-success">Crear Insumo</a></p>
-
-{% if insumos %}
-
-<div class="table-responsive">
-<table class="table table-striped table-hover">
-<thead>
-<tr>
-<th>Nombre</th>
-<th>Categoría</th>
-<th>Stock Mínimo</th>
-<th>Unidad</th>
-<th>Acciones</th>
-</tr>
-</thead>
-<tbody>
-{% for insumo in insumos %}
-<tr>
-<td>{{ insumo.nombre }}</td>
-<td>{{ insumo.categoria.nombre }}</td>
-<td>{{ insumo.stock_minimo }}</td>
-<td>{{ insumo.unidad_medida }}</td>
-<td>
-<a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-primary">Editar</a>
-</td>
-</tr>
-{% endfor %}
-</tbody>
-</table>
-</div>
-{% else %}
-<div class="alert alert-info">
-{% if request.GET.q %}
-No se encontraron insumos que coincidan con tu búsqueda "<strong>{{ request.GET.q }}</strong>".
-{% else %}
-No hay insumos registrados.
+<!-- Botón de Crear Insumo -->
+{% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Encargado" %}
+<a href="{% url 'inventario:crear_insumo' %}" class="btn btn-primary">
+<!-- Icono de Más -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-lg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/></svg>
+Crear Insumo
+</a>
 {% endif %}
 </div>
-{% endif %}
+</div>
+</div>
+
+<div class="card-body p-0">
+    {% if insumos %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col" class="ps-4">Nombre del Insumo</th>
+                        <th scope="col">Categoría</th>
+                        <th scope="col" class="text-center">Stock Actual</th>
+                        <th scope="col" class="text-center">Stock Mínimo</th>
+                        <th scope="col">Unidad</th>
+                        <th scope="col" class="text-end pe-4">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for insumo in insumos %}
+                    <tr>
+                        <td class="ps-4 fw-bold">{{ insumo.nombre }}</td>
+                        <td><span class="badge bg-secondary">{{ insumo.categoria.nombre }}</span></td>
+                        <td class="text-center">
+                            {% with stock=insumo.stock_actual|floatformat:2 %}
+                                {% if insumo.stock_actual > insumo.stock_minimo %}
+                                    <span class="badge bg-success">{{ stock }}</span>
+                                {% elif insumo.stock_actual > 0 %}
+                                    <span class="badge bg-warning text-dark">{{ stock }}</span>
+                                {% else %}
+                                    <span class="badge bg-danger">{{ stock }}</span>
+                                {% endif %}
+                            {% endwith %}
+                        </td>
+                        <td class="text-center">{{ insumo.stock_minimo|floatformat:2 }}</td>
+                        <td>{{ insumo.unidad_medida }}</td>
+                        <td class="text-end pe-4">
+                            <!-- Botón de Editar -->
+                            {% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Encargado" %}
+                                <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-outline-primary" title="Editar">
+                                    <!-- Icono de Lápiz -->
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-square" viewBox="0 0 16 16"><path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.121l6.813-6.813z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"/></svg>
+                                </a>
+                            {% endif %}
+                            <!-- Botón de Eliminar (ahora es un enlace a la página de confirmación) -->
+                            {% if request.user.is_superuser or request.user.rol.nombre == "Administrador" %}
+                                <a href="{% url 'inventario:eliminar_insumo' insumo.id %}" class="btn btn-sm btn-outline-danger" title="Eliminar">
+                                    <!-- Icono de Basura -->
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash3" viewBox="0 0 16 16"><path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5M11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1zm-9.04 1a.5.5 0 0 1 .499.562l.84 10.5a1 1 0 0 0 .997.938h6.23a1 1 0 0 0 .997-.938l.84-10.5a.5.5 0 0 1 .998.078l-.84 10.5a2 2 0 0 1-1.994 1.84h-6.23a2 2 0 0 1-1.994-1.84l-.84-10.5a.5.5 0 0 1 .499-.562zM6.5 5a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 1 0v-7a.5.5 0 0 0-.5-.5M9.5 5a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 1 0v-7a.5.5 0 0 0-.5-.5z"/></svg>
+                                </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-secondary text-center m-4" role="alert">
+            {% if request.GET.q %}
+                No se encontraron insumos que coincidan con "<strong>{{ request.GET.q }}</strong>".
+            {% else %}
+                Aún no hay insumos registrados. ¡Crea el primero!
+            {% endif %}
+        </div>
+    {% endif %}
+</div> <!-- Cierre del card-body -->
+
+</div> <!-- Cierre del card -->
 {% endblock %}
