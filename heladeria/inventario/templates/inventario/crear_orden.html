@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+
+<div class="card shadow-sm">
+<div class="card-header bg-white py-3">
+<h3 class="mb-0">{{ titulo }}</h3>
+</div>
+<div class="card-body">
+<form method="post">
+{% csrf_token %}
+
+        {{ formset.management_form }}
+        
+        <p class="text-muted">Completa las filas que necesites. Las filas vacías serán ignoradas.</p>
+
+        <div class="table-responsive">
+            <table class="table">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col" style="width: 60%;">Insumo</th>
+                        <th scope="col" style="width: 40%;">Cantidad Solicitada</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in formset %}
+                        <tr class="dynamic-form">
+                            <td>
+                                {{ form.insumo }}
+                                {% for error in form.insumo.errors %}
+                                    <div class="text-danger small mt-1">{{ error }}</div>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {{ form.cantidad_solicitada }}
+                                {% for error in form.cantidad_solicitada.errors %}
+                                    <div class="text-danger small mt-1">{{ error }}</div>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    
+                    {% if formset.non_form_errors %}
+                        <tr>
+                            <td colspan="2">
+                                <div class="alert alert-danger p-2">
+                                    {{ formset.non_form_errors }}
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        
+        <hr>
+        <div class="d-flex justify-content-end">
+            <a href="{% url 'inventario:listar_ordenes' %}" class="btn btn-secondary me-2">Cancelar</a>
+            <button type="submit" class="btn btn-primary">Guardar Orden</button>
+        </div>
+    </form>
+</div>
+
+</div>
+{% endblock %}

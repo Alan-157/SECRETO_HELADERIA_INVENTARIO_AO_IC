@@ -1,46 +1,68 @@
 from urllib import request
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import Insumo, Categoria
+# ¡Importamos los nuevos modelos que vamos a usar!
+from .models import Insumo, Categoria, Bodega, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle
 from django.contrib import messages
-from .forms import InsumoForm
+# ¡Importamos los nuevos formularios que crearemos!
+from .forms import InsumoForm, EntradaForm, SalidaForm, OrdenInsumoDetalleFormSet, CategoriaForm
+# ¡Añadimos Sum, Q y Coalesce para cálculos y búsquedas!
+from django.db.models import Sum, Q, DecimalField
+from django.db.models.functions import Coalesce
+from django.db import transaction
 
-# --- Helper para roles ---
+# --- Helper para roles (ya lo tienes) ---
 def user_has_role(user, *roles):
     if not user.is_authenticated:
         return False
     if user.is_superuser:
         return True
-    nombre = getattr(getattr(user, "rol", None), "nombre", "")
-    return nombre in roles
+    # Obtenemos el nombre del rol de forma segura
+    nombre_rol = getattr(getattr(user, "rol", None), "nombre", "")
+    return nombre_rol in roles
 
 # --- VISTAS DEL INVENTARIO ---
 
 # --- 1. VISTA PRINCIPAL (DASHBOARD) ---
-@login_required # <-- Protegida con login (Clase U1-2 C11)
+@login_required
 def dashboard_view(request):
-    """Muestra el dashboard, incluyendo datos de ejemplo como categorías."""
-    # Consulta (Clase U1 C8)
-    categorias = Categoria.objects.filter(is_active=True).order_by('nombre')
+    """Muestra el dashboard con un resumen de la información del inventario."""
+    total_insumos = Insumo.objects.filter(is_active=True).count()
+    total_bodegas = Bodega.objects.filter(is_active=True).count()
+    ordenes_pendientes = OrdenInsumo.objects.filter(estado='PENDIENTE').count()
+    
+    # Obtenemos las 5 categorías más recientes
+    categorias = Categoria.objects.filter(is_active=True).order_by('-created_at')[:5]
     
     context = {
+        'total_insumos': total_insumos,
+        'total_bodegas': total_bodegas,
+        'ordenes_pendientes': ordenes_pendientes,
         'categorias': categorias,
     }
     return render(request, 'dashboard.html', context)
 
+# --- 2. CRUD DE INSUMOS ---
 @login_required
 def listar_insumos(request):
-    """Muestra una lista de todos los insumos."""
-    # Uso de ORM (Consultas - Clase U1 C8) para listar todos y optimizar la carga de la FK (Categoria)
-    insumos = Insumo.objects.filter(is_active=True).select_related('categoria').order_by('nombre')
-    
+    """Muestra una lista de todos los insumos con su stock actual y filtros."""
+    query = request.GET.get('q')
+    insumos = Insumo.objects.filter(is_active=True).annotate(
+        stock_actual=Coalesce(Sum('lotes__cantidad_actual'), 0, output_field=DecimalField())
+    ).select_related('categoria').order_by('nombre')
+
+    if query:
+        insumos = insumos.filter(
+            Q(nombre__icontains=query) |
+            Q(categoria__nombre__icontains=query)
+        )
+
     context = {
         'insumos': insumos,
         'titulo': 'Listado de Insumos'
     }
     return render(request, 'inventario/listar_insumos.html', context)
 
-# --- BLOQUEADOS PARA BODEGUERO ---
 @login_required
 def crear_insumo(request):
     """Permite crear un insumo solo a Administrador o Encargado."""
@@ -74,3 +96,215 @@ def editar_insumo(request, insumo_id):
     context = {'form': form, 'titulo': f'Editar Insumo: {insumo.nombre}'}
     return render(request, 'inventario/editar_insumo.html', context)
 
+@login_required
+def eliminar_insumo(request, insumo_id):
+    """Maneja la lógica para eliminar (desactivar) un insumo."""
+    if not user_has_role(request.user, "Administrador"):
+        messages.error(request, "No tienes permisos para eliminar insumos.")
+        return redirect('inventario:listar_insumos')
+
+    insumo = get_object_or_404(Insumo, id=insumo_id)
+    if request.method == 'POST':
+        insumo.is_active = False
+        insumo.save()
+        messages.success(request, f"El insumo '{insumo.nombre}' ha sido eliminado.")
+        return redirect('inventario:listar_insumos')
+
+    context = {'insumo': insumo}
+    return render(request, 'inventario/eliminar_insumo_confirm.html', context)
+
+
+# --- 3. CRUD DE CATEGORÍAS ---
+@login_required
+def listar_categorias(request):
+    """Muestra una lista de todas las categorías con opción de búsqueda."""
+    query = request.GET.get('q')
+    categorias = Categoria.objects.filter(is_active=True).order_by('nombre')
+    if query:
+        categorias = categorias.filter(nombre__icontains=query)
+    
+    context = {'categorias': categorias, 'titulo': 'Gestión de Categorías'}
+    return render(request, 'inventario/listar_categorias.html', context)
+
+@login_required
+def crear_categoria(request):
+    """Permite crear una categoría solo a Administradores."""
+    if not user_has_role(request.user, "Administrador"):
+        messages.error(request, "No tienes permisos para crear categorías.")
+        return redirect('inventario:listar_categorias')
+
+    form = CategoriaForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, "Categoría creada correctamente.")
+        return redirect('inventario:listar_categorias')
+
+    context = {'form': form, 'titulo': 'Crear Nueva Categoría'}
+    return render(request, 'inventario/crear_categoria.html', context)
+
+@login_required
+def editar_categoria(request, categoria_id):
+    """Permite editar una categoría solo a Administradores."""
+    if not user_has_role(request.user, "Administrador"):
+        messages.error(request, "No tienes permisos para editar categorías.")
+        return redirect('inventario:listar_categorias')
+
+    categoria = get_object_or_404(Categoria, id=categoria_id)
+    form = CategoriaForm(request.POST or None, instance=categoria)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, f"Categoría '{categoria.nombre}' actualizada.")
+        return redirect('inventario:listar_categorias')
+
+    context = {'form': form, 'titulo': f'Editar Categoría: {categoria.nombre}'}
+    return render(request, 'inventario/editar_categoria.html', context)
+
+@login_required
+def eliminar_categoria(request, categoria_id):
+    """Permite eliminar (desactivar) una categoría solo a Administradores."""
+    if not user_has_role(request.user, "Administrador"):
+        messages.error(request, "No tienes permisos para eliminar categorías.")
+        return redirect('inventario:listar_categorias')
+
+    categoria = get_object_or_404(Categoria, id=categoria_id)
+    if request.method == 'POST':
+        categoria.is_active = False
+        categoria.save()
+        messages.success(request, f"Categoría '{categoria.nombre}' eliminada.")
+        return redirect('inventario:listar_categorias')
+
+    context = {'categoria': categoria}
+    return render(request, 'inventario/eliminar_categoria_confirm.html', context)
+
+
+# --- 4. OTROS LISTADOS ---
+@login_required
+def listar_bodegas(request):
+    """Muestra una lista de todas las bodegas con búsqueda."""
+    query = request.GET.get('q')
+    bodegas = Bodega.objects.filter(is_active=True).order_by('nombre')
+    if query:
+        bodegas = bodegas.filter(Q(nombre__icontains=query) | Q(direccion__icontains=query))
+
+    context = {'bodegas': bodegas, 'titulo': 'Nuestras Bodegas'}
+    return render(request, 'inventario/listar_bodegas.html', context)
+
+@login_required
+def listar_movimientos(request):
+    """Muestra un historial de entradas y salidas."""
+    query = request.GET.get('q')
+    entradas = Entrada.objects.select_related('insumo').order_by('-fecha')
+    salidas = Salida.objects.select_related('insumo').order_by('-fecha_generada')
+
+    if query:
+        entradas = entradas.filter(insumo__nombre__icontains=query)
+        salidas = salidas.filter(insumo__nombre__icontains=query)
+
+    context = {
+        'entradas': entradas[:20], # Mostramos solo los últimos 20 para no sobrecargar
+        'salidas': salidas[:20],
+        'titulo': 'Historial de Movimientos'
+    }
+    return render(request, 'inventario/listar_movimientos.html', context)
+
+@login_required
+def listar_ordenes(request):
+    """Muestra una lista de todas las órdenes de insumo."""
+    query = request.GET.get('q')
+    ordenes = OrdenInsumo.objects.prefetch_related('detalles__insumo').select_related('usuario').order_by('-fecha')
+    
+    if query:
+        ordenes = ordenes.filter(
+            Q(id__icontains=query) |
+            Q(usuario__name__icontains=query) |
+            Q(usuario__email__icontains=query) |
+            Q(detalles__insumo__nombre__icontains=query)
+        ).distinct()
+
+    context = {'ordenes': ordenes, 'titulo': 'Órdenes de Insumo'}
+    return render(request, 'inventario/listar_ordenes.html', context)
+
+
+# --- 5. CREACIÓN DE MOVIMIENTOS Y ÓRDENES ---
+@login_required
+@transaction.atomic
+def crear_entrada(request):
+    """Permite registrar una entrada de stock a un lote."""
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para registrar entradas.")
+        return redirect('inventario:listar_movimientos')
+    
+    form = EntradaForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        entrada = form.save(commit=False)
+        entrada.usuario = request.user
+        entrada.save()
+        
+        # Actualizar stock del lote
+        lote = entrada.insumo_lote
+        lote.cantidad_actual += entrada.cantidad
+        lote.save()
+        
+        messages.success(request, f"Entrada de {entrada.cantidad} de '{entrada.insumo.nombre}' registrada.")
+        return redirect('inventario:listar_movimientos')
+        
+    context = {'form': form, 'titulo': 'Registrar Nueva Entrada de Insumo'}
+    return render(request, 'inventario/crear_movimiento.html', context)
+
+@login_required
+@transaction.atomic
+def crear_salida(request):
+    """Permite registrar una salida de stock de un lote."""
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para registrar salidas.")
+        return redirect('inventario:listar_movimientos')
+
+    form = SalidaForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        salida = form.save(commit=False)
+        salida.usuario = request.user
+        
+        lote = salida.insumo_lote
+        if salida.cantidad > lote.cantidad_actual:
+            form.add_error('cantidad', f'No hay stock suficiente en el lote. Stock actual: {lote.cantidad_actual}')
+        else:
+            salida.save()
+            lote.cantidad_actual -= salida.cantidad
+            lote.save()
+            messages.success(request, f"Salida de {salida.cantidad} de '{salida.insumo.nombre}' registrada.")
+            return redirect('inventario:listar_movimientos')
+
+    context = {'form': form, 'titulo': 'Registrar Nueva Salida de Insumo'}
+    return render(request, 'inventario/crear_movimiento.html', context)
+
+@login_required
+@transaction.atomic
+def crear_orden(request):
+    """Permite crear una nueva orden de insumos con múltiples detalles."""
+    if not user_has_role(request.user, "Administrador", "Bodeguero"):
+        messages.error(request, "No tienes permisos para crear órdenes.")
+        return redirect('inventario:listar_ordenes')
+
+    if request.method == 'POST':
+        formset = OrdenInsumoDetalleFormSet(request.POST)
+        if formset.is_valid():
+            # Creamos la orden principal
+            orden = OrdenInsumo.objects.create(usuario=request.user, estado='PENDIENTE')
+            
+            # Guardamos los detalles (los formularios del formset)
+            for form in formset:
+                if form.cleaned_data and not form.cleaned_data.get('DELETE'):
+                    detalle = form.save(commit=False)
+                    detalle.orden_insumo = orden
+                    detalle.save()
+            
+            messages.success(request, f"Orden #{orden.id} creada exitosamente.")
+            return redirect('inventario:listar_ordenes')
+    else:
+        formset = OrdenInsumoDetalleFormSet(queryset=OrdenInsumoDetalle.objects.none())
+
+    context = {
+        'formset': formset,
+        'titulo': 'Crear Nueva Orden de Insumo'
+    }
+    return render(request, 'inventario/crear_orden.html', context)

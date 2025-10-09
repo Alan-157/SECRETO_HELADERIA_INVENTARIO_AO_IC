@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+<h3 class="mb-0">{{ titulo }}</h3>
+<div class="d-flex align-items-center">
+<!-- Formulario de Búsqueda -->
+<form method="get" class="me-2">
+<div class="input-group">
+<input type="text" class="form-control" name="q" placeholder="Buscar..." value="{{ request.GET.q }}">
+<button class="btn btn-outline-secondary" type="submit">Buscar</button>
+</div>
+</form>
+<!-- Botón de Crear Orden con Permisos -->
+{% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Bodeguero" %}
+<a href="{% url 'inventario:crear_orden' %}" class="btn btn-primary">
+Crear Orden
+</a>
+{% endif %}
+</div>
+</div>
+
+{% if ordenes %}
+{% for orden in ordenes %}
+<div class="card shadow-sm mb-3">
+<!-- Encabezado de la Orden -->
+<div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap">
+<div>
+<span class="fw-bold fs-5">Orden #{{ orden.id }}</span>
+<small class="text-muted ms-2">Creada por: {{ orden.usuario.name|default:orden.usuario.email }}</small>
+</div>
+<div>
+<small class="text-muted me-3">Fecha: {{ orden.fecha }}</small>
+{% if orden.estado == 'PENDIENTE' %}
+<span class="badge bg-warning text-dark">Pendiente</span>
+{% elif orden.estado == 'EN_CURSO' %}
+<span class="badge bg-info text-dark">En Curso</span>
+{% elif orden.estado == 'CERRADA' %}
+<span class="badge bg-success">Cerrada</span>
+{% else %}
+<span class="badge bg-secondary">{{ orden.estado }}</span>
+{% endif %}
+</div>
+</div>
+<!-- Detalles de la Orden -->
+<div class="card-body">
+<h5 class="card-title mb-3">Insumos Solicitados</h5>
+<div class="table-responsive">
+<table class="table table-sm table-striped mb-0">
+<thead>
+<tr>
+<th scope="col">Insumo</th>
+<th scope="col" class="text-end">Cantidad Solicitada</th>
+<th scope="col">Unidad</th>
+</tr>
+</thead>
+<tbody>
+{% for detalle in orden.detalles.all %}
+<tr>
+<td>{{ detalle.insumo.nombre }}</td>
+<td class="text-end">{{ detalle.cantidad_solicitada|floatformat:2 }}</td>
+<td>{{ detalle.insumo.unidad_medida }}</td>
+</tr>
+{% empty %}
+<tr>
+<td colspan="3" class="text-center text-muted">Esta orden no tiene detalles.</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-secondary text-center m-4" role="alert">
+{% if request.GET.q %}
+No se encontraron órdenes que coincidan con "<strong>{{ request.GET.q }}</strong>".
+{% else %}
+Aún no hay órdenes de insumo registradas.
+{% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

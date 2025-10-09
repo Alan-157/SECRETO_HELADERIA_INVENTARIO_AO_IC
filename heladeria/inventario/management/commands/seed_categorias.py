@@ -20,7 +20,6 @@ class Command(BaseCommand):
             ("Saborizantes y Esencias", "Vainilla, pastas de sabor y esencias concentradas."),
             ("Envases y Descartables", "Conos, vasos, cucharitas, servilletas y envases para llevar."),
             ("Productos de Cafetería", "Café en grano, té, leche para café, etc."),
-            ("Insumos de Limpieza", "Detergentes, desinfectantes y otros artículos de limpieza."),
         ]
 
         categorias_creadas = 0
