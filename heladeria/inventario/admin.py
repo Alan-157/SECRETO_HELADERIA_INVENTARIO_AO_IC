@@ -1,3 +1,4 @@
+
 from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
 from .models import (
@@ -6,11 +7,74 @@ from .models import (
     OrdenInsumo, OrdenInsumoDetalle, Ordenresumen
 )
 
+# 👇 --- IMPORTACIONES ADICIONALES PARA VALIDACIONES ---
+from django import forms
+from datetime import date
+from django.core.validators import MinValueValidator
+
 User = get_user_model()
 
+
 # =====================================================
-# MIXIN DE PERMISOS POR ROL
+# 👇 --- FORMULARIOS DE ADMIN PERSONALIZADOS CON VALIDACIONES ---
 # =====================================================
+
+class EntradaAdminForm(forms.ModelForm):
+    """Formulario para el modelo Entrada en el admin con validaciones."""
+    # 1. Validación de cantidad positiva (no puede ser 0 o negativo)
+    cantidad = forms.DecimalField(
+        validators=[MinValueValidator(0.01, message="La cantidad a ingresar debe ser un número positivo.")],
+        label="Cantidad"
+    )
+
+    class Meta:
+        model = Entrada
+        fields = '__all__' # Incluye todos los campos del modelo en el form
+
+    # 2. Validación de fecha (no puede ser una fecha pasada)
+    def clean_fecha(self):
+        fecha_entrada = self.cleaned_data.get('fecha')
+        if fecha_entrada and fecha_entrada < date.today():
+            raise forms.ValidationError("La fecha de la entrada no puede ser anterior al día de hoy.")
+        return fecha_entrada
+
+
+class SalidaAdminForm(forms.ModelForm):
+    """Formulario para el modelo Salida en el admin con validaciones."""
+    cantidad = forms.DecimalField(
+        validators=[MinValueValidator(0.01, message="La cantidad de salida debe ser un número positivo.")],
+        label="Cantidad"
+    )
+
+    class Meta:
+        model = Salida
+        fields = '__all__'
+
+    # Validación de fecha (no puede ser una fecha pasada)
+    def clean_fecha_generada(self):
+        fecha_salida = self.cleaned_data.get('fecha_generada')
+        if fecha_salida and fecha_salida < date.today():
+            raise forms.ValidationError("La fecha de la salida no puede ser anterior al día de hoy.")
+        return fecha_salida
+    
+    # Validación para no permitir stock negativo
+    def clean(self):
+        cleaned_data = super().clean()
+        lote = cleaned_data.get('insumo_lote')
+        cantidad_salida = cleaned_data.get('cantidad')
+
+        if lote and cantidad_salida and cantidad_salida > lote.cantidad_actual:
+            # Lanza un error asociado al campo 'cantidad'
+            raise forms.ValidationError({
+                'cantidad': f'Error: Stock insuficiente. El stock actual del lote es {lote.cantidad_actual}.'
+            })
+        return cleaned_data
+
+
+# =====================================================
+# MIXIN DE PERMISOS POR ROL (Sin cambios)
+# =====================================================
+# ... (tu mixin RoleScopedInventarioAdminMixin y la acción marcar_cerrada no cambian) ...
 def rol_name(user):
     try:
         return (user.rol.nombre or "").lower()
@@ -67,9 +131,6 @@ class RoleScopedInventarioAdminMixin:
                 field.queryset = User.objects.filter(pk=request.user.pk)
         return field
 
-# =====================================================
-# ACCIÓN PERSONALIZADA
-# =====================================================
 @admin.action(description="Marcar órdenes de insumo como CERRADAS")
 def marcar_cerrada(modeladmin, request, queryset):
     updated = queryset.update(estado="CERRADA")
@@ -77,8 +138,9 @@ def marcar_cerrada(modeladmin, request, queryset):
         request, f"{updated} órdenes marcadas como cerradas.", messages.SUCCESS
     )
 
+
 # =====================================================
-# REGISTROS ADMIN
+# REGISTROS ADMIN (MODIFICADOS)
 # =====================================================
 
 @admin.register(Categoria)
@@ -124,6 +186,8 @@ class InsumoLoteAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
 
 @admin.register(Entrada)
 class EntradaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    # 👇 ASIGNAMOS EL FORMULARIO PERSONALIZADO
+    form = EntradaAdminForm
     list_display = ("id", "insumo", "ubicacion", "cantidad", "fecha", "usuario", "tipo")
     list_filter = ("fecha", "tipo", "usuario")
     search_fields = ("insumo__nombre", "usuario__email")
@@ -134,6 +198,8 @@ class EntradaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
 
 @admin.register(Salida)
 class SalidaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    # 👇 ASIGNAMOS EL FORMULARIO PERSONALIZADO
+    form = SalidaAdminForm
     list_display = ("id", "insumo", "ubicacion", "cantidad", "fecha_generada", "usuario", "tipo")
     list_filter = ("fecha_generada", "tipo", "usuario")
     search_fields = ("insumo__nombre", "usuario__email")
