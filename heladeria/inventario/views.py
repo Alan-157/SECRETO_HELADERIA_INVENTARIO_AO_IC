@@ -18,8 +18,9 @@ def user_has_role(user, *roles):
     if user.is_superuser:
         return True
     # Obtenemos el nombre del rol de forma segura
-    nombre_rol = getattr(getattr(user, "rol", None), "nombre", "")
-    return nombre_rol in roles
+    nombre_rol = (getattr(getattr(user, "rol", None), "nombre", "") or "").strip().lower()
+    roles_norm = [r.strip().lower() for r in roles]
+    return nombre_rol in roles_norm
 
 # --- VISTAS DEL INVENTARIO ---
 
@@ -281,9 +282,9 @@ def crear_salida(request):
 @transaction.atomic
 def crear_orden(request):
     """Permite crear una nueva orden de insumos con múltiples detalles."""
-    if not user_has_role(request.user, "Administrador", "Bodeguero"):
-        messages.error(request, "No tienes permisos para crear órdenes.")
-        return redirect('inventario:listar_ordenes')
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para registrar salidas.")
+        return redirect('inventario:listar_movimientos')
 
     if request.method == 'POST':
         formset = OrdenInsumoDetalleFormSet(request.POST)
