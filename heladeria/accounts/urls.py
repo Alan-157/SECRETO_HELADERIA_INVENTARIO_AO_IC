@@ -2,10 +2,12 @@ from django.urls import path
 from django.contrib.auth import views as auth_views
 from .views import register_view # <-- ¡FALTABA ESTA IMPORTACIÓN!
 from .forms import LoginForm 
+from django.urls import path, reverse_lazy
+
 
 app_name = "accounts"
 urlpatterns = [
-    # 0. Registro de Usuario (FALTABA ESTA RUTA)
+    # 0. Registro de Usuario (No protegido)
     path('register/', register_view, name='register'), 
 
     # 1. Login y Logout (Vistas basadas en clases)
@@ -28,6 +30,8 @@ urlpatterns = [
     # 3. Restablecimiento de Contraseña (No protegido)
     path('password_reset/', auth_views.PasswordResetView.as_view(
         template_name='accounts/password_reset_form.html',
+        email_template_name='accounts/password_reset_email.html',
+        success_url=reverse_lazy('accounts:password_reset_done'),
     ), name='password_reset'),
     path('password_reset/done/', auth_views.PasswordResetDoneView.as_view(
         template_name='accounts/password_reset_done.html',
