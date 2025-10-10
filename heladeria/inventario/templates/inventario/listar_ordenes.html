@@ -14,7 +14,7 @@
 </div>
 </form>
 <!-- Botón de Crear Orden con Permisos -->
-{% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Bodeguero" %}
+{% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Encargado" %}
 <a href="{% url 'inventario:crear_orden' %}" class="btn btn-primary">
 Crear Orden
 </a>
