@@ -1,3 +1,4 @@
+
 from django.contrib import admin, messages
 from django import forms
 from datetime import date
@@ -9,8 +10,12 @@ from .models import (
     OrdenInsumo, OrdenInsumoDetalle, Ordenresumen
 )
 
-User = get_user_model()
+# 👇 --- IMPORTACIONES ADICIONALES PARA VALIDACIONES ---
+from django import forms
+from datetime import date
+from django.core.validators import MinValueValidator
 
+User = get_user_model()
 # --- FORMULARIOS DE ADMIN PERSONALIZADOS CON VALIDACIONES ---
 
 class EntradaAdminForm(forms.ModelForm):
