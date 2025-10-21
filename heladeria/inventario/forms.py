@@ -1,4 +1,6 @@
 from django import forms
+# Importa el validador de valor mínimo
+from django.core.validators import MinValueValidator
 from .models import Insumo, Categoria, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle
 from django.forms import inlineformset_factory
 
@@ -39,6 +41,13 @@ class InsumoForm(forms.ModelForm):
 # --- FORMULARIOS PARA MOVIMIENTOS (sin cambios) ---
 
 class EntradaForm(forms.ModelForm):
+    # Definimos 'cantidad' explícitamente para añadir el validador. El valor 0.01 asegura que la cantidad sea siempre un número positivo.
+    cantidad = forms.DecimalField(
+        label="Cantidad",
+        validators=[MinValueValidator(0.01, message="La cantidad debe ser mayor que cero.")],
+        widget=forms.NumberInput(attrs={'class': 'form-control'})
+    )
+
     class Meta:
         model = Entrada
         exclude = ['usuario']
@@ -46,13 +55,19 @@ class EntradaForm(forms.ModelForm):
             'insumo': forms.Select(attrs={'class': 'form-select'}),
             'insumo_lote': forms.Select(attrs={'class': 'form-select'}),
             'ubicacion': forms.Select(attrs={'class': 'form-select'}),
-            'cantidad': forms.NumberInput(attrs={'class': 'form-control'}),
             'fecha': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'observaciones': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'tipo': forms.TextInput(attrs={'class': 'form-control'}),
         }
 
+
 class SalidaForm(forms.ModelForm):
+    cantidad = forms.DecimalField(
+        label="Cantidad",
+        validators=[MinValueValidator(0.01, message="La cantidad debe ser mayor que cero.")],
+        widget=forms.NumberInput(attrs={'class': 'form-control'})
+    )
+
     class Meta:
         model = Salida
         exclude = ['usuario']
@@ -60,7 +75,6 @@ class SalidaForm(forms.ModelForm):
             'insumo': forms.Select(attrs={'class': 'form-select'}),
             'insumo_lote': forms.Select(attrs={'class': 'form-select'}),
             'ubicacion': forms.Select(attrs={'class': 'form-select'}),
-            'cantidad': forms.NumberInput(attrs={'class': 'form-control'}),
             'fecha_generada': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'tipo': forms.TextInput(attrs={'class': 'form-control'}),
         }

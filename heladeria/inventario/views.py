@@ -1,8 +1,8 @@
-from urllib import request
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-# ¡Importamos los nuevos modelos que vamos a usar!
+from urllib import request
 from .models import Insumo, Categoria, Bodega, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle
+from datetime import date
 from django.contrib import messages
 # ¡Importamos los nuevos formularios que crearemos!
 from .forms import InsumoForm, EntradaForm, SalidaForm, OrdenInsumoDetalleFormSet, CategoriaForm
@@ -31,7 +31,8 @@ def dashboard_view(request):
     total_insumos = Insumo.objects.filter(is_active=True).count()
     total_bodegas = Bodega.objects.filter(is_active=True).count()
     ordenes_pendientes = OrdenInsumo.objects.filter(estado='PENDIENTE').count()
-    
+    visitas = request.session.get('visitas', 0)
+    request.session['visitas'] = visitas + 1
     # Obtenemos las 5 categorías más recientes
     categorias = Categoria.objects.filter(is_active=True).order_by('-created_at')[:5]
     
@@ -40,12 +41,15 @@ def dashboard_view(request):
         'total_bodegas': total_bodegas,
         'ordenes_pendientes': ordenes_pendientes,
         'categorias': categorias,
+        'visitas':visitas,
     }
     return render(request, 'dashboard.html', context)
 
 # --- 2. CRUD DE INSUMOS ---
 @login_required
 def listar_insumos(request):
+    visitas_i = request.session.get('visitas_i', 0)
+    request.session['visitas_i'] = visitas_i + 1
     """Muestra una lista de todos los insumos con su stock actual y filtros."""
     query = request.GET.get('q')
     insumos = Insumo.objects.filter(is_active=True).annotate(
@@ -60,7 +64,8 @@ def listar_insumos(request):
 
     context = {
         'insumos': insumos,
-        'titulo': 'Listado de Insumos'
+        'titulo': 'Listado de Insumos',
+        'visitas_i':visitas_i
     }
     return render(request, 'inventario/listar_insumos.html', context)
 
@@ -129,6 +134,8 @@ def listar_categorias(request):
 
 @login_required
 def crear_categoria(request):
+    visitas_c = request.session.get('visitas_c', 0)
+    request.session[visitas_c] = visitas_c + 1
     """Permite crear una categoría solo a Administradores."""
     if not user_has_role(request.user, "Administrador"):
         messages.error(request, "No tienes permisos para crear categorías.")
@@ -140,7 +147,8 @@ def crear_categoria(request):
         messages.success(request, "Categoría creada correctamente.")
         return redirect('inventario:listar_categorias')
 
-    context = {'form': form, 'titulo': 'Crear Nueva Categoría'}
+    context = {'form': form, 'titulo': 'Crear Nueva Categoría',
+            'visitas_c':visitas_c}
     return render(request, 'inventario/crear_categoria.html', context)
 
 @login_required
@@ -235,22 +243,31 @@ def crear_entrada(request):
         messages.error(request, "No tienes permisos para registrar entradas.")
         return redirect('inventario:listar_movimientos')
     
-    form = EntradaForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        entrada = form.save(commit=False)
-        entrada.usuario = request.user
-        entrada.save()
-        
-        # Actualizar stock del lote
-        lote = entrada.insumo_lote
-        lote.cantidad_actual += entrada.cantidad
-        lote.save()
-        
-        messages.success(request, f"Entrada de {entrada.cantidad} de '{entrada.insumo.nombre}' registrada.")
-        return redirect('inventario:listar_movimientos')
+    if request.method == 'POST':
+        form = EntradaForm(request.POST)
+        if form.is_valid():
+            # 👇 AÑADIMOS ESTA VALIDACIÓN DE FECHA
+            fecha_movimiento = form.cleaned_data.get('fecha')
+            if fecha_movimiento and fecha_movimiento < date.today():
+                form.add_error(None, "La fecha de la entrada no puede ser anterior al día de hoy.")
+            else:
+                # Si la fecha es válida, procedemos a guardar
+                entrada = form.save(commit=False)
+                entrada.usuario = request.user
+                entrada.save()
+                
+                lote = entrada.insumo_lote
+                lote.cantidad_actual += entrada.cantidad
+                lote.save()
+                
+                messages.success(request, f"Entrada de {entrada.cantidad} de '{entrada.insumo.nombre}' registrada.")
+                return redirect('inventario:listar_movimientos')
+    else:
+        form = EntradaForm()
         
     context = {'form': form, 'titulo': 'Registrar Nueva Entrada de Insumo'}
     return render(request, 'inventario/crear_movimiento.html', context)
+
 
 @login_required
 @transaction.atomic
@@ -260,20 +277,29 @@ def crear_salida(request):
         messages.error(request, "No tienes permisos para registrar salidas.")
         return redirect('inventario:listar_movimientos')
 
-    form = SalidaForm(request.POST or None)
-    if request.method == 'POST' and form.is_valid():
-        salida = form.save(commit=False)
-        salida.usuario = request.user
-        
-        lote = salida.insumo_lote
-        if salida.cantidad > lote.cantidad_actual:
-            form.add_error('cantidad', f'No hay stock suficiente en el lote. Stock actual: {lote.cantidad_actual}')
-        else:
-            salida.save()
-            lote.cantidad_actual -= salida.cantidad
-            lote.save()
-            messages.success(request, f"Salida de {salida.cantidad} de '{salida.insumo.nombre}' registrada.")
-            return redirect('inventario:listar_movimientos')
+    if request.method == 'POST':
+        form = SalidaForm(request.POST)
+        if form.is_valid():
+            salida = form.save(commit=False)
+
+            # 👇 AÑADIMOS ESTA VALIDACIÓN DE FECHA
+            fecha_movimiento = form.cleaned_data.get('fecha_generada')
+            if fecha_movimiento and fecha_movimiento < date.today():
+                form.add_error(None, "La fecha de la salida no puede ser anterior al día de hoy.")
+            else:
+                salida.usuario = request.user
+                lote = salida.insumo_lote
+                
+                if salida.cantidad > lote.cantidad_actual:
+                    form.add_error('cantidad', f'No hay stock suficiente. Stock actual: {lote.cantidad_actual}')
+                else:
+                    salida.save()
+                    lote.cantidad_actual -= salida.cantidad
+                    lote.save()
+                    messages.success(request, f"Salida de {salida.cantidad} de '{salida.insumo.nombre}' registrada.")
+                    return redirect('inventario:listar_movimientos')
+    else:
+        form = SalidaForm()
 
     context = {'form': form, 'titulo': 'Registrar Nueva Salida de Insumo'}
     return render(request, 'inventario/crear_movimiento.html', context)
