@@ -49,7 +49,7 @@ Crear Insumo
                 <tbody>
                     {% for insumo in insumos %}
                     <tr>
-                        <td class="ps-4 fw-bold">{{ insumo.nombre }}</td>
+                        <td class="ps-4 fw-bold insumo-name">{{ insumo.nombre }}</td>
                         <td><span class="badge bg-secondary">{{ insumo.categoria.nombre }}</span></td>
                         <td class="text-center">
                             {% with stock=insumo.stock_actual|floatformat:2 %}
@@ -79,6 +79,13 @@ Crear Insumo
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash3" viewBox="0 0 16 16"><path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5M11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1zm-9.04 1a.5.5 0 0 1 .499.562l.84 10.5a1 1 0 0 0 .997.938h6.23a1 1 0 0 0 .997-.938l.84-10.5a.5.5 0 0 1 .998.078l-.84 10.5a2 2 0 0 1-1.994 1.84h-6.23a2 2 0 0 1-1.994-1.84l-.84-10.5a.5.5 0 0 1 .499-.562zM6.5 5a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 1 0v-7a.5.5 0 0 0-.5-.5M9.5 5a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 1 0v-7a.5.5 0 0 0-.5-.5z"/></svg>
                                 </a>
                             {% endif %}
+                             <button
+                                    class="btn btn-danger btn-sm btn-delete"
+                                    data-id="{{ insumo.id }}"
+                                    data-url="{% url 'inventario:eliminar_insumo' insumo.id %}"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash3" viewBox="0 0 16 16"><path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5M11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1zm-9.04 1a.5.5 0 0 1 .499.562l.84 10.5a1 1 0 0 0 .997.938h6.23a1 1 0 0 0 .997-.938l.84-10.5a.5.5 0 0 1 .998.078l-.84 10.5a2 2 0 0 1-1.994 1.84h-6.23a2 2 0 0 1-1.994-1.84l-.84-10.5a.5.5 0 0 1 .499-.562zM6.5 5a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 1 0v-7a.5.5 0 0 0-.5-.5M9.5 5a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 1 0v-7a.5.5 0 0 0-.5-.5z"/></svg>
+                                </button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -97,4 +104,86 @@ Crear Insumo
 </div> <!-- Cierre del card-body -->
 
 </div> <!-- Cierre del card -->
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    // --- CSRF helper (lee la cookie csrftoken) ---
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(";").shift();
+    }
+    const csrftoken = getCookie("csrftoken");
+
+    // Delegación de eventos para botones borrar
+    document.addEventListener("click", async (ev) => {
+        const btn = ev.target.closest(".btn-delete");
+        if (!btn) return;
+
+        const row = btn.closest("tr");
+        const zonaId = btn.dataset.id;
+        const url = btn.dataset.url;
+        const nombre =
+            row.querySelector(".insumo-name")?.textContent?.trim() || "la zona";
+
+        const confirm = await Swal.fire({
+            title: `¿Eliminar ${nombre}?`,
+            text: "Esta acción no se puede deshacer.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonText: "Sí, eliminar",
+            cancelButtonText: "Cancelar",
+        });
+
+        if (!confirm.isConfirmed) return;
+
+        try {
+            const resp = await fetch(url, {
+                method: "POST", // usamos POST por CSRF
+                headers: {
+                    "X-CSRFToken": csrftoken,
+                    "X-Requested-With": "XMLHttpRequest",
+                    Accept: "application/json",
+                },
+            });
+
+            if (!resp.ok) {
+                const txt = await resp.text();
+                throw new Error(txt || "Error HTTP");
+            }
+            const data = await resp.json();
+            if (data.ok) {
+                // Quitar la fila del DOM
+                row.remove();
+
+                // Opcional: reindexar primera columna (#)
+                Array.from(
+                    document.querySelectorAll("#tablaZonas tbody tr")
+                ).forEach((tr, i) => {
+                    tr.children[0].textContent = (i + 1).toString();
+                });
+
+                Swal.fire({
+                    icon: "success",
+                    title: data.message,
+                    timer: 1800,
+                    showConfirmButton: false,
+                });
+            } else {
+                Swal.fire({
+                    icon: "error",
+                    title: data.message || "No se pudo eliminar",
+                });
+            }
+        } catch (err) {
+            Swal.fire({
+                icon: "error",
+                title: "Error al eliminar",
+                text: err.message,
+            });
+        }
+    });
+</script>
 {% endblock %}

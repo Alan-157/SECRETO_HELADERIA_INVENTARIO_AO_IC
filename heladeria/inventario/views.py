@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
+from django.http import JsonResponse, HttpResponseBadRequest
 from urllib import request
 from .models import Insumo, Categoria, Bodega, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle
 from datetime import date
@@ -102,9 +104,9 @@ def editar_insumo(request, insumo_id):
     context = {'form': form, 'titulo': f'Editar Insumo: {insumo.nombre}'}
     return render(request, 'inventario/editar_insumo.html', context)
 
-@login_required
-def eliminar_insumo(request, insumo_id):
-    """Maneja la lógica para eliminar (desactivar) un insumo."""
+"""@login_required ESTE ES EL ANTIGUO BOTON DE ELIMINAR
+def eliminar_insumo2(request, insumo_id):
+    #Maneja la lógica para eliminar (desactivar) un insumo.
     if not user_has_role(request.user, "Administrador"):
         messages.error(request, "No tienes permisos para eliminar insumos.")
         return redirect('inventario:listar_insumos')
@@ -117,7 +119,24 @@ def eliminar_insumo(request, insumo_id):
         return redirect('inventario:listar_insumos')
 
     context = {'insumo': insumo}
-    return render(request, 'inventario/eliminar_insumo_confirm.html', context)
+    return render(request, 'inventario/eliminar_insumo_confirm.html', context)"""
+
+@login_required
+@require_POST #NUEVO BOTON DE ELIMINAR (HECHO POR EL PROFE)
+def eliminar_insumo(request, insumo_id):
+    """
+    Elimina una zona y responde JSON para que el frontend actualice la UI sin recargar.
+    """
+    # Verifica que la petición sea AJAX
+    if not request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return HttpResponseBadRequest("Solo AJAX")
+    # Verifica permisos y autenticación con pk de zona
+    insumo = get_object_or_404(Insumo, id=insumo_id)
+    nombre = insumo.nombre
+    #insumo.delete()
+    insumo.is_active = False
+    insumo.save()
+    return JsonResponse({"ok": True, "message": f"El insumo '{nombre}' ha sido eliminado."})
 
 
 # --- 3. CRUD DE CATEGORÍAS ---
