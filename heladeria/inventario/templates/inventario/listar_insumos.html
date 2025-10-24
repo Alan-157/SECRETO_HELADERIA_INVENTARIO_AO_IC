@@ -21,7 +21,7 @@
 </div>
 </form>
 <!-- Botón de Crear Insumo -->
-{% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Encargado" %}
+{% if user.is_superuser or user.role|lower == 'administrador' or user.role|lower == 'encargado' %}
 <a href="{% url 'inventario:crear_insumo' %}" class="btn btn-primary">
 <!-- Icono de Más -->
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-lg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 2a.5.5 0 0 1 .5.5v5h5a.5.5 0 0 1 0 1h-5v5a.5.5 0 0 1-1 0v-5h-5a.5.5 0 0 1 0-1h5v-5A.5.5 0 0 1 8 2"/></svg>
@@ -91,6 +91,29 @@ Crear Insumo
                     {% endfor %}
                 </tbody>
             </table>
+            <nav aria-label="Paginación">
+                <ul class="pagination pagination-sm mb-0">
+                    {% if objetos.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ objetos.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">« Anterior</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
+                    {% endif %}
+
+                    <li class="page-item disabled">
+                    <span class="page-link">Página {{ objetos.number }} de {{ objetos.paginator.num_pages }}</span>
+                    </li>
+
+                    {% if objetos.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ objetos.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">Siguiente »</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
+                    {% endif %}
+                </ul>
+                </nav>
         </div>
     {% else %}
         <div class="alert alert-secondary text-center m-4" role="alert">

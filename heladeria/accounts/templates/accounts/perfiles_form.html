@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3>{{ titulo }}</h3>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form %}
+      {{ form.as_p }}
+    {% else %}
+      <div class="mb-3">
+        <label for="nombre" class="form-label">Nombre del perfil</label>
+        <input type="text" name="nombre" id="nombre" value="{{ perfil.nombre|default:'' }}" class="form-control" required>
+      </div>
+    {% endif %}
+    <button type="submit" class="btn btn-success">Guardar</button>
+    <a href="{% url 'accounts:perfiles_list' %}" class="btn btn-secondary">Volver</a>
+  </form>
+</div>
+{% endblock %}

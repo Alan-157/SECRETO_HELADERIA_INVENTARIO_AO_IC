@@ -72,8 +72,8 @@ python manage.py seed_insumos
 python manage.py seed_bodegas
 python manage.py seed_ubicaciones
 python manage.py seed_lotes
-python manage.py seed_movimientos
 python manage.py seed_ordenes
+python manage.py seed_movimientos
 python manage.py seed_alertas
 
 ## Ejecutar servidor local

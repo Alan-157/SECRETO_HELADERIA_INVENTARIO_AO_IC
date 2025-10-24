@@ -1,15 +1,12 @@
-from urllib import request
 from django.contrib import admin, messages
+from django.utils import timezone
 from django.core.exceptions import ValidationError
-from django.forms.models import BaseInlineFormSet
-from .models import Rol, UserPerfil, UsuarioApp, UserPerfilAsignacion 
+from .models import UserPerfil, UsuarioApp, UserPerfilAsignacion
+from .services import activar_asignacion
 
-# --- ACCIONES PERSONALIZADAS: Activar/Desactivar (Clase U2 C3) ---
-def rol_name(user):
-    try:
-        return (user.rol.nombre or "").lower()
-    except Exception:
-        return ""
+
+# --- ACCIONES COMUNES ---
+
 @admin.action(description="Activar perfiles seleccionados")
 def activar_perfiles(modeladmin, request, queryset):
     updated = queryset.update(is_active=True)
@@ -31,48 +28,44 @@ def desactivar_usuarios(modeladmin, request, queryset):
     modeladmin.message_user(request, f"{updated} usuario(s) desactivado(s).", messages.WARNING)
 
 
-# --- INLINE & VALIDACIÓN (Para gestionar asignaciones desde el Perfil) ---
-class AsignacionInlineFormset(BaseInlineFormSet):
-    def clean(self):
-        super().clean()
-        # Recolectar usuarios marcados como activos en este formset
-        activos_users = []
-        for form in self.forms:
-            # forms vacíos o eliminados no se consideran
-            if not hasattr(form, "cleaned_data"):
-                continue
-            if form.cleaned_data.get("DELETE"):
-                continue
-            # Solo consideramos filas marcadas como activas
-            if form.cleaned_data.get("activo"):
-                user = form.cleaned_data.get("user")
-                if user is None:
-                    # Si activo=True pero sin usuario, es inválido
-                    raise ValidationError("Debe seleccionar un usuario para activar la asignación.")
-                activos_users.append(user)
-        # Si hay duplicados en usuarios activos -> error
-        if len(set(activos_users)) < len(activos_users):
-            raise ValidationError("Cada usuario puede tener solo una asignación activa en este perfil.")
+# --- ACCIONES PARA ASIGNACIONES (NUEVAS) ---
 
+@admin.action(description="Finalizar asignaciones seleccionadas (cerrar vigencia)")
+def finalizar_asignaciones(modeladmin, request, queryset):
+    n = 0
+    for asignacion in queryset:
+        if asignacion.ended_at is None:
+            asignacion.ended_at = timezone.now()
+            asignacion.save(update_fields=["ended_at"])
+            # si es la activa del usuario, borrar puntero
+            user = asignacion.user
+            if user.active_asignacion_id == asignacion.id:
+                user.active_asignacion = None
+                user.save(update_fields=["active_asignacion"])
+            n += 1
+    modeladmin.message_user(request, f"{n} asignación(es) finalizada(s).", messages.INFO)
+
+
+@admin.action(description="Marcar asignaciones como vigentes (finaliza otras)")
+def hacer_vigente(modeladmin, request, queryset):
+    for asignacion in queryset:
+        activar_asignacion(asignacion.user, asignacion.perfil)
+    modeladmin.message_user(request, "Asignación(es) marcada(s) como vigente(s).", messages.SUCCESS)
+
+
+# --- INLINE (opcional: ver asignaciones dentro del Perfil) ---
 
 class UserPerfilAsignacionInline(admin.TabularInline):
     model = UserPerfilAsignacion
-    formset = AsignacionInlineFormset
     extra = 0
-    fields = ("user", "activo", "assigned_at")
-    readonly_fields = ("assigned_at",)
+    fields = ("user", "started_at", "ended_at")
+    readonly_fields = ("started_at", "ended_at")
     show_change_link = True
     verbose_name = "Asignación de usuario"
     verbose_name_plural = "Asignaciones de usuarios"
 
-# --- REGISTROS DE ADMIN ---
 
-@admin.register(Rol)
-class RolAdmin(admin.ModelAdmin):
-    list_display = ("id", "nombre", "is_active", "created_at")
-    list_filter = ("is_active",)
-    search_fields = ("nombre",)
-    ordering = ("nombre",)
+# --- ADMIN: UserPerfil ---
 
 @admin.register(UserPerfil)
 class UserPerfilAdmin(admin.ModelAdmin):
@@ -81,80 +74,63 @@ class UserPerfilAdmin(admin.ModelAdmin):
     search_fields = ("nombre",)
     ordering = ("nombre",)
     readonly_fields = ("created_at", "updated_at")
-    inlines = [UserPerfilAsignacionInline] # <-- Uso de Inline (Clase U2 C3)
+    inlines = [UserPerfilAsignacionInline]
     actions = [activar_perfiles, desactivar_perfiles]
-    
-    # Permisos de módulo (visibilidad en el menú lateral)
-    def has_module_permission(self, request):
-        if request.user.is_superuser:
-            return True
-        return False  # Solo superusuarios pueden ver el módulo
-    
-    # Filtrado por perfil del usuario logueado
-    """Si el usuario no es superusuario, solo ve su propio perfil."""
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        user_perfil = getattr(request.user, "user_perfil", None)
-        return qs.filter(id=user_perfil.id) if user_perfil else qs.none()
 
+    def has_module_permission(self, request):
+        # Solo superusuario ve este módulo (puedes abrirlo a 'admin' si lo deseas)
+        return request.user.is_superuser
+    
+    def save_model(self, request, obj, form, change):
+        # Validar que no exista otra asignación vigente del mismo user
+        vigente = UserPerfilAsignacion.objects.filter(
+            user=obj.user, ended_at__isnull=True
+        ).exclude(id=obj.id)
+        if vigente.exists():
+            raise ValidationError("El usuario ya tiene una asignación vigente.")
+        super().save_model(request, obj, form, change)
+
+
+# --- ADMIN: UsuarioApp ---
 
 @admin.register(UsuarioApp)
 class UsuarioAppAdmin(admin.ModelAdmin):
-    list_display = ("id", "email", "name", "rol", "user_perfil", "is_active", "updated_at")
-    # Filtra por estado (is_active), perfil y rol
-    list_filter = ("is_active", "user_perfil", "rol") 
-    search_fields = ("email", "name", "user_perfil__nombre", "rol__nombre") # Búsqueda por FK
+    list_display = ("id", "email", "name", "is_active", "active_asignacion", "updated_at")
+    list_filter = ("is_active",)
+    search_fields = ("email", "name")
     ordering = ("email",)
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "active_asignacion")
     actions = [activar_usuarios, desactivar_usuarios]
 
-    # Permisos de módulo (visibilidad en el menú lateral)
     def has_module_permission(self, request):
-        if request.user.is_superuser:
-            return True
-        # Permitir si el rol del usuario es 'admin' o 'manager'
-        user_rol = rol_name(request.user)
-        if user_rol in ["admin", "manager"]:
-            return True
-        return False  # Otros roles no pueden ver el módulo
-    
-    # Permisos de acceso (ver, agregar, cambiar, eliminar)
+        return request.user.is_superuser
+
     def has_view_permission(self, request, obj=None):
         return request.user.is_superuser
+
     def has_add_permission(self, request):
         return request.user.is_superuser
+
     def has_change_permission(self, request, obj=None):
         return request.user.is_superuser
-    def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser
-    
-    # Filtrado por perfil del usuario logueado
-    """Si el usuario no es superusuario, solo ve su propio usuario."""
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        user_perfil = getattr(request.user, 'user_perfil', None)
-        return qs.filter(user_perfil=user_perfil) if user_perfil else qs.none()
-    
-    #   Restringir acciones sensibles si no es superusuario
+
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser
 
+
+# --- ADMIN: UserPerfilAsignacion ---
 
 @admin.register(UserPerfilAsignacion)
 class UserPerfilAsignacionAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "perfil", "activo", "assigned_at")
-    list_filter = ("activo", "perfil")
+    list_display = ("id", "user", "perfil", "started_at", "ended_at", "vigente")
+    list_filter = ("perfil", "ended_at")
     search_fields = ("user__email", "perfil__nombre")
     ordering = ("user",)
+    actions = [finalizar_asignaciones, hacer_vigente]
 
-    # Filtrado por perfil del usuario logueado
     def get_queryset(self, request):
         qs = super().get_queryset(request)
+        # superusuario ve todo; otros podrían limitarse a sus perfiles si lo implementas
         if request.user.is_superuser:
             return qs
-        user_perfil = getattr(request.user, 'user_perfil', None)
-        return qs.filter(perfil=user_perfil) if user_perfil else qs.none()
+        return qs.none()

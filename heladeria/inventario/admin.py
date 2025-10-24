@@ -7,7 +7,7 @@ from django.contrib.auth import get_user_model
 from .models import (
     Categoria, Insumo, Ubicacion, Bodega,
     InsumoLote, Entrada, Salida, AlertaInsumo,
-    OrdenInsumo, OrdenInsumoDetalle, Ordenresumen
+    OrdenInsumo, OrdenInsumoDetalle
 )
 
 # 👇 --- IMPORTACIONES ADICIONALES PARA VALIDACIONES ---
@@ -143,100 +143,61 @@ def marcar_cerrada(modeladmin, request, queryset):
 # =====================================================
 
 @admin.register(Categoria)
-class CategoriaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "nombre", "descripcion")
+class CategoriaAdmin(admin.ModelAdmin):
+    list_display = ("id", "nombre", "is_active", "created_at")
     search_fields = ("nombre",)
+    list_filter = ("is_active",)
     ordering = ("nombre",)
-
 
 @admin.register(Bodega)
-class BodegaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "nombre", "direccion")
+class BodegaAdmin(admin.ModelAdmin):
+    list_display = ("id", "nombre", "direccion", "is_active")
     search_fields = ("nombre", "direccion")
-    ordering = ("nombre",)
-
+    list_filter = ("is_active",)
 
 @admin.register(Ubicacion)
-class UbicacionAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "nombre", "tipo", "bodega")
-    search_fields = ("nombre", "bodega__nombre")
-    list_filter = ("bodega",)
-    list_select_related = ("bodega",)
-    ordering = ("bodega", "nombre")
+class UbicacionAdmin(admin.ModelAdmin):
+    list_display = ("id", "nombre", "bodega", "tipo", "is_active")
+    list_filter = ("bodega", "tipo", "is_active")
+    search_fields = ("nombre",)
 
-
-@admin.register(Insumo)
-class InsumoAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "nombre", "categoria", "unidad_medida", "stock_minimo", "stock_maximo")
-    search_fields = ("nombre", "categoria__nombre")
-    list_filter = ("categoria",)
-    list_select_related = ("categoria",)
-    ordering = ("nombre",)
-
-
-@admin.register(InsumoLote)
-class InsumoLoteAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "insumo", "bodega", "fecha_ingreso", "cantidad_actual", "usuario")
-    search_fields = ("insumo__nombre", "bodega__nombre")
-    list_filter = ("bodega", "fecha_ingreso")
-    list_select_related = ("insumo", "bodega", "usuario")
-    ordering = ("-fecha_ingreso",)
-
-
-@admin.register(Entrada)
-class EntradaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    # 👇 ASIGNAMOS EL FORMULARIO PERSONALIZADO
-    form = EntradaAdminForm
-    list_display = ("id", "insumo", "ubicacion", "cantidad", "fecha", "usuario", "tipo")
-    list_filter = ("fecha", "tipo", "usuario")
-    search_fields = ("insumo__nombre", "usuario__email")
-    date_hierarchy = "fecha"
-    autocomplete_fields = ("usuario", "ubicacion")
-    ordering = ("-fecha",)
-
-
-@admin.register(Salida)
-class SalidaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    # 👇 ASIGNAMOS EL FORMULARIO PERSONALIZADO
-    form = SalidaAdminForm
-    list_display = ("id", "insumo", "ubicacion", "cantidad", "fecha_generada", "usuario", "tipo")
-    list_filter = ("fecha_generada", "tipo", "usuario")
-    search_fields = ("insumo__nombre", "usuario__email")
-    date_hierarchy = "fecha_generada"
-    autocomplete_fields = ("usuario", "ubicacion")
-    ordering = ("-fecha_generada",)
-
-
-@admin.register(AlertaInsumo)
-class AlertaInsumoAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "insumo", "tipo", "mensaje", "fecha")
-    list_filter = ("tipo", "fecha")
-    search_fields = ("insumo__nombre", "mensaje")
-    date_hierarchy = "fecha"
-    ordering = ("-fecha",)
-
+class OrdenInsumoDetalleInline(admin.TabularInline):
+    model = OrdenInsumoDetalle
+    extra = 0
 
 @admin.register(OrdenInsumo)
-class OrdenInsumoAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+class OrdenInsumoAdmin(admin.ModelAdmin):
     list_display = ("id", "usuario", "fecha", "estado")
     list_filter = ("estado", "fecha")
-    search_fields = ("usuario__email", "estado")
-    ordering = ("-fecha",)
-    autocomplete_fields = ("usuario",)
-    actions = [marcar_cerrada]
+    search_fields = ("usuario__name", "usuario__email")
+    date_hierarchy = "fecha"
+    inlines = [OrdenInsumoDetalleInline]
 
-
-@admin.register(OrdenInsumoDetalle)
-class OrdenInsumoDetalleAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "orden_insumo", "insumo", "cantidad_solicitada")
-    list_filter = ("orden_insumo", "insumo")
-    search_fields = ("insumo__nombre",)
-    list_select_related = ("orden_insumo", "insumo")
-    ordering = ("orden_insumo",)
-
-
-@admin.register(Ordenresumen)
-class OrdenresumenAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
-    list_display = ("id", "nombre")
+@admin.register(Insumo)
+class InsumoAdmin(admin.ModelAdmin):
+    list_display = ("id", "nombre", "categoria", "unidad_medida", "precio_unitario", "is_active")
     search_fields = ("nombre",)
-    ordering = ("nombre",)
+    list_filter = ("categoria", "is_active")
+
+@admin.register(InsumoLote)
+class InsumoLoteAdmin(admin.ModelAdmin):
+    list_display = ("id", "insumo", "bodega", "fecha_ingreso", "fecha_expiracion",
+                    "cantidad_inicial", "cantidad_actual", "usuario", "is_active")
+    list_filter = ("bodega", "insumo", "fecha_expiracion", "is_active")
+    search_fields = ("insumo__nombre",)
+
+@admin.register(Entrada)
+class EntradaAdmin(admin.ModelAdmin):
+    list_display = ("id", "insumo", "insumo_lote", "ubicacion", "cantidad",
+                    "fecha", "usuario", "orden", "detalle")
+    list_filter = ("fecha", "usuario", "ubicacion__bodega", "insumo")
+    search_fields = ("insumo__nombre", "usuario__email")
+    date_hierarchy = "fecha"
+
+@admin.register(Salida)
+class SalidaAdmin(admin.ModelAdmin):
+    list_display = ("id", "insumo", "insumo_lote", "ubicacion", "cantidad",
+                    "fecha_generada", "usuario", "orden", "detalle")
+    list_filter = ("fecha_generada", "usuario", "ubicacion__bodega", "insumo")
+    search_fields = ("insumo__nombre", "usuario__email")
+    date_hierarchy = "fecha_generada"

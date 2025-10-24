@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3>Usuarios</h3>
+  <a href="{% url 'accounts:usuarios_create' %}" class="btn btn-primary mb-3">➕ Nuevo Usuario</a>
+  <table class="table table-striped">
+    <thead><tr><th>Email</th><th>Nombre</th><th>Activo</th><th>Perfil vigente</th><th>Acciones</th></tr></thead>
+    <tbody>
+    {% for u in usuarios %}
+      <tr>
+        <td>{{ u.email }}</td>
+        <td>{{ u.name }}</td>
+        <td>{% if u.is_active %}✅{% else %}❌{% endif %}</td>
+        <td>{% if u.active_asignacion %}{{ u.active_asignacion.perfil.nombre }}{% else %}-{% endif %}</td>
+        <td>
+          {% if not read_only %}
+            <a href="{% url 'accounts:usuarios_update' u.id %}" class="btn btn-warning btn-sm">Editar</a>
+            <form method="post" action="{% url 'accounts:usuarios_delete' u.id %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+            </form>
+          {% else %}
+            <span class="text-muted">Solo lectura</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <nav aria-label="Page navigation">
+  <ul class="pagination justify-content-center">
+    {% if usuarios.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ usuarios.previous_page_number }}">« Anterior</a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
+    {% endif %}
+
+    <li class="page-item disabled">
+      <span class="page-link">Página {{ usuarios.number }} de {{ usuarios.paginator.num_pages }}</span>
+    </li>
+
+    {% if usuarios.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ usuarios.next_page_number }}">Siguiente »</a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
+    {% endif %}
+  </ul>
+</nav>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{% if messages %}
+  {% for message in messages %}
+    <script>
+      Swal.fire({ icon: '{{ message.tags|default:"info" }}', title: '{{ message }}', timer: 2000, showConfirmButton: false });
+    </script>
+  {% endfor %}
+{% endif %}
+{% endblock %}

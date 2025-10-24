@@ -13,7 +13,7 @@
 </form>
 </div>
 
-{% if request.user.is_superuser or request.user.rol.nombre in "Administrador,Encargado" %}
+{% if user.is_superuser or user.role|lower == 'administrador' or user.role|lower == 'encargado' %}
 
 <p><a href="{% url 'inventario:crear_insumo' %}" class="btn btn-success">Crear Insumo</a></p>
 {% endif %}
