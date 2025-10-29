@@ -2,63 +2,121 @@
 {% block content %}
 <div class="container mt-4">
   <h3>Usuarios</h3>
-  <a href="{% url 'accounts:usuarios_create' %}" class="btn btn-primary mb-3">➕ Nuevo Usuario</a>
-  <table class="table table-striped">
-    <thead><tr><th>Email</th><th>Nombre</th><th>Activo</th><th>Perfil vigente</th><th>Acciones</th></tr></thead>
-    <tbody>
-    {% for u in usuarios %}
-      <tr>
-        <td>{{ u.email }}</td>
-        <td>{{ u.name }}</td>
-        <td>{% if u.is_active %}✅{% else %}❌{% endif %}</td>
-        <td>{% if u.active_asignacion %}{{ u.active_asignacion.perfil.nombre }}{% else %}-{% endif %}</td>
-        <td>
-          {% if not read_only %}
-            <a href="{% url 'accounts:usuarios_update' u.id %}" class="btn btn-warning btn-sm">Editar</a>
-            <form method="post" action="{% url 'accounts:usuarios_delete' u.id %}" style="display:inline;">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
-            </form>
-          {% else %}
-            <span class="text-muted">Solo lectura</span>
-          {% endif %}
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <nav aria-label="Page navigation">
-  <ul class="pagination justify-content-center">
-    {% if usuarios.has_previous %}
-      <li class="page-item">
-        <a class="page-link" href="?page={{ usuarios.previous_page_number }}">« Anterior</a>
-      </li>
-    {% else %}
-      <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
-    {% endif %}
 
-    <li class="page-item disabled">
-      <span class="page-link">Página {{ usuarios.number }} de {{ usuarios.paginator.num_pages }}</span>
-    </li>
+  {% if not read_only %}
+    <a href="{% url 'accounts:usuarios_create' %}" class="btn btn-primary mb-3">➕ Nuevo Usuario</a>
+  {% endif %}
 
-    {% if usuarios.has_next %}
-      <li class="page-item">
-        <a class="page-link" href="?page={{ usuarios.next_page_number }}">Siguiente »</a>
-      </li>
-    {% else %}
-      <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
-    {% endif %}
-  </ul>
-</nav>
+  {# Filtros: buscador + orden + per page #}
+  <form id="filters-form" method="get" class="row g-2 align-items-center mb-3">
+    <div class="col-12 col-md-6">
+      <input type="text"
+             name="q"
+             value="{{ q|default:'' }}"
+             class="form-control"
+             placeholder="Buscar por nombre, email o perfil…"
+             id="q-input">
+    </div>
 
+    <div class="col-6 col-md-2">
+      <select name="order" class="form-select" id="order-select">
+        <option value="asc"  {% if order|default:'asc' == 'asc' %}selected{% endif %}>Nombre (A-Z)</option>
+        <option value="desc" {% if order == 'desc' %}selected{% endif %}>Nombre (Z-A)</option>
+      </select>
+    </div>
+
+    <div class="col-6 col-md-2">
+      <select name="per_page" class="form-select" id="per-page-select">
+        <option value="5"  {% if per_page|default:20 == 5 %}selected{% endif %}>5 por página</option>
+        <option value="10" {% if per_page|default:20 == 10 %}selected{% endif %}>10 por página</option>
+        <option value="20" {% if per_page|default:20 == 20 %}selected{% endif %}>20 por página</option>
+      </select>
+    </div>
+
+    <div class="col-12 col-md-2 d-grid">
+      <button type="submit" class="btn btn-outline-primary">Aplicar</button>
+    </div>
+
+    {# reiniciar a página 1 al cambiar criterios #}
+    <input type="hidden" name="page" value="1" id="page-input">
+  </form>
+
+  <div id="results">
+    {# primera carga: render del partial #}
+    {% include "accounts/partials/usuarios_results.html" %}
+  </div>
 </div>
 
+<script>
+(function(){
+  const form = document.getElementById('filters-form');
+  const results = document.getElementById('results');
+  const qInput = document.getElementById('q-input');
+  const orderSelect = document.getElementById('order-select');
+  const perPageSelect = document.getElementById('per-page-select');
+  const pageInput = document.getElementById('page-input');
+
+  function debounce(fn, delay){
+    let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); };
+  }
+
+  function buildURL(paramsOverride={}) {
+    const data = new FormData(form);
+    for (const [k,v] of Object.entries(paramsOverride)) data.set(k, v);
+    const usp = new URLSearchParams(data);
+    return `${window.location.pathname}?${usp.toString()}`;
+  }
+
+  async function loadAjax(url){
+    const resp = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }});
+    if (!resp.ok) return;
+    const payload = await resp.json();
+    results.innerHTML = payload.html;
+    window.history.replaceState({}, "", url);
+  }
+
+  const liveSearch = debounce(()=>{
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  }, 300);
+
+  qInput.addEventListener('input', liveSearch);
+
+  orderSelect.addEventListener('change', ()=>{
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  perPageSelect.addEventListener('change', ()=>{
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  // Interceptar links de paginación dentro del partial
+  results.addEventListener('click', function(e){
+    const a = e.target.closest('a[data-ajax-link]');
+    if(!a) return;
+    e.preventDefault();
+    loadAjax(a.getAttribute('href'));
+  });
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-{% if messages %}
-  {% for message in messages %}
-    <script>
-      Swal.fire({ icon: '{{ message.tags|default:"info" }}', title: '{{ message }}', timer: 2000, showConfirmButton: false });
-    </script>
-  {% endfor %}
-{% endif %}
+{% for message in messages %}
+<script>
+Swal.fire({
+  icon: '{{ message.tags|default:"info" }}',
+  title: '{{ message|escapejs }}',
+  timer: 2000,
+  showConfirmButton: false
+});
+</script>
+{% endfor %}
+
 {% endblock %}

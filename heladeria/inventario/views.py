@@ -4,10 +4,11 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Sum, Q, DecimalField
+from django.db.models import Sum, Q, DecimalField, Count, Min
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
 from django.forms import ModelForm, inlineformset_factory  
+
 
 from accounts.services import user_has_role
 from .models import (
@@ -20,6 +21,17 @@ from .forms import (
     InsumoForm, CategoriaForm,
     MovimientoLineaFormSet
 )
+from io import BytesIO
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Alignment, Font, numbers
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from datetime import date
+import csv
+from django.http import HttpResponse
 
 # --- DASHBOARD ---
 @login_required
@@ -558,3 +570,199 @@ def eliminar_orden(request, pk):
         "obj": orden,
         "tipo": "orden",
     })
+
+# --- REPORTES ---
+@login_required
+def reporte_disponibilidad(request):
+    """
+    Reporte de disponibilidad de insumos con exportación a HTML, CSV, XLSX y PDF.
+    """
+    hoy = date.today()
+
+    insumos_qs = (
+        Insumo.objects.filter(is_active=True, categoria__is_active=True)
+        .select_related("categoria")
+        .annotate(
+            stock_total=Coalesce(
+                Sum(
+                    "lotes__cantidad_actual",
+                    filter=Q(lotes__is_active=True),
+                    output_field=DecimalField(max_digits=12, decimal_places=2),
+                ),
+                0,
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            lotes_con_stock=Count(
+                "lotes",
+                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
+                distinct=True,
+            ),
+            prox_vencimiento=Min(
+                "lotes__fecha_expiracion",
+                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
+            ),
+        )
+        .order_by("categoria__nombre", "nombre")
+    )
+
+    # Dataset agrupado por categoría
+    categorias = []
+    cat_actual = None
+    buffer = []
+    for i in insumos_qs:
+        if not cat_actual or i.categoria_id != cat_actual.id:
+            if buffer:
+                categorias.append({"categoria": cat_actual, "insumos": buffer})
+                buffer = []
+            cat_actual = i.categoria
+        buffer.append(i)
+    if buffer:
+        categorias.append({"categoria": cat_actual, "insumos": buffer})
+
+    total_stock = sum((i.stock_total or 0) for i in insumos_qs)
+    total_valor = sum((i.stock_total or 0) * (i.precio_unitario or 0) for i in insumos_qs)
+
+    fmt = (request.GET.get("format") or "").lower()
+
+    # ---------- CSV ----------
+    if fmt == "csv":
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Categoría", "Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"])
+        for bloque in categorias:
+            for i in bloque["insumos"]:
+                writer.writerow([
+                    bloque["categoria"].nombre,
+                    i.nombre,
+                    i.unidad_medida,
+                    f"{i.precio_unitario}",
+                    f"{i.stock_total:.2f}",
+                    i.lotes_con_stock,
+                    i.prox_vencimiento.isoformat() if i.prox_vencimiento else "—",
+                ])
+        writer.writerow([])
+        writer.writerow(["", "", "", "TOTALES", f"{Decimal(total_stock):.2f}", "", ""])
+        writer.writerow(["", "", "", "VALOR TOTAL", f"{Decimal(total_valor):.2f}", "", ""])
+        return response
+
+    # ---------- XLSX ----------
+    if fmt in ("xlsx", "excel"):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Disponibilidad"
+
+        title = f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}"
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+        ws.cell(row=1, column=1, value=title).font = Font(size=14, bold=True)
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
+
+        headers = ["Categoría", "Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"]
+        ws.append(headers)
+        for col in range(1, len(headers) + 1):
+            ws.cell(row=2, column=col).font = Font(bold=True)
+            ws.cell(row=2, column=col).alignment = Alignment(horizontal="center")
+
+        for bloque in categorias:
+            for i in bloque["insumos"]:
+                ws.append([
+                    bloque["categoria"].nombre,
+                    i.nombre,
+                    i.unidad_medida,
+                    float(i.precio_unitario or 0),
+                    float(i.stock_total or 0),
+                    int(i.lotes_con_stock or 0),
+                    (i.prox_vencimiento.isoformat() if i.prox_vencimiento else "—"),
+                ])
+
+        # Totales
+        ws.append([])
+        ws.append(["", "", "", "TOTALES", float(total_stock), "", ""])
+        ws.append(["", "", "", "VALOR TOTAL", float(total_valor), "", ""])
+
+        # Estilos y tamaños
+        col_widths = [18, 30, 10, 16, 14, 16, 16]
+        for idx, width in enumerate(col_widths, start=1):
+            ws.column_dimensions[get_column_letter(idx)].width = width
+
+        # Formatos numéricos
+        for row in ws.iter_rows(min_row=3, min_col=4, max_col=5, max_row=ws.max_row):
+            for cell in row:
+                if cell.column == 4:
+                    cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE  # ajusta si deseas CLP personalizado
+                elif cell.column == 5:
+                    cell.number_format = "0.00"
+
+        bio = BytesIO()
+        wb.save(bio)
+        bio.seek(0)
+        response = HttpResponse(
+            bio.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.xlsx"'
+        return response
+
+    # ---------- PDF ----------
+    if fmt == "pdf":
+        bio = BytesIO()
+        doc = SimpleDocTemplate(
+            bio,
+            pagesize=landscape(A4),
+            leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20,
+            title="Reporte de Disponibilidad de Insumos",
+        )
+        styles = getSampleStyleSheet()
+        story = []
+
+        story.append(Paragraph(f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}", styles["Title"]))
+        story.append(Spacer(1, 8))
+
+        table_head = ["Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"]
+
+        for bloque in categorias:
+            story.append(Paragraph(f"Categoría: {bloque['categoria'].nombre}", styles["Heading3"]))
+            data = [table_head]
+            for i in bloque["insumos"]:
+                data.append([
+                    i.nombre,
+                    i.unidad_medida,
+                    f"{(i.precio_unitario or 0):,.0f}",
+                    f"{(i.stock_total or 0):,.2f}",
+                    int(i.lotes_con_stock or 0),
+                    (i.prox_vencimiento.strftime("%Y-%m-%d") if i.prox_vencimiento else "—"),
+                ])
+            t = Table(data, colWidths=[140, 60, 90, 90, 90, 110])
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+                ("TEXTCOLOR", (0,0), (-1,0), colors.black),
+                ("ALIGN", (2,1), (-2,-1), "RIGHT"),
+                ("ALIGN", (0,0), (-1,0), "CENTER"),
+                ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+                ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.whitesmoke, colors.white]),
+            ]))
+            story.append(t)
+            story.append(Spacer(1, 10))
+
+        # Totales
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(f"<b>Stock total:</b> {Decimal(total_stock):,.2f}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Precio total:</b> {Decimal(total_valor):,.0f}", styles["Normal"]))
+
+        doc.build(story)
+        pdf_value = bio.getvalue()
+        bio.close()
+        response = HttpResponse(pdf_value, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.pdf"'
+        return response
+
+    # ---------- HTML (por defecto) ----------
+    context = {
+        "categorias": categorias,
+        "total_stock": total_stock,
+        "total_valor": total_valor,
+        "hoy": hoy,
+        "titulo": "Reporte de Disponibilidad de Insumos",
+    }
+    return render(request, "inventario/reporte_disponibilidad.html", context)
