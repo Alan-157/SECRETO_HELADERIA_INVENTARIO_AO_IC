@@ -1,81 +1,95 @@
+# inventario/management/commands/seed_ordenes.py
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from inventario.models import OrdenInsumo, OrdenInsumoDetalle, Insumo
 from accounts.models import UsuarioApp
 from datetime import date, timedelta
-from random import choice, randint
+from decimal import Decimal
+import random
 
 class Command(BaseCommand):
-    help = "Crea órdenes de insumos de prueba con diferentes estados y detalles."
+    help = "Crea órdenes de insumos de prueba con estados coherentes y avance real."
 
     @transaction.atomic
     def handle(self, *args, **kwargs):
         self.stdout.write(self.style.NOTICE("Iniciando la carga de órdenes de insumos..."))
 
-        # Obtenemos un superusuario para crear las órdenes
         usuario = UsuarioApp.objects.filter(is_superuser=True).first()
         if not usuario:
             self.stdout.write(self.style.ERROR("No se encontró un superusuario. Ejecuta 'createsuperuser' primero."))
             return
 
-        # Definimos varias órdenes con sus detalles
         ordenes_data = [
+            # PENDIENTE: nada atendido
             {
                 "estado": "PENDIENTE",
-                "fecha_offset": 2, # Días atrás
+                "fecha_offset": 2,
                 "detalles": [
-                    {"insumo": "Leche Entera", "cantidad": 20},
-                    {"insumo": "Azúcar Granulada", "cantidad": 50},
-                    {"insumo": "Vasos de Polipapel 4oz", "cantidad": 500},
-                ]
+                    {"insumo": "Leche Entera", "cantidad": Decimal("20")},
+                    {"insumo": "Azúcar Granulada", "cantidad": Decimal("50")},
+                    {"insumo": "Vasos de Polipapel 4oz", "cantidad": Decimal("500")},
+                ],
+                "avance": "none",
             },
+            # EN_CURSO: algunos detalles con avance parcial
             {
                 "estado": "EN_CURSO",
                 "fecha_offset": 5,
                 "detalles": [
-                    {"insumo": "Pulpa de Mango", "cantidad": 15},
-                    {"insumo": "Cobertura de Chocolate 70%", "cantidad": 10},
-                    {"insumo": "Nueces Mariposa", "cantidad": 5},
-                ]
+                    {"insumo": "Pulpa de Mango", "cantidad": Decimal("15")},
+                    {"insumo": "Cobertura de Chocolate 70%", "cantidad": Decimal("10")},
+                    {"insumo": "Nueces Mariposa", "cantidad": Decimal("5")},
+                ],
+                "avance": "partial",
             },
+            # CERRADA: todo atendido
             {
                 "estado": "CERRADA",
                 "fecha_offset": 10,
                 "detalles": [
-                    {"insumo": "Crema de Leche (35%)", "cantidad": 10},
-                    {"insumo": "Cacao Amargo en Polvo", "cantidad": 5},
-                ]
-            }
+                    {"insumo": "Crema de Leche (35%)", "cantidad": Decimal("10")},
+                    {"insumo": "Cacao Amargo en Polvo", "cantidad": Decimal("5")},
+                ],
+                "avance": "full",
+            },
         ]
 
-        ordenes_creadas = 0
+        creadas = 0
         for data in ordenes_data:
             fecha_orden = date.today() - timedelta(days=data["fecha_offset"])
-
-            # Creamos la orden principal, usamos get_or_create para no duplicar
             orden, creada = OrdenInsumo.objects.get_or_create(
                 usuario=usuario,
                 fecha=fecha_orden,
-                defaults={'estado': data["estado"]}
+                estado=data["estado"],
             )
-
             if creada:
-                self.stdout.write(self.style.SUCCESS(f"Orden ID {orden.id} creada para el {fecha_orden} con estado '{orden.estado}'."))
-                ordenes_creadas += 1
+                creadas += 1
+                self.stdout.write(self.style.SUCCESS(f"Orden creada ({orden.estado}) {fecha_orden}."))
 
-                # Creamos los detalles para la nueva orden
-                for detalle_data in data["detalles"]:
+                for det in data["detalles"]:
                     try:
-                        insumo = Insumo.objects.get(nombre=detalle_data["insumo"])
-                        OrdenInsumoDetalle.objects.create(
+                        insumo = Insumo.objects.get(nombre=det["insumo"])
+                        d = OrdenInsumoDetalle.objects.create(
                             orden_insumo=orden,
                             insumo=insumo,
-                            cantidad_solicitada=detalle_data["cantidad"]
+                            cantidad_solicitada=det["cantidad"],
                         )
-                        self.stdout.write(f"  └─ Detalle agregado: {detalle_data['cantidad']} de '{insumo.nombre}'")
+                        # Ajuste de avance según el estado objetivo
+                        if data["avance"] == "full":
+                            d.cantidad_atendida = d.cantidad_solicitada
+                        elif data["avance"] == "partial":
+                            # 30–60% aleatorio como ejemplo
+                            factor = Decimal(random.randint(30, 60)) / Decimal(100)
+                            d.cantidad_atendida = (d.cantidad_solicitada * factor).quantize(Decimal("0.01"))
+                        # PENDIENTE => atendida 0 por defecto
+                        d.save(update_fields=["cantidad_atendida"])
+                        self.stdout.write(f"  └─ {d.cantidad_solicitada} × {insumo.nombre} (atendida: {d.cantidad_atendida})")
                     except Insumo.DoesNotExist:
-                        self.stdout.write(self.style.ERROR(f"  └─ ERROR: Insumo '{detalle_data['insumo']}' no encontrado. Saltando detalle."))
-            else:
-                 self.stdout.write(self.style.WARNING(f"Orden para el {fecha_orden} ya existía. Saltando."))
+                        self.stdout.write(self.style.ERROR(f"  └─ Insumo '{det['insumo']}' no existe."))
 
-        self.stdout.write(self.style.SUCCESS(f"\nCarga de órdenes finalizada. Se crearon {ordenes_creadas} nuevas órdenes."))
+                # Recalcula para dejar el estado coherente con los datos de avance
+                orden.recalc_estado()
+            else:
+                self.stdout.write(self.style.WARNING(f"Orden del {fecha_orden} ({data['estado']}) ya existía."))
+
+        self.stdout.write(self.style.SUCCESS(f"\nCarga finalizada. {creadas} órdenes nuevas creadas."))

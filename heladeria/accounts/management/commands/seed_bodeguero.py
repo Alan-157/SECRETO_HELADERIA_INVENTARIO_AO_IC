@@ -1,32 +1,27 @@
 # accounts/management/commands/seed_bodeguero.py
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
-from accounts.models import Rol, UserPerfil, UserPerfilAsignacion
+from django.utils import timezone
+from accounts.models import UserPerfil, UserPerfilAsignacion
 
 class Command(BaseCommand):
-    help = "Crea el usuario Bodeguero (solo lectura del Inventario)."
+    help = "Crea usuario Bodeguero (solo lectura de inventario)."
 
     def handle(self, *args, **options):
         User = get_user_model()
-
-        rol, _ = Rol.objects.get_or_create(nombre="Bodeguero", defaults={"is_active": True})
-        perfil, _ = UserPerfil.objects.get_or_create(nombre="Perfil Bodega", defaults={"is_active": True})
+        perfil, _ = UserPerfil.objects.get_or_create(nombre="bodeguero")
 
         user, created = User.objects.get_or_create(
             email="bodeguero@local.cl",
-            defaults={
-                "name": "Bodeguero General",
-                "rol": rol,
-                "user_perfil": perfil,
-                "is_staff": True,
-                "is_superuser": False,
-                "is_active": True,
-            },
+            defaults={"name": "Bodeguero", "is_staff": True, "is_superuser": False, "is_active": True},
         )
         if created:
             user.set_password("Bodeguero1234")
             user.save()
-            UserPerfilAsignacion.objects.create(user=user, perfil=perfil, activo=True)
-            self.stdout.write(self.style.SUCCESS("✅ Usuario Bodeguero creado: bodeguero@local.cl / Bodeguero1234"))
-        else:
-            self.stdout.write(self.style.WARNING("⚠ Bodeguero ya existente."))
+
+        UserPerfilAsignacion.objects.filter(user=user, ended_at__isnull=True).update(ended_at=timezone.now())
+        asg = UserPerfilAsignacion.objects.create(user=user, perfil=perfil)
+        user.active_asignacion = asg
+        user.save(update_fields=["active_asignacion"])
+
+        self.stdout.write(self.style.SUCCESS("✅ bodeguero@local.cl / Bodeguero1234 listo"))

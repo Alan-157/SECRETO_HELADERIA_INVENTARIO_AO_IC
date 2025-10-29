@@ -18,7 +18,7 @@
 </div>
 </form>
 <!-- Botón de Crear Categoría -->
-{% if request.user.is_superuser or request.user.rol.nombre == "Administrador" %}
+{% if user.is_superuser or user.role|lower in "administrador,encargado" %}
 <a href="{% url 'inventario:crear_categoria' %}" class="btn btn-primary">
 Crear Categoría
 </a>
@@ -45,7 +45,7 @@ Crear Categoría
                         <td class="ps-4 fw-bold">{{ categoria.nombre }}</td>
                         <td>{{ categoria.descripcion|default:"-" }}</td>
                         <td class="text-end pe-4">
-                            {% if request.user.is_superuser or request.user.rol.nombre == "Administrador" %}
+                            {% if user.is_superuser or user.role|lower == 'administrador' or user.role|lower == 'encargado' %}
                                 <a href="{% url 'inventario:editar_categoria' categoria.id %}" class="btn btn-sm btn-outline-primary">Editar</a>
                                 <a href="{% url 'inventario:eliminar_categoria' categoria.id %}" class="btn btn-sm btn-outline-danger">Eliminar</a>
                             {% else %}
@@ -56,6 +56,29 @@ Crear Categoría
                     {% endfor %}
                 </tbody>
             </table>
+            <nav aria-label="Paginación">
+                <ul class="pagination pagination-sm mb-0">
+                    {% if objetos.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ objetos.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">« Anterior</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
+                    {% endif %}
+
+                    <li class="page-item disabled">
+                    <span class="page-link">Página {{ objetos.number }} de {{ objetos.paginator.num_pages }}</span>
+                    </li>
+
+                    {% if objetos.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ objetos.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}">Siguiente »</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
+                    {% endif %}
+                </ul>
+                </nav>
         </div>
     {% else %}
         <div class="alert alert-secondary text-center m-4">

@@ -1,16 +1,11 @@
-# accounts/management/commands/seed_roles.py
+# accounts/management/commands/seed_perfiles.py
 from django.core.management.base import BaseCommand
-from accounts.models import Rol
+from accounts.models import UserPerfil
 
 class Command(BaseCommand):
-    help = "Crea los roles base para el sistema."
+    help = "Crea los perfiles base para el sistema."
 
     def handle(self, *args, **options):
-        roles = ["Administrador", "Encargado", "Bodeguero"]
-        for r in roles:
-            rol, created = Rol.objects.get_or_create(nombre=r, defaults={"is_active": True})
-            if created:
-                self.stdout.write(self.style.SUCCESS(f"✔ Rol '{rol.nombre}' creado"))
-            else:
-                self.stdout.write(self.style.WARNING(f"⚠ Rol '{rol.nombre}' ya existe"))
-        self.stdout.write(self.style.SUCCESS("✅ Todos los roles base verificados."))
+        for nombre in ("admin", "encargado", "bodeguero"):
+            obj, created = UserPerfil.objects.get_or_create(nombre=nombre)
+            self.stdout.write(self.style.SUCCESS(f"{'✔' if created else '•'} Perfil '{obj.nombre}' listo"))

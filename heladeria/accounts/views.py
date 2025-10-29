@@ -21,7 +21,7 @@ def register_view(request):
             user = form.save()
             
             # 3. Muestra un mensaje de éxito y redirige
-            messages.success(request, '¡Cuenta creada con éxito! Ahora puedes iniciar sesión.')
+            messages.success(request, '¡Cuenta creada con éxito! Ahora espera activación por Administrador.')
             
             # Si deseas que el usuario inicie sesión inmediatamente:
             # login(request, user)

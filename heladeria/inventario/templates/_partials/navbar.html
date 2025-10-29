@@ -19,16 +19,24 @@
 <li class="nav-item">
 <a class="nav-link" href="{% url 'inventario:listar_ordenes' %}">Órdenes</a>
 </li>
+
 <!-- APARTADO NUEVO CON PERMISOS -->
-{% if request.user.is_superuser or request.user.rol.nombre == "Administrador" %}
-<li class="nav-item">
-<a class="nav-link" href="{% url 'inventario:listar_categorias' %}">Categorías</a>
-</li>
-{% endif %}
-{% endif %}
-</ul>
-<ul class="navbar-nav ms-auto">
 {% if user.is_authenticated %}
+    {% with perfil=user.active_asignacion.perfil.nombre|default_if_none:""|lower %}
+        {% if perfil == "admin" or user.is_superuser %}
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="navbarAdminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Administración
+                </a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{% url 'accounts:usuarios_list' %}">Usuarios</a></li>
+                    <li><a class="dropdown-item" href="{% url 'accounts:perfiles_list' %}">Perfiles</a></li>
+                </ul>
+            </li>
+        {% endif %}
+    {% endwith %}
+{% endif %}
+
 <li class="nav-item dropdown">
 <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
 Hola, {{ user.name|default:user.email }}

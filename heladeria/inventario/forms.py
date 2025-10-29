@@ -1,8 +1,14 @@
 from django import forms
 # Importa el validador de valor mínimo
 from django.core.validators import MinValueValidator
-from .models import Insumo, Categoria, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle
+from .models import Insumo, Categoria, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle, InsumoLote, Ubicacion
 from django.forms import inlineformset_factory
+from django.forms import formset_factory
+
+
+
+TIPO_CHOICES = (("ENTRADA", "Entrada"), ("SALIDA", "Salida"))
+
 
 # --- FORMULARIO DE CATEGORÍA (NUEVO) ---
 class CategoriaForm(forms.ModelForm):
@@ -93,4 +99,70 @@ OrdenInsumoDetalleFormSet = inlineformset_factory(
         'insumo': forms.Select(attrs={'class': 'form-select'}),
         'cantidad_solicitada': forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '0.00'}),
     }
+)
+
+class MovimientoLineaForm(forms.Form):
+    tipo = forms.ChoiceField(choices=TIPO_CHOICES, initial="ENTRADA", label="Tipo")
+    insumo = forms.ModelChoiceField(
+        queryset=Insumo.objects.filter(is_active=True),
+        label="Insumo"
+    )
+    # Lote existente (opcional en ENTRADA si se creará uno nuevo)
+    insumo_lote = forms.ModelChoiceField(
+        queryset=InsumoLote.objects.select_related("insumo","bodega"),
+        required=False,
+        label="Lote existente"
+    )
+    # Flag explícito para crear lote (solo ENTRADA)
+    crear_nuevo_lote = forms.BooleanField(
+        required=False, initial=False, label="Crear nuevo lote"
+    )
+    fecha_expiracion = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+        label="Fecha de expiración (nuevo lote)"
+    )
+
+    ubicacion = forms.ModelChoiceField(
+        queryset=Ubicacion.objects.select_related("bodega"),
+        label="Ubicación"
+    )
+    cantidad = forms.DecimalField(
+        min_value=0.01,
+        label="Cantidad",
+        validators=[MinValueValidator(0.01, message="La cantidad debe ser mayor que cero.")],
+        widget=forms.NumberInput(attrs={'class': 'form-control'})
+    )
+    fecha = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date"}),
+        label="Fecha"
+    )
+    observaciones = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Observaciones"
+    )
+
+    def clean(self):
+        cd = super().clean()
+        tipo = cd.get("tipo")
+        lote = cd.get("insumo_lote")
+        crear = cd.get("crear_nuevo_lote")
+        fexp = cd.get("fecha_expiracion")
+
+        if tipo == "ENTRADA":
+            if not lote and not crear:
+                raise forms.ValidationError(
+                    "Para una ENTRADA selecciona un lote existente o marca 'Crear nuevo lote'."
+                )
+            if crear and not fexp:
+                self.add_error("fecha_expiracion", "Requerida para crear un nuevo lote.")
+        else:  # SALIDA
+            if crear:
+                self.add_error("crear_nuevo_lote", "No aplica para SALIDA.")
+            if not lote:
+                self.add_error("insumo_lote", "Para una SALIDA debes indicar el lote.")
+        return cd
+
+
+MovimientoLineaFormSet = formset_factory(
+    MovimientoLineaForm, extra=1, can_delete=True
 )
