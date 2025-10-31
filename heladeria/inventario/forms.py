@@ -1,7 +1,7 @@
 from django import forms
 # Importa el validador de valor mínimo
 from django.core.validators import MinValueValidator
-from .models import Insumo, Categoria, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle, InsumoLote, Ubicacion
+from .models import Bodega, Insumo, Categoria, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle, InsumoLote, Ubicacion
 from django.forms import inlineformset_factory
 from django.forms import formset_factory
 
@@ -166,3 +166,13 @@ class MovimientoLineaForm(forms.Form):
 MovimientoLineaFormSet = formset_factory(
     MovimientoLineaForm, extra=1, can_delete=True
 )
+
+# --- FORMULARIO DE BODEGA  ---
+class BodegaForm(forms.ModelForm):
+    class Meta:
+        model = Bodega
+        fields = ("nombre", "direccion")
+        widgets = {
+            "nombre": forms.TextInput(attrs={"class": "form-control", "placeholder": "Nombre de la bodega"}),
+            "direccion": forms.TextInput(attrs={"class": "form-control", "placeholder": "Dirección"}),
+        }
