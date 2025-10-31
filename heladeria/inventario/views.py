@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
+from accounts.decorators import perfil_required
+from accounts.services import user_has_role
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.contrib import messages
 from django.db import transaction
@@ -8,9 +9,9 @@ from django.db.models import Sum, Q, DecimalField, Count, Min
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
 from django.forms import ModelForm, inlineformset_factory  
-
-
+from django.views.decorators.http import require_POST
 from accounts.services import user_has_role
+from django.contrib.auth.decorators import login_required
 from .models import (
     Insumo, Categoria, Bodega,
     Entrada, Salida, InsumoLote,
@@ -19,7 +20,7 @@ from .models import (
 )
 from .forms import (
     InsumoForm, CategoriaForm,
-    MovimientoLineaFormSet
+    MovimientoLineaFormSet, BodegaForm
 )
 from io import BytesIO
 from openpyxl import Workbook
@@ -32,6 +33,92 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from datetime import date
 import csv
 from django.http import HttpResponse
+
+from functools import reduce
+import operator
+from django.db.models import Q
+from django.template.loader import render_to_string
+
+
+# --- Función genérica para listas con filtros, orden y paginación ---
+def list_with_filters(
+    request,
+    base_qs,
+    *,
+    search_fields=None,          # lista de campos para icontains (p.ej. ["name", "email", "active_asignacion__perfil__nombre"])
+    order_field=None,            # campo base para ordenar asc/desc (p.ej. "name" o "nombre")
+    session_prefix="",           # prefijo para claves de sesión (p.ej. "usuarios" o "perfiles")
+    context_key="",              # nombre del PageObj en contexto (p.ej. "usuarios" o "perfiles")
+    full_template="",            # template completo (p.ej. "accounts/usuarios_list.html")
+    partial_template="",         # template parcial (p.ej. "accounts/partials/usuarios_results.html")
+    default_per_page=20,         # 5/10/20 permitido
+    default_order="asc",         # "asc" o "desc"
+    tie_break="id",              # desempate estable
+    extra_context=None,          # dict extra opcional
+):
+    extra_context = extra_context or {}
+
+    # --- per_page (5/10/20) con sesión por lista ---
+    allowed_pp = {"5", "10", "20"}
+    per_page = request.GET.get("per_page")
+    if per_page in allowed_pp:
+        request.session[f"per_page_{session_prefix}"] = int(per_page)
+    per_page = request.session.get(f"per_page_{session_prefix}", default_per_page)
+
+    # --- búsqueda ---
+    q = (request.GET.get("q") or "").strip()
+
+    if search_fields:
+        # Construye OR dinámico de Q(...) para los campos que existan en el modelo
+        # (si algún campo no existe en el QS/model, simplemente no se agregará)
+        q_objs = []
+        for f in search_fields:
+            try:
+                # Probar acceso vía values() evita fallar por campo inexistente
+                base_qs.model._meta.get_field(f.split("__")[0])  # validación simple de primer tramo
+                q_objs.append(Q(**{f"{f}__icontains": q}))
+            except Exception:
+                # Si el primer tramo no es field directo (FK anidada), igual intentamos usarlo
+                q_objs.append(Q(**{f"{f}__icontains": q}))
+        if q:
+            base_qs = base_qs.filter(reduce(operator.or_, q_objs))
+
+    # --- orden ---
+    allowed_order = {"asc", "desc"}
+    order = request.GET.get("order")
+    if order in allowed_order:
+        request.session[f"order_{session_prefix}"] = order
+    order = request.session.get(f"order_{session_prefix}", default_order)
+
+    if order_field:
+        ordering = order_field if order == "asc" else f"-{order_field}"
+        base_qs = base_qs.order_by(ordering, tie_break)
+    else:
+        # Si no hay campo de orden, mantenemos el QS (pero con desempate para determinismo)
+        base_qs = base_qs.order_by(tie_break)
+
+    # --- paginación ---
+    paginator = Paginator(base_qs, per_page)
+    page_number = request.GET.get("page")
+    page_obj = paginator.get_page(page_number)
+
+    # --- armar contexto común ---
+    context = {
+        context_key: page_obj,
+        "per_page": per_page,
+        "q": q,
+        "order": order,
+        **extra_context,
+        "request": request,  # necesario para preservar GET en links dentro del partial
+    }
+
+    # --- respuesta AJAX (solo fragmento) ---
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        html = render_to_string(partial_template, context, request=request)
+        return JsonResponse({"html": html})
+
+    # --- respuesta normal (página completa) ---
+    return render(request, full_template, context)
 
 # --- DASHBOARD ---
 @login_required
@@ -54,26 +141,49 @@ def dashboard_view(request):
 
 # --- CRUD INSUMOS ---
 @login_required
+@perfil_required(
+    allow=("Administrador", "Admin", "Encargado"),
+    readonly_for=("Bodeguero",)            # ← bodeguero puede ver listado
+)
 def listar_insumos(request):
-    query = request.GET.get('q')
-    insumos = Insumo.objects.filter(is_active=True).annotate(
-        stock_actual=Coalesce(Sum('lotes__cantidad_actual'), 0, output_field=DecimalField())
-    ).select_related('categoria').order_by('nombre')
+    qs = (
+        Insumo.objects.filter(is_active=True)
+        .annotate(stock_actual=Coalesce(Sum('lotes__cantidad_actual'), 0, output_field=DecimalField()))
+        .select_related('categoria')
+    )
 
-    if query:
-        insumos = insumos.filter(Q(nombre__icontains=query) | Q(categoria__nombre__icontains=query))
+    allowed_sort = {"nombre", "categoria", "stock", "unidad"}
+    sort = request.GET.get("sort")
+    if sort not in allowed_sort:
+        sort = request.session.get("sort_insumos", "nombre")
+    if sort not in allowed_sort:
+        sort = "nombre"
+    request.session["sort_insumos"] = sort
 
-    # ⬇️ Nuevo: paginar a 20
-    paginator = Paginator(insumos, 20)
-    page = request.GET.get('page')
-    insumos_page = paginator.get_page(page)
-
-    return render(request, 'inventario/listar_insumos.html', {
-        'insumos': insumos_page,
-        'titulo': 'Listado de Insumos'
-    })
+    sort_map = {
+        "nombre": "nombre",
+        "categoria": "categoria__nombre",
+        "stock": "stock_actual",
+        "unidad": "unidad_medida",
+    }
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Admin", "Encargado"))
+    return list_with_filters(
+        request,
+        qs,
+        search_fields=["nombre", "categoria__nombre", "unidad_medida"],
+        order_field=sort_map[sort],
+        session_prefix="insumos",
+        context_key="insumos",
+        full_template="inventario/listar_insumos.html",
+        partial_template="inventario/partials/insumos_results.html",
+        default_per_page=10,
+        default_order="asc",
+        tie_break="id",
+        extra_context={"read_only": read_only,"titulo": "Listado de Insumos", "sort": sort},
+    )
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 def crear_insumo(request):
     if not user_has_role(request.user, "Administrador", "Encargado"):
         messages.error(request, "No tienes permisos para crear insumos.")
@@ -89,6 +199,7 @@ def crear_insumo(request):
 
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 def editar_insumo(request, insumo_id):
     if not user_has_role(request.user, "Administrador", "Encargado"):
         messages.error(request, "No tienes permisos para editar insumos.")
@@ -105,6 +216,7 @@ def editar_insumo(request, insumo_id):
 
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 def eliminar_insumo(request, insumo_id):
     if request.method != "POST" or request.headers.get("x-requested-with") != "XMLHttpRequest":
         return HttpResponseBadRequest("Solo AJAX")
@@ -115,23 +227,38 @@ def eliminar_insumo(request, insumo_id):
 
 # --- CATEGORÍAS ---
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"), readonly_for=("Bodeguero",))
 def listar_categorias(request):
-    query = request.GET.get('q')
-    categorias = Categoria.objects.filter(is_active=True)
-    if query:
-        categorias = categorias.filter(nombre__icontains=query)
+    q = request.GET.get("q", "")
+    order = request.GET.get("order", "asc")
+    per_page = int(request.GET.get("per_page", 10))
 
-    # ⬇️ Nuevo: paginar a 20
-    paginator = Paginator(categorias, 20)
-    page = request.GET.get('page')
-    categorias_page = paginator.get_page(page)
+    categorias = Categoria.objects.all().order_by("nombre" if order == "asc" else "-nombre")
 
-    return render(request, 'inventario/listar_categorias.html', {
-        'categorias': categorias_page,
-        'titulo': 'Categorías'
-    })
+    if q:
+        categorias = categorias.filter(
+            Q(nombre__icontains=q) | Q(descripcion__icontains=q)
+        )
+
+    paginator = Paginator(categorias, per_page)
+    page_number = request.GET.get("page")
+    categorias_page = paginator.get_page(page_number)
+
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return render(
+            request,
+            "inventario/partials/categorias_results.html",
+            {"categorias": categorias_page, "per_page": per_page, "q": q, "order": order},
+        )
+
+    return render(
+        request,
+        "inventario/listar_categorias.html",
+        {"categorias": categorias_page, "per_page": per_page, "q": q, "order": order},
+    )
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 def crear_categoria(request):
     if not user_has_role(request.user, "Administrador"):
         messages.error(request, "No tienes permisos.")
@@ -146,6 +273,7 @@ def crear_categoria(request):
     return render(request, 'inventario/crear_categoria.html', {'form': form, 'titulo': 'Nueva Categoría'})
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 def editar_categoria(request, categoria_id):
     """Permite editar una categoría solo a Administradores."""
     if not user_has_role(request.user, "Administrador"):
@@ -163,6 +291,7 @@ def editar_categoria(request, categoria_id):
     return render(request, 'inventario/editar_categoria.html', context)
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 def eliminar_categoria(request, categoria_id):
     """Permite eliminar (desactivar) una categoría solo a Administradores."""
     if not user_has_role(request.user, "Administrador"):
@@ -181,6 +310,7 @@ def eliminar_categoria(request, categoria_id):
 
 # --- MOVIMIENTOS UNIFICADOS ---
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 @transaction.atomic
 def registrar_movimiento(request):
     """Registrar entradas/salidas (pueden o no pertenecer a una orden)."""
@@ -300,6 +430,7 @@ def registrar_movimiento(request):
 
 # --- EDITAR / ELIMINAR ENTRADAS Y SALIDAS ---
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 @transaction.atomic
 def editar_entrada(request, pk):
     entrada = get_object_or_404(Entrada, pk=pk)
@@ -330,6 +461,7 @@ def editar_entrada(request, pk):
 
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 @transaction.atomic
 def eliminar_entrada(request, pk):
     entrada = get_object_or_404(Entrada, pk=pk)
@@ -352,6 +484,7 @@ def eliminar_entrada(request, pk):
 
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 @transaction.atomic
 def editar_salida(request, pk):
     salida = get_object_or_404(Salida, pk=pk)
@@ -373,6 +506,7 @@ def editar_salida(request, pk):
 
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 @transaction.atomic
 def eliminar_salida(request, pk):
     salida = get_object_or_404(Salida, pk=pk)
@@ -387,6 +521,7 @@ def eliminar_salida(request, pk):
     return render(request, "inventario/confirmar_eliminar.html", {"obj": salida, "tipo": "salida"})
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado")) 
 def listar_movimientos(request):
     titulo = "Movimientos de Inventario"
     q = (request.GET.get("q") or "").strip()
@@ -422,25 +557,55 @@ def listar_movimientos(request):
 
 # --- Bodegas
 @login_required
+@perfil_required(
+    allow=("Administrador", "Encargado"),   # puede entrar Admin y Encargado
+    readonly_for=("Encargado",)             # Encargado = solo lectura
+)
 def listar_bodegas(request):
-    titulo = "Bodegas"
-    q = (request.GET.get("q") or "").strip()
+    qs = Bodega.objects.filter(is_active=True)
 
-    qs = Bodega.objects.filter(is_active=True).order_by("nombre")
-    if q:
-        qs = qs.filter(Q(nombre__icontains=q) | Q(descripcion__icontains=q))
+    allowed_sort = {"nombre", "direccion"}
+    sort = request.GET.get("sort")
+    if sort not in allowed_sort:
+        sort = request.session.get("sort_bodegas", "nombre")
+    if sort not in allowed_sort:
+        sort = "nombre"
+    request.session["sort_bodegas"] = sort
 
-    paginator = Paginator(qs, 20)
-    bodegas = paginator.get_page(request.GET.get("page"))
+    # NUEVO: dirección de orden
+    order = request.GET.get("order")
+    if order not in ("asc", "desc"):
+        order = request.session.get("order_bodegas", "asc")
+    if order not in ("asc", "desc"):
+        order = "asc"
+    request.session["order_bodegas"] = order
 
-    can_manage = request.user.is_superuser or user_has_role(request.user, "administrador", "encargado")
+    sort_map = {
+        "nombre": "nombre",
+        "direccion": "direccion",
+    }
 
-    return render(request, "inventario/listar_bodegas.html", {
-        "titulo": titulo,
-        "bodegas": bodegas,
-        "q": q,
-        "can_manage": can_manage,
-    })
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador"))
+
+    return list_with_filters(
+        request,
+        qs,
+        search_fields=["nombre", "direccion"],
+        order_field=sort_map[sort],
+        session_prefix="bodegas",
+        context_key="bodegas",
+        full_template="inventario/listar_bodegas.html",
+        partial_template="inventario/partials/bodegas_results.html",
+        default_per_page=10,
+        default_order="asc",   # GET 'order' la sobreescribe
+        tie_break="id",
+        extra_context={
+            "titulo": "Bodegas",
+            "sort": sort,
+            "order": order,     # <-- importante
+            "read_only": read_only,
+        },
+    )
 
 class OrdenForm(ModelForm):
     class Meta:
@@ -455,48 +620,115 @@ DetalleFormSet = inlineformset_factory(
     can_delete=True
 )
 
-# --- LISTAR ÓRDENES ---
 @login_required
+@perfil_required(allow=("Administrador",))
+def crear_bodega(request):
+    form = BodegaForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "✅ Bodega creada correctamente.")
+        return redirect("inventario:listar_bodegas")
+    return render(request, "inventario/bodega_form.html", {"form": form, "titulo": "Nueva Bodega"})
+
+@login_required
+@perfil_required(allow=("Administrador",))
+def editar_bodega(request, pk):
+    obj = get_object_or_404(Bodega, pk=pk, is_active=True)
+    form = BodegaForm(request.POST or None, instance=obj)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "📝 Bodega actualizada.")
+        return redirect("inventario:listar_bodegas")
+    return render(request, "inventario/bodega_form.html", {"form": form, "titulo": f"Editar: {obj.nombre}"})
+
+@login_required
+@perfil_required(allow=("Administrador",))
+def eliminar_bodega(request, pk):
+    if request.method != "POST" or request.headers.get("x-requested-with") != "XMLHttpRequest":
+        return HttpResponseBadRequest("Solo AJAX")
+    obj = get_object_or_404(Bodega, pk=pk)
+    obj.is_active = False
+    obj.save(update_fields=["is_active"])
+    return JsonResponse({"ok": True, "message": f"Bodega '{obj.nombre}' eliminada."})
+
+
+# --- LISTAR ÓRDENES ---
+ESTADOS_ORDEN = ("PENDIENTE", "EN_CURSO", "CERRADA", "CANCELADA")
+
+@login_required
+@perfil_required(allow=("Administrador", "Encargado"), readonly_for=("Bodeguero",))
 def listar_ordenes(request):
     """Lista las órdenes y permite actualizar su estado manualmente."""
-    q = request.GET.get("q", "")
-    ordenes = OrdenInsumo.objects.all().order_by("-fecha")
+    qs = OrdenInsumo.objects.all().select_related("usuario")
 
-    # 🔍 Filtro por nombre o correo
+    # --- Búsqueda
+    q = (request.GET.get("q") or "").strip()
     if q:
-        ordenes = ordenes.filter(
-            Q(usuario__name__icontains=q) | Q(usuario__email__icontains=q)
-        )
+        qs = qs.filter(Q(usuario__name__icontains=q) | Q(usuario__email__icontains=q))
 
-    # 🔁 Si se envía POST, actualizar estado
-    if request.method == "POST":
-        orden_id = request.POST.get("orden_id")
-        nuevo_estado = request.POST.get("estado")
-        if orden_id and nuevo_estado:
-            try:
-                orden = OrdenInsumo.objects.get(pk=orden_id)
-                if nuevo_estado in dict(ESTADO_ORDEN_CHOICES).keys():
-                    orden.estado = nuevo_estado
-                    orden.save(update_fields=["estado"])
-                    messages.success(request, f"✅ Estado de la Orden #{orden.id} actualizado a '{orden.estado}'.")
-                else:
-                    messages.error(request, "Estado no válido.")
-            except OrdenInsumo.DoesNotExist:
-                messages.error(request, "La orden no existe.")
-        return redirect("inventario:listar_ordenes")
+    # --- Filtro por estado
+    estado_f = request.GET.get("estado")
+    if estado_f in ESTADOS_ORDEN:
+        qs = qs.filter(estado=estado_f)
 
-    # Paginación de 20 resultados
-    paginator = Paginator(ordenes, 20)
-    page = request.GET.get("page")
-    ordenes_page = paginator.get_page(page)
+    # --- Orden
+    allowed_sort = {"id", "fecha", "estado", "usuario", "creado", "actualizado"}
+    sort = request.GET.get("sort")
+    if sort not in allowed_sort:
+        sort = "fecha"
 
-    return render(request, "inventario/listar_ordenes.html", {
-        "titulo": "Órdenes de Insumo",
-        "ordenes": ordenes_page,
-    })
+    sort_map = {
+        "id": "id",
+        "fecha": "fecha",
+        "estado": "estado",
+        "usuario": "usuario__name",
+        "creado": "created_at",
+        "actualizado": "updated_at",
+    }
 
-#--- Orden
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Admin", "Encargado"))
+
+    return list_with_filters(
+        request,
+        qs,
+        search_fields=[],
+        order_field=sort_map[sort],
+        session_prefix="ordenes",
+        context_key="ordenes",
+        full_template="inventario/listar_ordenes.html",
+        partial_template="inventario/partials/ordenes_results.html",
+        default_per_page=10,
+        default_order="desc",
+        tie_break="id",
+        extra_context={
+            "titulo": "Órdenes de Insumo",
+            "q": q,
+            "estado": estado_f,
+            "sort": sort,
+            "ESTADOS_ORDEN": ESTADOS_ORDEN,
+            "read_only": read_only,   # ← IMPORTANTE
+        },
+    )
+
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
+def orden_cambiar_estado(request, pk):
+    orden = get_object_or_404(OrdenInsumo, pk=pk)
+    nuevo = request.POST.get("estado")
+    if nuevo not in ESTADOS_ORDEN:
+        return HttpResponseBadRequest("Estado inválido")
+
+    if orden.estado != nuevo:
+        orden.estado = nuevo
+        orden.save(update_fields=["estado", "updated_at"])
+        messages.success(request, f"Estado de la orden #{orden.id} actualizado a {nuevo}.")
+
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"ok": True})
+    return redirect("inventario:listar_ordenes")
+
+@login_required
+@perfil_required(allow=("Administrador", "Encargado", "Bodeguero"))
 @transaction.atomic
 def crear_orden(request):
     if not user_has_role(request.user, "Administrador", "Encargado"):
@@ -525,6 +757,7 @@ def crear_orden(request):
     })
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 @transaction.atomic
 def editar_orden(request, pk):
     orden = get_object_or_404(OrdenInsumo, pk=pk)
@@ -552,6 +785,7 @@ def editar_orden(request, pk):
     })
 
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 @transaction.atomic
 def eliminar_orden(request, pk):
     orden = get_object_or_404(OrdenInsumo, pk=pk)
@@ -573,6 +807,7 @@ def eliminar_orden(request, pk):
 
 # --- REPORTES ---
 @login_required
+@perfil_required(allow=("Administrador", "Encargado"))
 def reporte_disponibilidad(request):
     """
     Reporte de disponibilidad de insumos con exportación a HTML, CSV, XLSX y PDF.

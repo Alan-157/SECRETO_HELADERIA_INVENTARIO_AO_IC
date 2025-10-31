@@ -17,12 +17,9 @@
 Esta acción no se puede deshacer. El insumo desaparecerá de las listas principales.
 </p>
 
-            <form method="post">
+            <form method="post" action="{% url 'inventario:eliminar_insumo' insumo.id %}" data-ajax="true" class="d-inline">
                 {% csrf_token %}
-                <div class="d-flex justify-content-end gap-2">
-                    <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-secondary">Cancelar</a>
-                    <button type="submit" class="btn btn-danger">Sí, eliminar</button>
-                </div>
+                <button type="button" class="btn btn-sm btn-danger" data-delete-form>Eliminar</button>
             </form>
         </div>
     </div>

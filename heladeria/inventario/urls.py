@@ -12,7 +12,6 @@ urlpatterns = [
     path('insumos/eliminar/<int:insumo_id>/', views.eliminar_insumo, name='eliminar_insumo'),
     
     # --- Listados Varios ---
-    path('bodegas/', views.listar_bodegas, name='listar_bodegas'),
     path('movimientos/', views.listar_movimientos, name='listar_movimientos'),
     path('ordenes/', views.listar_ordenes, name='listar_ordenes'),
 
@@ -28,12 +27,19 @@ urlpatterns = [
     path("ordenes/nueva/", views.crear_orden, name="crear_orden"),
     path("ordenes/<int:pk>/editar/", views.editar_orden, name="editar_orden"),
     path("ordenes/<int:pk>/eliminar/", views.eliminar_orden, name="eliminar_orden"),
+    path("ordenes/<int:pk>/estado/", views.orden_cambiar_estado, name="orden_cambiar_estado"),
 
     # --- CRUD de Categorías ---
     path('categorias/', views.listar_categorias, name='listar_categorias'),
     path('categorias/crear/', views.crear_categoria, name='crear_categoria'),
     path('categorias/editar/<int:categoria_id>/', views.editar_categoria, name='editar_categoria'),
     path('categorias/eliminar/<int:categoria_id>/', views.eliminar_categoria, name='eliminar_categoria'),
+
+    # --- Bodegas ---
+    path('bodegas/', views.listar_bodegas, name='listar_bodegas'),
+    path('bodegas/crear/', views.crear_bodega, name='crear_bodega'),
+    path('bodegas/<int:pk>/editar/', views.editar_bodega, name='editar_bodega'),
+    path('bodegas/<int:pk>/eliminar/', views.eliminar_bodega, name='eliminar_bodega'),
 
     # --- Reportes ---
     path('reportes/disponibilidad/', views.reporte_disponibilidad, name='reporte_disponibilidad'),

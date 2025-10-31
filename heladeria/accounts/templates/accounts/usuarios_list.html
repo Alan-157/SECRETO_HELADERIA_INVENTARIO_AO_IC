@@ -18,12 +18,19 @@
              id="q-input">
     </div>
 
-    <div class="col-6 col-md-2">
-      <select name="order" class="form-select" id="order-select">
-        <option value="asc"  {% if order|default:'asc' == 'asc' %}selected{% endif %}>Nombre (A-Z)</option>
-        <option value="desc" {% if order == 'desc' %}selected{% endif %}>Nombre (Z-A)</option>
-      </select>
-    </div>
+      <div class="col-6 col-md-2">
+        <select name="sort" class="form-select" id="sort-select">
+          <option value="name"  {% if sort == 'name' %}selected{% endif %}>Ordenar por: Nombre</option>
+          <option value="email" {% if sort == 'email' %}selected{% endif %}>Ordenar por: Correo</option>
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2">
+        <select name="order" class="form-select" id="order-select">
+          <option value="asc"  {% if order == 'asc' %}selected{% endif %}>A-Z</option>
+          <option value="desc" {% if order == 'desc' %}selected{% endif %}>Z-A</option>
+        </select>
+      </div>
 
     <div class="col-6 col-md-2">
       <select name="per_page" class="form-select" id="per-page-select">
@@ -106,6 +113,12 @@
     loadAjax(a.getAttribute('href'));
   });
 })();
+const sortSelect = document.getElementById('sort-select');
+
+sortSelect.addEventListener('change', ()=>{
+  pageInput.value = "1";
+  loadAjax(buildURL());
+});
 </script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 {% for message in messages %}
