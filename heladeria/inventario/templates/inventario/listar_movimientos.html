@@ -51,7 +51,7 @@
                         <a href="{% url 'inventario:editar_entrada' entrada.pk %}" class="btn btn-sm btn-warning">Editar</a>
                         <form method="post" action="{% url 'inventario:eliminar_entrada' entrada.pk %}" class="d-inline">
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                            <button type="button" class="btn btn-sm btn-danger" data-delete-form>Eliminar</button>
                         </form>
                       {% endif %}
                     </td>
@@ -114,7 +114,7 @@
                         <a href="{% url 'inventario:editar_salida' salida.pk %}" class="btn btn-sm btn-warning">Editar</a>
                         <form method="post" action="{% url 'inventario:eliminar_salida' salida.pk %}" class="d-inline">
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                            <button type="button" class="btn btn-sm btn-danger" data-delete-form>Eliminar</button>
                         </form>
                       {% endif %}
                     </td>
