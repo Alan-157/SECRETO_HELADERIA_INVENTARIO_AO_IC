@@ -17,6 +17,7 @@ urlpatterns = [
 
     # --- Creación de Movimientos ---
     path("movimientos/registrar/", views.registrar_movimiento, name="registrar_movimiento"),
+    # Las siguientes 4 rutas ya están definidas en el archivo:
     path("movimientos/entrada/<int:pk>/editar/", views.editar_entrada, name="editar_entrada"),
     path("movimientos/entrada/<int:pk>/eliminar/", views.eliminar_entrada, name="eliminar_entrada"),
     path("movimientos/salida/<int:pk>/editar/", views.editar_salida, name="editar_salida"),

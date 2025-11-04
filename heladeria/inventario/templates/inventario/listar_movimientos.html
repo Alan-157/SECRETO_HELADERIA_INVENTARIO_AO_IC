@@ -4,10 +4,8 @@
 {% block content %}
 <div class="card shadow-sm">
 
-  <!-- Encabezado -->
   <div class="card-header bg-white py-3">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <!-- Título y Búsqueda -->
       <div class="d-flex align-items-center">
         <h3 class="mb-0 me-3">{{ titulo }}</h3>
         <form method="get" class="d-flex">
@@ -16,7 +14,6 @@
         </form>
       </div>
 
-      <!-- Acción con permisos -->
       <div>
         {% if can_manage %}
           <a href="{% url 'inventario:registrar_movimiento' %}" class="btn btn-primary">
@@ -27,10 +24,8 @@
     </div>
   </div>
 
-  <!-- Cuerpo -->
   <div class="card-body">
     <div class="row">
-      <!-- Entradas -->
       <div class="col-lg-6 border-end">
         <h4 class="mb-3">Últimas Entradas</h4>
 
@@ -42,6 +37,7 @@
                   <th>Insumo</th>
                   <th class="text-end">Cantidad</th>
                   <th>Fecha</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -50,6 +46,15 @@
                     <td class="fw-bold">{{ entrada.insumo.nombre }}</td>
                     <td class="text-end text-success fw-bold">+{{ entrada.cantidad|floatformat:2 }}</td>
                     <td>{{ entrada.fecha }}</td>
+                    <td>
+                      {% if can_manage %}
+                        <a href="{% url 'inventario:editar_entrada' entrada.pk %}" class="btn btn-sm btn-warning">Editar</a>
+                        <form method="post" action="{% url 'inventario:eliminar_entrada' entrada.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                        </form>
+                      {% endif %}
+                    </td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -84,7 +89,6 @@
         {% endif %}
       </div>
 
-      <!-- Salidas -->
       <div class="col-lg-6">
         <h4 class="mb-3">Últimas Salidas</h4>
 
@@ -96,6 +100,7 @@
                   <th>Insumo</th>
                   <th class="text-end">Cantidad</th>
                   <th>Fecha</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -104,6 +109,15 @@
                     <td class="fw-bold">{{ salida.insumo.nombre }}</td>
                     <td class="text-end text-danger fw-bold">-{{ salida.cantidad|floatformat:2 }}</td>
                     <td>{{ salida.fecha_generada }}</td>
+                    <td>
+                      {% if can_manage %}
+                        <a href="{% url 'inventario:editar_salida' salida.pk %}" class="btn btn-sm btn-warning">Editar</a>
+                        <form method="post" action="{% url 'inventario:eliminar_salida' salida.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                        </form>
+                      {% endif %}
+                    </td>
                   </tr>
                 {% endfor %}
               </tbody>
