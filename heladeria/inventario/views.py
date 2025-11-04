@@ -20,7 +20,10 @@ from .models import (
 )
 from .forms import (
     InsumoForm, CategoriaForm,
-    MovimientoLineaFormSet, BodegaForm
+    MovimientoLineaFormSet, BodegaForm,
+    # === CORRECCIÓN: Se añaden EntradaForm y SalidaForm a la importación global ===
+    EntradaForm, SalidaForm 
+    # =============================================================================
 )
 from io import BytesIO
 from openpyxl import Workbook
@@ -437,11 +440,17 @@ def editar_entrada(request, pk):
     old_qty = Decimal(entrada.cantidad)
     lote = entrada.insumo_lote
 
-    from .forms import EntradaForm
+    # REMOVIDA: from .forms import EntradaForm (ahora importada globalmente)
     form = EntradaForm(request.POST or None, instance=entrada)
     if request.method == "POST" and form.is_valid():
         nueva = Decimal(form.cleaned_data["cantidad"])
         delta = nueva - old_qty
+        
+        # Validación de stock futuro: Si la edición reduce la cantidad de stock por debajo de cero, falla.
+        if lote.cantidad_actual + delta < 0:
+            messages.error(request, f"Error al editar: La nueva cantidad excedería el stock del lote, resultando en stock negativo ({lote.cantidad_actual + delta:.2f}).")
+            return render(request, "inventario/editar_movimiento.html", {"form": form, "titulo": "Editar Entrada"})
+
         lote.cantidad_actual += delta
         lote.save(update_fields=["cantidad_actual"])
         form.save()
@@ -465,8 +474,14 @@ def editar_entrada(request, pk):
 @transaction.atomic
 def eliminar_entrada(request, pk):
     entrada = get_object_or_404(Entrada, pk=pk)
+    
+    # Se añade validación para evitar stock negativo al eliminar la entrada
+    lote = entrada.insumo_lote
+    if lote.cantidad_actual - entrada.cantidad < 0:
+        messages.error(request, f"Error: No se puede eliminar esta entrada ya que reduciría el stock del lote a un valor negativo ({lote.cantidad_actual - entrada.cantidad:.2f}).")
+        return redirect("inventario:listar_movimientos") # Redirige con error
+
     if request.method == "POST":
-        lote = entrada.insumo_lote
         lote.cantidad_actual -= entrada.cantidad
         lote.save(update_fields=["cantidad_actual"])
         if entrada.detalle_id:
@@ -491,11 +506,18 @@ def editar_salida(request, pk):
     old_qty = Decimal(salida.cantidad)
     lote = salida.insumo_lote
 
-    from .forms import SalidaForm
+    # REMOVIDA: from .forms import SalidaForm (ahora importada globalmente)
     form = SalidaForm(request.POST or None, instance=salida)
     if request.method == "POST" and form.is_valid():
         nueva = Decimal(form.cleaned_data["cantidad"])
         delta = nueva - old_qty
+        
+        # Validación de stock: la diferencia entre la cantidad actual en lote y el delta
+        # no debe ser menor a cero. Si delta es positivo, es una mayor salida, reduce stock.
+        if lote.cantidad_actual - delta < 0:
+            messages.error(request, f"Error al editar: La nueva salida excede el stock actual del lote, resultando en stock negativo ({lote.cantidad_actual - delta:.2f}).")
+            return render(request, "inventario/editar_movimiento.html", {"form": form, "titulo": "Editar Salida"})
+
         lote.cantidad_actual -= delta
         lote.save(update_fields=["cantidad_actual"])
         form.save()
@@ -512,6 +534,7 @@ def eliminar_salida(request, pk):
     salida = get_object_or_404(Salida, pk=pk)
     if request.method == "POST":
         lote = salida.insumo_lote
+        # Al eliminar una salida, se revierte el stock
         lote.cantidad_actual += salida.cantidad
         lote.save(update_fields=["cantidad_actual"])
         salida.delete()
