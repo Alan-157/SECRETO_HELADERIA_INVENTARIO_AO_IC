@@ -4,7 +4,7 @@ from django.core.validators import MinValueValidator
 from .models import Bodega, Insumo, Categoria, Entrada, Salida, OrdenInsumo, OrdenInsumoDetalle, InsumoLote, Ubicacion
 from django.forms import inlineformset_factory
 from django.forms import formset_factory
-
+from datetime import date # <--- AGREGADO: Importar date para validación de fechas
 
 
 TIPO_CHOICES = (("ENTRADA", "Entrada"), ("SALIDA", "Salida"))
@@ -141,10 +141,20 @@ class MovimientoLineaForm(forms.Form):
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Observaciones"
     )
 
+    # NUEVO: Bloquear fechas pasadas
+    def clean_fecha(self):
+        """Valida que la fecha de movimiento no sea anterior al día de hoy."""
+        fecha_movimiento = self.cleaned_data.get('fecha')
+        if fecha_movimiento and fecha_movimiento < date.today(): 
+            raise forms.ValidationError("La fecha del movimiento no puede ser anterior al día de hoy.")
+        return fecha_movimiento
+
+
     def clean(self):
         cd = super().clean()
         tipo = cd.get("tipo")
         lote = cd.get("insumo_lote")
+        cantidad = cd.get("cantidad")
         crear = cd.get("crear_nuevo_lote")
         fexp = cd.get("fecha_expiracion")
 
@@ -160,6 +170,13 @@ class MovimientoLineaForm(forms.Form):
                 self.add_error("crear_nuevo_lote", "No aplica para SALIDA.")
             if not lote:
                 self.add_error("insumo_lote", "Para una SALIDA debes indicar el lote.")
+            
+            # NUEVO: Validación de stock insuficiente
+            if lote and cantidad and cantidad > lote.cantidad_actual:
+                self.add_error(
+                    'cantidad',
+                    f"Error: Stock insuficiente. El stock actual del lote es {lote.cantidad_actual}."
+                )
         return cd
 
 
