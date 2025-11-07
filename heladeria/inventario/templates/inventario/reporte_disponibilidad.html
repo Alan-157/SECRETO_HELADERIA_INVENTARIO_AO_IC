@@ -4,44 +4,155 @@
 {% block content %}
 <h3 class="mb-3">{{ titulo }}</h3>
 
-<div class="d-flex gap-2 mb-3">
-  <a href="?format=csv" class="btn btn-outline-secondary">⬇️ CSV</a>
-  <a href="?format=xlsx" class="btn btn-outline-success">⬇️ Excel</a>
-  <a href="?format=pdf" class="btn btn-outline-danger">⬇️ PDF</a>
-</div>
+<form method="get" id="filtros-form" class="card mb-3">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-12 col-lg-6">
+        <h6 class="mb-2">Insumos (por nombre)</h6>
+        <div class="border rounded p-2" style="max-height: 260px; overflow:auto;">
+          <div class="d-flex gap-2 mb-2">
+            <button type="button" id="btn-select-all" class="btn btn-sm btn-outline-primary">Seleccionar todos</button>
+            <button type="button" id="btn-clear" class="btn btn-sm btn-outline-secondary">Limpiar</button>
+          </div>
+          <div class="row row-cols-1 row-cols-sm-2">
+            {% for name in all_insumo_names %}
+              <div class="col">
+                <label class="form-check">
+                  <input class="form-check-input" type="checkbox" name="insumo" value="{{ name }}"
+                         {% if name in selected_insumos %}checked{% endif %}>
+                  <span class="form-check-label">{{ name }}</span>
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+        <small class="text-muted">Si no seleccionas ninguno, se mostrarán <b>todos</b> los insumos.</small>
+      </div>
 
+      <div class="col-12 col-lg-6">
+        <h6 class="mb-2">¿Qué mostrar?</h6>
+        <div class="row row-cols-1 row-cols-sm-2">
+          <label class="form-check col">
+            <input class="form-check-input" type="checkbox" name="show_stock_total" value="1" {% if show_stock_total %}checked{% endif %}>
+            <span class="form-check-label">Stock total</span>
+          </label>
+          <label class="form-check col">
+            <input class="form-check-input" type="checkbox" name="show_precio_unitario" value="1" {% if show_precio_unitario %}checked{% endif %}>
+            <span class="form-check-label">Precio unitario</span>
+          </label>
+          <label class="form-check col">
+            <input class="form-check-input" type="checkbox" name="show_prox_venc" value="1" {% if show_prox_venc %}checked{% endif %}>
+            <span class="form-check-label">Próx. vencimiento</span>
+          </label>
+          <label class="form-check col">
+            <input class="form-check-input" type="checkbox" name="show_lotes" value="1" {% if show_lotes %}checked{% endif %}>
+            <span class="form-check-label">Lotes</span>
+          </label>
+          <label class="form-check col">
+            <input class="form-check-input" type="checkbox" name="show_categorias" value="1" {% if show_categorias %}checked{% endif %}>
+            <span class="form-check-label">Categorías</span>
+          </label>
+          <label class="form-check col">
+            <input class="form-check-input" type="checkbox" name="show_precio_acum" value="1" {% if show_precio_acum %}checked{% endif %}>
+            <span class="form-check-label">Precio acumulado (stock * PU)</span>
+          </label>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+          <button type="submit" class="btn btn-primary">Aplicar</button>
+          <a class="btn btn-outline-secondary" href=".">Restablecer</a>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+          {% with qs=request.GET.urlencode %}
+            <a href="?{{ qs }}&format=csv"  class="btn btn-outline-secondary">⬇️ CSV</a>
+            <a href="?{{ qs }}&format=xlsx" class="btn btn-outline-success">⬇️ Excel</a>
+            <a href="?{{ qs }}&format=pdf"  class="btn btn-outline-danger">⬇️ PDF</a>
+          {% endwith %}
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
 
 {% if categorias %}
   {% for bloque in categorias %}
     <div class="card mb-4 shadow-sm">
       <div class="card-header bg-white">
-        <h5 class="mb-0">Categoría: {{ bloque.categoria.nombre }}</h5>
+        <h5 class="mb-0">
+          {% if show_categorias %}Categoría: {% endif %}
+          {{ bloque.categoria.nombre }}
+        </h5>
       </div>
+
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table table-striped table-hover mb-0">
+          <table class="table table-striped table-hover mb-0 align-middle">
             <thead class="table-light">
               <tr>
                 <th>Insumo</th>
                 <th>Unidad</th>
-                <th class="text-end">Precio Unitario</th>
-                <th class="text-end">Stock Total</th>
-                <th class="text-end">Lotes con Stock</th>
-                <th>Próx. Vencimiento</th>
+                {% if show_precio_unitario %}<th class="text-end">Precio Unit.</th>{% endif %}
+                {% if show_stock_total %}<th class="text-end">Stock Total</th>{% endif %}
+                {% if show_prox_venc %}<th class="text-center">Próx. Venc.</th>{% endif %}
+                {% if show_precio_acum %}<th class="text-end">Precio Acum.</th>{% endif %}
               </tr>
             </thead>
             <tbody>
               {% for i in bloque.insumos %}
                 <tr>
-                  <td>{{ i.nombre }}</td>
+                  <td class="fw-semibold">{{ i.nombre }}</td>
                   <td>{{ i.unidad_medida }}</td>
-                  <td class="text-end">{{ i.precio_unitario }}</td>
-                  <td class="text-end">{{ i.stock_total|floatformat:2 }}</td>
-                  <td class="text-end">{{ i.lotes_con_stock }}</td>
-                  <td>
-                    {% if i.prox_vencimiento %}{{ i.prox_vencimiento|date:"Y-m-d" }}{% else %}—{% endif %}
-                  </td>
+                  {% if show_precio_unitario %}<td class="text-end">{{ i.precio_unitario }}</td>{% endif %}
+                  {% if show_stock_total %}<td class="text-end">{{ i.stock_total|floatformat:2 }}</td>{% endif %}
+                  {% if show_prox_venc %}
+                    <td class="text-center">
+                      {% if i.prox_vencimiento %}{{ i.prox_vencimiento|date:"Y-m-d" }}{% else %}—{% endif %}
+                    </td>
+                  {% endif %}
+                  {% if show_precio_acum %}
+                    <td class="text-end">{{ i.precio_acumulado|floatformat:2 }}</td>
+                  {% endif %}
                 </tr>
+
+                {% if show_lotes %}
+                  <tr>
+                    <td colspan="99" class="p-0">
+                      <div class="px-3 pb-3">
+                        {% if i.lotes_vis %}
+                          <div class="table-responsive ms-3">
+                            <table class="table table-sm table-bordered mb-0">
+                              <thead class="table-secondary">
+                                <tr>
+                                  <th style="width:70px;">ID</th>
+                                  <th style="width:130px;">F. Ingreso</th>
+                                  <th style="width:140px;">F. Expiración</th>
+                                  <th class="text-end" style="width:140px;">Cantidad (lote)</th>
+                                  <th>Bodega</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for lote in i.lotes_vis %}
+                                  <tr>
+                                    <td>#{{ lote.id }}</td>
+                                    <td>{{ lote.fecha_ingreso|date:"Y-m-d" }}</td>
+                                    <td>{{ lote.fecha_expiracion|date:"Y-m-d" }}</td>
+                                    <td class="text-end">{{ lote.cantidad_actual|default:0|floatformat:2 }}</td>
+                                    <td>{{ lote.bodega.nombre }}</td>
+                                  </tr>
+                                {% empty %}
+                                  <tr><td colspan="5" class="text-center text-muted">Sin lotes.</td></tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        {% else %}
+                          <div class="ms-3 text-muted">Sin lotes.</div>
+                        {% endif %}
+                      </div>
+                    </td>
+                  </tr>
+                {% endif %}
               {% endfor %}
             </tbody>
           </table>
@@ -68,4 +179,21 @@
 {% else %}
   <div class="alert alert-secondary">No hay datos para mostrar.</div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const form = document.getElementById('filtros-form');
+  const btnAll = document.getElementById('btn-select-all');
+  const btnClear = document.getElementById('btn-clear');
+
+  btnAll?.addEventListener('click', ()=>{
+    form.querySelectorAll('input[name="insumo"]').forEach(chk => chk.checked = true);
+  });
+  btnClear?.addEventListener('click', ()=>{
+    form.querySelectorAll('input[name="insumo"]').forEach(chk => chk.checked = false);
+  });
+})();
+</script>
 {% endblock %}

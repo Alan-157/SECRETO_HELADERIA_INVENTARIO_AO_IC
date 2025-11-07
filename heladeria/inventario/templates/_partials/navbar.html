@@ -27,6 +27,7 @@
               <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_insumos' %}">Insumos</a></li>
 
               {% if perfil == 'admin' or perfil == 'administrador' or perfil == 'encargado' or user.is_superuser %}
+                <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_lotes' %}">Lotes</a></li>
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_bodegas' %}">Bodegas</a></li>
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_categorias' %}">Categorías</a></li>
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_movimientos' %}">Movimientos</a></li>

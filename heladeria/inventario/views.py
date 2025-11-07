@@ -5,7 +5,7 @@ from accounts.services import user_has_role
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Sum, Q, DecimalField, Count, Min
+from django.db.models import Sum, Q, DecimalField, Count, Min, F, Prefetch
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
 from django.forms import ModelForm, inlineformset_factory  
@@ -38,6 +38,8 @@ from functools import reduce
 import operator
 from django.db.models import Q
 from django.template.loader import render_to_string
+
+from inventario import models
 
 
 # --- Función genérica para listas con filtros, orden y paginación ---
@@ -224,6 +226,63 @@ def eliminar_insumo(request, insumo_id):
     insumo.is_active = False
     insumo.save()
     return JsonResponse({"ok": True, "message": f"El insumo '{insumo.nombre}' fue eliminado."})
+
+# --- LISTAR LOTES DE INSUMO ---
+@login_required
+@perfil_required(allow=("Administrador", "Encargado"), readonly_for=("Bodeguero",))
+def listar_insumos_lote(request):
+    """
+    Listado de lotes de insumos con filtros, orden y paginación (AJAX-friendly).
+    """
+    qs = (
+        InsumoLote.objects.filter(is_active=True)
+        .select_related("insumo", "bodega")
+        # por si en el futuro hay nulos, Coalesce evita fallas al ordenar/mostrar
+        .annotate(
+            cant_act=Coalesce(F("cantidad_actual"), 0, output_field=DecimalField()),
+            cant_ini=Coalesce(F("cantidad_inicial"), 0, output_field=DecimalField()),
+        )
+    )
+
+    # sort permitido
+    allowed_sort = {"insumo", "bodega", "fingreso", "fexpira", "cact", "cini"}
+    sort = request.GET.get("sort")
+    if sort not in allowed_sort:
+        sort = request.session.get("sort_lotes", "insumo")
+    if sort not in allowed_sort:
+        sort = "insumo"
+    request.session["sort_lotes"] = sort
+
+    sort_map = {
+        "insumo":  "insumo__nombre",
+        "bodega":  "bodega__nombre",
+        "fingreso":"fecha_ingreso",
+        "fexpira": "fecha_expiracion",
+        "cact":    "cant_act",
+        "cini":    "cant_ini",
+    }
+
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Admin", "Encargado"))
+
+    return list_with_filters(
+        request,
+        qs,
+        search_fields=["insumo__nombre", "bodega__nombre"],
+        order_field=sort_map[sort],
+        session_prefix="lotes",
+        context_key="lotes",
+        full_template="inventario/listar_insumo_lote.html",             
+        partial_template="inventario/partials/insumo_lote_results.html",
+        default_per_page=10,
+        default_order="asc",
+        tie_break="id",
+        extra_context={
+            "read_only": read_only,
+            "titulo": "Lotes de Insumos",
+            "sort": sort,
+            "today": date.today(),
+        },
+    )
 
 # --- CATEGORÍAS ---
 @login_required
@@ -810,13 +869,50 @@ def eliminar_orden(request, pk):
 @perfil_required(allow=("Administrador", "Encargado"))
 def reporte_disponibilidad(request):
     """
-    Reporte de disponibilidad de insumos con exportación a HTML, CSV, XLSX y PDF.
+    Reporte de disponibilidad de insumos con:
+    - Filtro por insumos (nombre) via checkboxes.
+    - Flags de columnas a mostrar.
+    - Lotes indentados por insumo (en HTML).
+    Export: CSV/XLSX/PDF (respetan filtro de insumos).
     """
     hoy = date.today()
 
-    insumos_qs = (
+    # -------- flags de columnas (HTML) --------
+    # por defecto mostramos: stock_total, precio_unitario, prox_vencimiento, lotes
+    def _b(name, default=True):
+        val = request.GET.get(name, None)
+        if val is None:
+            return default
+        return val in ("1", "true", "on", "yes")
+    show_precio_unitario = _b("show_precio_unitario", True)
+    show_stock_total     = _b("show_stock_total", True)
+    show_prox_venc       = _b("show_prox_venc", True)
+    show_lotes           = _b("show_lotes", True)
+    show_categorias      = _b("show_categorias", False)
+    show_precio_acum     = _b("show_precio_acum", False)
+
+    # -------- selección por insumo (nombres) --------
+    selected_insumos = request.GET.getlist("insumo")   # lista de nombres exactos
+
+    # Base queryset de insumos (activos + categoría activa)
+    insumos_base = (
         Insumo.objects.filter(is_active=True, categoria__is_active=True)
         .select_related("categoria")
+    )
+
+    # Si vienen seleccionados, filtramos por nombre (case-insensitive)
+    if selected_insumos:
+        insumos_base = insumos_base.filter(nombre__in=selected_insumos)
+
+    # Prefetch de lotes activos para cada insumo (ordenados por fecha de expiración)
+    lotes_qs = (InsumoLote.objects
+                .filter(is_active=True)
+                .select_related("bodega")
+                .order_by("fecha_expiracion", "id"))
+
+    # Anotaciones de stock total, #lotes con stock, prox venc
+    insumos_qs = (
+        insumos_base
         .annotate(
             stock_total=Coalesce(
                 Sum(
@@ -837,10 +933,18 @@ def reporte_disponibilidad(request):
                 filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
             ),
         )
+        .prefetch_related(Prefetch("lotes", queryset=lotes_qs, to_attr="lotes_vis"))
         .order_by("categoria__nombre", "nombre")
     )
 
-    # Dataset agrupado por categoría
+    # Dataset para checkboxes (todos los nombres disponibles, ordenados)
+    all_insumo_names = list(
+        Insumo.objects.filter(is_active=True, categoria__is_active=True)
+        .order_by("nombre")
+        .values_list("nombre", flat=True)
+    )
+
+    # Agrupado por categoría (para HTML)
     categorias = []
     cat_actual = None
     buffer = []
@@ -850,16 +954,18 @@ def reporte_disponibilidad(request):
                 categorias.append({"categoria": cat_actual, "insumos": buffer})
                 buffer = []
             cat_actual = i.categoria
+        # cálculo auxiliar para HTML
+        i.precio_acumulado = (i.stock_total or 0) * (i.precio_unitario or 0)
         buffer.append(i)
     if buffer:
         categorias.append({"categoria": cat_actual, "insumos": buffer})
 
     total_stock = sum((i.stock_total or 0) for i in insumos_qs)
-    total_valor = sum((i.stock_total or 0) * (i.precio_unitario or 0) for i in insumos_qs)
+    total_valor = sum(((i.stock_total or 0) * (i.precio_unitario or 0)) for i in insumos_qs)
 
     fmt = (request.GET.get("format") or "").lower()
 
-    # ---------- CSV ----------
+    # ------- EXPORTS (respetan filtro de insumos, mantienen columnas clásicas) -------
     if fmt == "csv":
         response = HttpResponse(content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.csv"'
@@ -868,7 +974,7 @@ def reporte_disponibilidad(request):
         for bloque in categorias:
             for i in bloque["insumos"]:
                 writer.writerow([
-                    bloque["categoria"].nombre,
+                    bloque["categoria"].nombre if bloque["categoria"] else "",
                     i.nombre,
                     i.unidad_medida,
                     f"{i.precio_unitario}",
@@ -999,5 +1105,16 @@ def reporte_disponibilidad(request):
         "total_valor": total_valor,
         "hoy": hoy,
         "titulo": "Reporte de Disponibilidad de Insumos",
+        # flags UI
+        "show_precio_unitario": show_precio_unitario,
+        "show_stock_total": show_stock_total,
+        "show_prox_venc": show_prox_venc,
+        "show_lotes": show_lotes,
+        "show_categorias": show_categorias,
+        "show_precio_acum": show_precio_acum,
+        # selección de insumos
+        "all_insumo_names": all_insumo_names,
+        "selected_insumos": set(selected_insumos),
+        "request": request,
     }
     return render(request, "inventario/reporte_disponibilidad.html", context)

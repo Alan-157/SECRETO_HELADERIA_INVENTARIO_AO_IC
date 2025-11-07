@@ -1,6 +1,9 @@
 from django.db import models
+from django.core.validators import RegexValidator, FileExtensionValidator
 from django.utils import timezone
 from django.db.models import Q
+import secrets
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 
 # 1) BaseModel
@@ -44,6 +47,20 @@ class UsuarioApp(AbstractBaseUser, PermissionsMixin):
     updated_at = models.DateTimeField(auto_now=True)
     email = models.EmailField(unique=True, max_length=191)
     name  = models.CharField(max_length=100, blank=False)
+    phone = models.CharField(
+        max_length=9,
+        unique=True,
+        validators=[RegexValidator(r'^\d{9}$', message='Debe tener exactamente 9 dígitos.')],
+        help_text="Teléfono celular de 9 dígitos (ej: 912345678)"
+    )
+
+    avatar = models.ImageField(
+        upload_to="users/",
+        null=True, blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=["jpg","jpeg","png"])],
+        help_text="Imagen JPG/PNG. Máx 2MB."
+    )
+
     is_staff  = models.BooleanField(default=False)
     is_active = models.BooleanField(default=False)
     active_asignacion = models.ForeignKey(
@@ -52,10 +69,19 @@ class UsuarioApp(AbstractBaseUser, PermissionsMixin):
         null=True, blank=True,
         related_name="usuarios_vigentes"
     )
+    failed_login_attempts = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+
+    def is_locked(self):
+        return self.locked_until and timezone.now() < self.locked_until
+
+    def lock_for_minutes(self, minutes=15):
+        self.locked_until = timezone.now() + timezone.timedelta(minutes=minutes)
+        self.save(update_fields=["locked_until"])
 
     objects = CustomUserManager()
     USERNAME_FIELD  = 'email'
-    REQUIRED_FIELDS = ['name']
+    REQUIRED_FIELDS = ['name','phone']
 
     def __str__(self):
         return self.email
@@ -70,8 +96,37 @@ class UsuarioApp(AbstractBaseUser, PermissionsMixin):
         asg = getattr(self, "active_asignacion", None)
         return getattr(getattr(asg, "perfil", None), "nombre", None)
 
+
+class PasswordResetCode(models.Model):
+    user = models.ForeignKey(UsuarioApp, on_delete=models.CASCADE, related_name="reset_codes")
+    code = models.CharField(max_length=6)  # solo números, lo validamos al crear
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "is_active"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def is_expired(self):
+        return timezone.now() > self.created_at + timezone.timedelta(minutes=10)
+
+    def consume(self):
+        """Marca el código como usado (no reutilizable)."""
+        self.is_active = False
+        self.used_at = timezone.now()
+        self.save(update_fields=["is_active", "used_at"])
+
+    @staticmethod
+    def generate_6_digits():
+        # 000000–999999 preservando ceros a la izquierda
+        return f"{secrets.randbelow(1_000_000):06d}"
+    
 # 5) Asignación (histórico + vigente)
 class UserPerfilAsignacion(BaseModel):
+
     user   = models.ForeignKey(UsuarioApp, on_delete=models.CASCADE, related_name="asignaciones")
     perfil = models.ForeignKey(UserPerfil, on_delete=models.CASCADE, related_name="asignaciones")
     started_at = models.DateTimeField(auto_now_add=True)

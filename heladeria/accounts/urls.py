@@ -55,4 +55,9 @@ urlpatterns = [
     path("perfiles/nuevo/", views_crud.perfiles_create, name="perfiles_create"),
     path("perfiles/<int:pk>/editar/", views_crud.perfiles_update, name="perfiles_update"),
     path("perfiles/<int:pk>/eliminar/", views_crud.perfiles_delete, name="perfiles_delete"),
+
+    path("password-reset/", views.password_reset_request_view, name="password_reset"),
+    path("password-reset/done/", views.password_reset_done_view, name="password_reset_done"),
+    path("password-reset/verify/", views.password_reset_verify_view, name="password_reset_confirm"),
+    path("password-reset/complete/", lambda r: render(r,"accounts/password/password_reset_complete.html"), name="password_reset_complete"),
 ]

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">{{ titulo }}</h3>
+  {# No hay botón de "nuevo lote" (aún). Respetamos read_only para coherencia #}
+  {% if not read_only %}
+    <span class="text-muted small">Gestión desde movimientos/órdenes</span>
+  {% endif %}
+</div>
+
+<form id="filters-form" class="row g-2 mb-3" method="get">
+  <div class="col-12 col-md-4">
+    <input id="q-input" name="q" type="text" class="form-control"
+           placeholder="Buscar por insumo o bodega..." value="{{ q|default:'' }}">
+  </div>
+
+  <div class="col-6 col-md-3">
+    <select name="sort" id="sort-select" class="form-select">
+      <option value="insumo"  {% if sort == 'insumo' %}selected{% endif %}>Ordenar por: Insumo</option>
+      <option value="bodega"  {% if sort == 'bodega' %}selected{% endif %}>Ordenar por: Bodega</option>
+      <option value="fingreso"{% if sort == 'fingreso' %}selected{% endif %}>Ordenar por: F. Ingreso</option>
+      <option value="fexpira" {% if sort == 'fexpira' %}selected{% endif %}>Ordenar por: F. Expiración</option>
+      <option value="cact"    {% if sort == 'cact' %}selected{% endif %}>Ordenar por: Cant. Actual</option>
+      <option value="cini"    {% if sort == 'cini' %}selected{% endif %}>Ordenar por: Cant. Inicial</option>
+    </select>
+  </div>
+
+  <div class="col-6 col-md-2">
+    <select name="order" id="order-select" class="form-select">
+      <option value="asc"  {% if order == 'asc' %}selected{% endif %}>Ascendente ↑</option>
+      <option value="desc" {% if order == 'desc' %}selected{% endif %}>Descendente ↓</option>
+    </select>
+  </div>
+
+  <div class="col-6 col-md-2">
+    <select name="per_page" id="per-page-select" class="form-select">
+      <option value="5"  {% if per_page == 5 %}selected{% endif %}>5 por página</option>
+      <option value="10" {% if per_page == 10 %}selected{% endif %}>10 por página</option>
+      <option value="20" {% if per_page == 20 %}selected{% endif %}>20 por página</option>
+    </select>
+  </div>
+
+  <div class="col-6 col-md-1">
+    <button class="btn btn-outline-primary w-100" type="submit">Aplicar</button>
+  </div>
+
+  <input type="hidden" id="page-input" name="page" value="{{ lotes.number|default:'1' }}">
+</form>
+
+<div id="results">
+  {% include "inventario/partials/insumo_lote_results.html" %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const form = document.getElementById('filters-form');
+  const results = document.getElementById('results');
+  const qInput = document.getElementById('q-input');
+  const sortSelect = document.getElementById('sort-select');
+  const orderSelect = document.getElementById('order-select');
+  const perPageSelect = document.getElementById('per-page-select');
+  const pageInput = document.getElementById('page-input');
+
+  const buildURL = () => {
+    const params = new URLSearchParams(new FormData(form));
+    return `${location.pathname}?${params.toString()}`;
+  };
+
+  async function loadAjax(url){
+    const resp = await fetch(url, {headers: {"X-Requested-With":"XMLHttpRequest"}});
+    if (!resp.ok) return;
+    const data = await resp.json();
+    results.innerHTML = data.html;
+    history.replaceState({}, "", url);
+  }
+
+  const debounce = (fn, ms=350) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+
+  qInput.addEventListener('input', debounce(()=>{ pageInput.value="1"; loadAjax(buildURL()); }));
+  sortSelect.addEventListener('change', ()=>{ pageInput.value="1"; loadAjax(buildURL()); });
+  orderSelect.addEventListener('change', ()=>{ pageInput.value="1"; loadAjax(buildURL()); });
+  perPageSelect.addEventListener('change', ()=>{ pageInput.value="1"; loadAjax(buildURL()); });
+
+  // Delegación para paginación
+  results.addEventListener('click', (e)=>{
+    const a = e.target.closest('a[data-ajax-link]');
+    if (a){ e.preventDefault(); loadAjax(a.href); }
+  });
+})();
+</script>
+{% endblock %}

@@ -49,9 +49,9 @@ ALLOWED_HOSTS=127.0.0.1,localhost
 DJANGO_DEBUG=True
 DJANGO_SECRET_KEY=
 DB_ENGINE=django.db.backends.mysql
-DB_NAME=heladeria_bd
-DB_USER=root
-DB_PASSWORD=
+DB_NAME=heladeria
+DB_USER=admin
+DB_PASSWORD=Admin12345
 DB_HOST=127.0.0.1
 DB_PORT=3306
 ```

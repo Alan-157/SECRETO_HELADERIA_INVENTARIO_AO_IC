@@ -3,6 +3,8 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from .models import PasswordResetCode
+from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from django.utils.text import slugify  # opcional, por si quieres normalizar name
 
@@ -14,10 +16,67 @@ DISPOSABLE_DOMAINS = {
     "guerrillamail.com", "yopmail.com"
 }
 
+MAX_AVATAR_MB = 2
+
+def _validate_avatar(file):
+    if not file:
+        return
+    # Tamaño
+    if file.size > MAX_AVATAR_MB * 1024 * 1024:
+        raise ValidationError(f"La imagen no puede superar {MAX_AVATAR_MB}MB.")
+    # Mimetype simple
+    ctype = (getattr(file, "content_type", "") or "").lower()
+    if not (ctype.startswith("image/jpeg") or ctype.startswith("image/png")):
+        raise ValidationError("Solo se permiten imágenes JPG o PNG.")
+
 def _email_normalized(email: str) -> str:
     # Normaliza email para comparación (lowercase)
     return (email or "").strip().lower()
 
+
+# ---------- PASSWORD RESET FORMS ----------
+class PasswordResetRequestForm(forms.Form):
+    email = forms.EmailField()
+
+    def clean_email(self):
+        email = (self.cleaned_data["email"] or "").strip().lower()
+        try:
+            self.user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            # no reveles que no existe: mensaje genérico
+            raise ValidationError("Si el correo es válido, recibirás un código de verificación.")
+        if self.user.is_locked():
+            raise ValidationError("La cuenta está temporalmente bloqueada.")
+        return email
+    
+class PasswordResetVerifyForm(forms.Form):
+    email = forms.EmailField()
+    code = forms.CharField(min_length=6, max_length=6)
+    new_password = forms.CharField(widget=forms.PasswordInput)
+    new_password2 = forms.CharField(widget=forms.PasswordInput)
+
+    def clean(self):
+        cd = super().clean()
+        email = (cd.get("email") or "").strip().lower()
+        code  = cd.get("code") or ""
+        if not email or not code:
+            return cd
+        try:
+            self.user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            raise ValidationError("Código inválido o expirado.")
+
+        qs = PasswordResetCode.objects.filter(user=self.user, code=code, is_active=True)
+        prc = qs.order_by("-created_at").first()
+        if not prc or prc.is_expired():
+            raise ValidationError("Código inválido o expirado.")
+
+        p1, p2 = cd.get("new_password"), cd.get("new_password2")
+        if p1 != p2:
+            self.add_error("new_password2", "Las contraseñas no coinciden.")
+
+        self.prc = prc
+        return cd    
 # ---------- REGISTER FORM ----------
 class RegisterForm(forms.ModelForm):
     password2 = forms.CharField(label='Confirmar Contraseña', widget=forms.PasswordInput())
@@ -28,10 +87,25 @@ class RegisterForm(forms.ModelForm):
         widgets = {
             "name": forms.TextInput(attrs={'class': 'form-control'}),
             "email": forms.EmailInput(attrs={'class': 'form-control'}),
+            "phone": forms.TextInput(attrs={'class': 'form-control'}),
+            "avatar": forms.ClearableFileInput(attrs={'class': 'form-control'}),
             "password": forms.PasswordInput(attrs={'class': 'form-control'}),
         }
 
     # Email único + bloqueo dominios desechables (opcional)
+    def clean_phone(self):
+        phone = (self.cleaned_data.get("phone") or "").strip()
+        if not phone.isdigit() or len(phone) != 9:
+            raise ValidationError("El teléfono debe tener exactamente 9 dígitos.")
+        if User.objects.filter(phone=phone).exists():
+            raise ValidationError("Este teléfono ya está registrado.")
+        return phone
+    
+    def clean_avatar(self):
+        file = self.cleaned_data.get("avatar")
+        _validate_avatar(file)
+        return file
+    
     def clean_email(self):
         email = _email_normalized(self.cleaned_data.get("email"))
         if not email:
@@ -101,7 +175,14 @@ class LoginForm(AuthenticationForm):
         self.fields['password'].widget.attrs.update({'class': 'form-control', 'placeholder': 'Contraseña'})
         if 'remember_me' in self.fields:
             self.fields['remember_me'].widget.attrs.update({'class': 'form-check-input'})
-
+    def confirm_login_allowed(self, user):
+        if hasattr(user, "is_locked") and user.is_locked():
+            raise ValidationError(
+                "Tu cuenta está temporalmente bloqueada por intentos fallidos. Intenta más tarde.",
+                code="locked",
+            )
+        if not user.is_active:
+            raise ValidationError("Tu cuenta no está activa.", code="inactive")
 
 # ---------- Formularios para templates (admin/gestión) ----------
 class UsuarioCreateForm(forms.ModelForm):
@@ -110,7 +191,20 @@ class UsuarioCreateForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ("email", "name")
+        fields = ("email", "name","phone", "avatar")
+
+    def clean_phone(self):
+        phone = (self.cleaned_data.get("phone") or "").strip()
+        if not phone.isdigit() or len(phone) != 9:
+            raise ValidationError("El teléfono debe tener exactamente 9 dígitos.")
+        if User.objects.filter(phone=phone).exists():
+            raise ValidationError("Este teléfono ya está registrado.")
+        return phone
+
+    def clean_avatar(self):
+        file = self.cleaned_data.get("avatar")
+        _validate_avatar(file)
+        return file
 
     def clean_email(self):
         email = _email_normalized(self.cleaned_data.get("email"))
@@ -161,8 +255,24 @@ class UsuarioCreateForm(forms.ModelForm):
 class UsuarioUpdateForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ("email", "name", "is_active")
+        fields = ("email", "name","phone", "avatar", "is_active")
 
+    def clean_phone(self):
+        phone = (self.cleaned_data.get("phone") or "").strip()
+        if not phone.isdigit() or len(phone) != 9:
+            raise ValidationError("El teléfono debe tener exactamente 9 dígitos.")
+        qs = User.objects.filter(phone=phone)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise ValidationError("Este teléfono ya está registrado.")
+        return phone
+
+    def clean_avatar(self):
+        file = self.cleaned_data.get("avatar")
+        _validate_avatar(file)
+        return file
+    
     def clean_email(self):
         email = _email_normalized(self.cleaned_data.get("email"))
         if not email:
