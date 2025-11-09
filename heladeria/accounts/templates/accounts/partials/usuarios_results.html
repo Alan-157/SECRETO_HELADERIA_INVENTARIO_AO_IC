@@ -5,6 +5,8 @@
     <tr>
       <th>Email</th>
       <th>Nombre</th>
+      <th>Teléfono</th>
+      <th>Avatar</th>
       <th>Activo</th>
       <th>Perfil vigente</th>
       <th>Acciones</th>
@@ -15,6 +17,14 @@
     <tr>
       <td>{{ u.email }}</td>
       <td>{{ u.name }}</td>
+      <td>{{ u.phone }}</td>
+      <td>
+        {% if u.avatar %}
+          <img src="{{ u.avatar.url }}" alt="Avatar" class="img-thumbnail" style="width:50px; height:50px;">
+        {% else %}
+          -
+        {% endif %}
+      </td>
       <td>{% if u.is_active %}✅{% else %}❌{% endif %}</td>
       <td>{% if u.active_asignacion %}{{ u.active_asignacion.perfil.nombre }}{% else %}-{% endif %}</td>
       <td>

@@ -27,6 +27,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or "dev-unsafe"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG","False") == "True"
 
+
 ALLOWED_HOSTS =  os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
 
@@ -60,6 +61,7 @@ ROOT_URLCONF = 'heladeria.urls'
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 TEMPLATES = [
     {
@@ -118,7 +120,14 @@ LOGIN_URL = "accounts:login"
 
 # Redirige a la URL con nombre 'accounts:login' después de un logout
 LOGOUT_REDIRECT_URL = "accounts:login" 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+EMAIL_BACKEND = "django_ses.SESBackend"  # usa boto3
+AWS_SES_REGION_NAME = os.getenv("AWS_SES_REGION_NAME", "us-east-1")
+AWS_SES_REGION_ENDPOINT = f"email.{AWS_SES_REGION_NAME}.amazonaws.com"
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@tudominio.verificado")
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -150,7 +159,8 @@ USE_I18N = True
 
 USE_TZ = True
 
-
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

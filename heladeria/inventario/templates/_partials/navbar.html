@@ -1,7 +1,6 @@
 {% load static %}
 <nav class="navbar navbar-expand-lg" style="background-color: #A41C2D;">
   <div class="container-fluid container">
-    <!-- Logo e Identidad -->
     <a class="navbar-brand d-flex align-items-center text-white" href="{% url 'dashboard' %}">
       <img src="{% static 'img/logo_secreto.jpg' %}" 
            alt="Secreto Heladería" width="40" height="40" 
@@ -28,6 +27,7 @@
 
               {% if perfil == 'admin' or perfil == 'administrador' or perfil == 'encargado' or user.is_superuser %}
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_bodegas' %}">Bodegas</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_lotes' %}">Lotes</a></li>
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_categorias' %}">Categorías</a></li>
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_movimientos' %}">Movimientos</a></li>
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:reporte_disponibilidad' %}">Reporte</a></li>
@@ -51,13 +51,23 @@
             {% endif %}
           {% endwith %}
 
-          <!-- Menú Usuario -->
           <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle text-white" href="#" id="navbarDropdown" role="button"
+            <a class="nav-link dropdown-toggle text-white d-flex align-items-center" href="#" id="navbarDropdown" role="button"
                data-bs-toggle="dropdown" aria-expanded="false">
+              {# Avatar o icono de perfil #}
+              {% if user.avatar %}
+                  <img src="{{ user.avatar.url }}" alt="Avatar" class="user-avatar-small me-2">
+              {% else %}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-person-circle me-2" viewBox="0 0 16 16">
+                      <path d="M11 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/>
+                      <path fill-rule="evenodd" d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8m8-7a7 7 0 0 0-5.468 11.37C3.242 11.233 4.805 10 8 10s4.757 1.232 5.468 2.37A7 7 0 0 0 8 1"/>
+                  </svg>
+              {% endif %}
               Hola, {{ user.name|default:user.email }}
             </a>
             <ul class="dropdown-menu dropdown-menu-end">
+              {# Nueva opción para editar perfil #}
+              <li><a class="dropdown-item" href="{% url 'accounts:profile_edit' %}">Editar Perfil</a></li> 
               <li><a class="dropdown-item" href="{% url 'accounts:password_change' %}">Cambiar Contraseña</a></li>
               <li><hr class="dropdown-divider"></li>
               <li>
@@ -83,6 +93,15 @@
   background-color: #7D1623;
   border-radius: 4px;
   transition: background-color 0.3s ease-in-out;
+}
+
+/* Estilo para el avatar pequeño en la navbar (NUEVO) */
+.user-avatar-small {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 /* Botón desplegable en blanco */

@@ -14,6 +14,8 @@ urlpatterns = [
     # --- Listados Varios ---
     path('movimientos/', views.listar_movimientos, name='listar_movimientos'),
     path('ordenes/', views.listar_ordenes, name='listar_ordenes'),
+    path('lotes/exportar/', views.exportar_lotes, name='exportar_lotes'),
+    path('lotes/', views.listar_insumos_lote, name='listar_lotes'),
 
     # --- Creación de Movimientos ---
     path("movimientos/registrar/", views.registrar_movimiento, name="registrar_movimiento"),

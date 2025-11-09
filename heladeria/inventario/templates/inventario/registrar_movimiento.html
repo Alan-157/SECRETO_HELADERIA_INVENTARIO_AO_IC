@@ -15,6 +15,18 @@
       {% endif %}
       {% csrf_token %}
       {{ formset.management_form }}
+      
+      {# MUESTRA ERRORES GLOBALES DEL FORMSET (NO DE LÍNEA) #}
+      {% if formset.non_form_errors %}
+        <div class="alert alert-danger">
+          <strong>Errores Generales:</strong>
+          <ul>
+            {% for error in formset.non_form_errors %}
+              <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
 
       <div class="table-responsive">
         <table class="table align-middle">
@@ -35,29 +47,73 @@
           <tbody id="formset-body">
             {% for f in formset %}
             <tr class="fs-row">
-              <td>{{ f.tipo }}</td>
-              <td>{{ f.insumo }}</td>
-              <td>{{ f.insumo_lote }}</td>
-              <td>{{ f.crear_nuevo_lote }}</td>
-              <td>{{ f.fecha_expiracion }}</td>
-              <td>{{ f.ubicacion }}</td>
-              <td>{{ f.cantidad }}</td>
-              <td>{{ f.fecha }}</td>
-              <td>{{ f.observaciones }}</td>
+              {# TIPO #}
+              <td>
+                {{ f.tipo }}
+                {% for error in f.tipo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# INSUMO #}
+              <td>
+                {{ f.insumo }}
+                {% for error in f.insumo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# LOTE EXISTENTE #}
+              <td>
+                {{ f.insumo_lote }}
+                {% for error in f.insumo_lote.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# CREAR NUEVO LOTE #}
+              <td>
+                <div class="form-check">
+                    {{ f.crear_nuevo_lote }}
+                    <label class="form-check-label">{{ f.crear_nuevo_lote.label }}</label>
+                </div>
+                {% for error in f.crear_nuevo_lote.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# FECHA EXPIRACIÓN #}
+              <td>
+                {{ f.fecha_expiracion }}
+                {% for error in f.fecha_expiracion.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# UBICACIÓN #}
+              <td>
+                {{ f.ubicacion }}
+                {% for error in f.ubicacion.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# CANTIDAD #}
+              <td>
+                {{ f.cantidad }}
+                {% for error in f.cantidad.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# FECHA #}
+              <td>
+                {{ f.fecha }}
+                {% for error in f.fecha.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# OBSERVACIONES #}
+              <td>
+                {{ f.observaciones }}
+                {% for error in f.observaciones.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+              </td>
+              {# BOTÓN ELIMINAR #}
               <td>
                 {% if formset.can_delete %}
                   {{ f.DELETE }} <button type="button" class="btn btn-sm btn-outline-danger del-line">×</button>
                 {% endif %}
               </td>
             </tr>
+            {# MUESTRA ERRORES A NIVEL DE LÍNEA (add_error(None, ...)) #}
+            {% if f.non_field_errors %}
+                <tr class="table-danger"><td colspan="10">
+                    <div class="text-danger small">
+                        <strong>Error en la línea:</strong> {{ f.non_field_errors|join:", " }}
+                    </div>
+                </td></tr>
+            {% endif %}
             {% endfor %}
           </tbody>
         </table>
       </div>
-
-      {% if formset.non_form_errors %}
-        <div class="alert alert-danger">{{ formset.non_form_errors }}</div>
-      {% endif %}
 
       <div class="d-flex justify-content-end gap-2">
         <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
@@ -68,17 +124,50 @@
 </div>
 
 <!-- Template oculto del empty_form (con __prefix__) -->
+{# IMPORTANTE: También se debe actualizar el template oculto para que muestre los errores en cada <td> #}
 <script type="text/template" id="empty-form-row">
   <tr class="fs-row">
-    <td>{{ formset.empty_form.tipo }}</td>
-    <td>{{ formset.empty_form.insumo }}</td>
-    <td>{{ formset.empty_form.insumo_lote }}</td>
-    <td>{{ formset.empty_form.crear_nuevo_lote }}</td>
-    <td>{{ formset.empty_form.fecha_expiracion }}</td>
-    <td>{{ formset.empty_form.ubicacion }}</td>
-    <td>{{ formset.empty_form.cantidad }}</td>
-    <td>{{ formset.empty_form.fecha }}</td>
-    <td>{{ formset.empty_form.observaciones }}</td>
+    {# TIPO #}
+    <td>
+      {{ formset.empty_form.tipo }}
+      {# No se pueden pre-renderizar los errores aquí, pero la estructura es necesaria #}
+    </td>
+    {# INSUMO #}
+    <td>
+      {{ formset.empty_form.insumo }}
+    </td>
+    {# LOTE EXISTENTE #}
+    <td>
+      {{ formset.empty_form.insumo_lote }}
+    </td>
+    {# CREAR NUEVO LOTE #}
+    <td>
+      <div class="form-check">
+          {{ formset.empty_form.crear_nuevo_lote }}
+          <label class="form-check-label">{{ formset.empty_form.crear_nuevo_lote.label }}</label>
+      </div>
+    </td>
+    {# FECHA EXPIRACIÓN #}
+    <td>
+      {{ formset.empty_form.fecha_expiracion }}
+    </td>
+    {# UBICACIÓN #}
+    <td>
+      {{ formset.empty_form.ubicacion }}
+    </td>
+    {# CANTIDAD #}
+    <td>
+      {{ formset.empty_form.cantidad }}
+    </td>
+    {# FECHA #}
+    <td>
+      {{ formset.empty_form.fecha }}
+    </td>
+    {# OBSERVACIONES #}
+    <td>
+      {{ formset.empty_form.observaciones }}
+    </td>
+    {# BOTÓN ELIMINAR #}
     <td>
       {% if formset.can_delete %}
         {{ formset.empty_form.DELETE }}
@@ -123,3 +212,41 @@
   }
 </style>
 {% endblock %}
+```
+
+### Tarea 2: Revisar `inventario/forms.py` (Validación de Stock)
+
+Tu `MovimientoLineaForm` en `heladeria/inventario/forms.py` ya maneja bien los errores internos, ya que usa `self.add_error("campo", "mensaje")` para asociar los errores al campo correcto, lo cual la Tarea 1 ahora puede mostrar.
+
+Revisemos solo el bloque `clean` en **`heladeria/inventario/forms.py`** para asegurarnos de que la lógica de errores esté bien segmentada:
+
+```python
+    def clean(self):
+        cd = super().clean()
+        tipo = cd.get("tipo")
+        lote = cd.get("insumo_lote")
+        cantidad = cd.get("cantidad")
+        crear = cd.get("crear_nuevo_lote")
+        fexp = cd.get("fecha_expiracion")
+
+        if tipo == "ENTRADA":
+            if not lote and not crear:
+                # Este error es CRÍTICO, lo asociamos a insumo_lote y crear_nuevo_lote
+                self.add_error("insumo_lote", "Para una ENTRADA selecciona un lote existente o marca 'Crear nuevo lote'.")
+                self.add_error("crear_nuevo_lote", "Para una ENTRADA selecciona un lote existente o marca 'Crear nuevo lote'.")
+            if crear and not fexp:
+                self.add_error("fecha_expiracion", "Requerida para crear un nuevo lote.")
+        else:  # SALIDA
+            if crear:
+                self.add_error("crear_nuevo_lote", "No aplica para SALIDA.")
+            if not lote:
+                self.add_error("insumo_lote", "Para una SALIDA debes indicar el lote.")
+            
+            # NUEVO: Validación de stock insuficiente
+            if lote and cantidad and cantidad > lote.cantidad_actual:
+                # Este es el error de stock. Lo asociamos directamente a 'cantidad'
+                self.add_error(
+                    'cantidad',
+                    f"Error de Stock: La cantidad solicitada ({cantidad}) excede el stock actual del lote ({lote.cantidad_actual})."
+                )
+        return cd

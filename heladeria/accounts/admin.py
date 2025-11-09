@@ -3,6 +3,7 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from .models import UserPerfil, UsuarioApp, UserPerfilAsignacion
 from .services import activar_asignacion
+from django.utils.html import format_html
 
 
 # --- ACCIONES COMUNES ---
@@ -95,12 +96,18 @@ class UserPerfilAdmin(admin.ModelAdmin):
 
 @admin.register(UsuarioApp)
 class UsuarioAppAdmin(admin.ModelAdmin):
-    list_display = ("id", "email", "name", "is_active", "active_asignacion", "updated_at")
+    list_display = ("id", "email", "name","phone","avatar_thumb","is_active", "active_asignacion", "updated_at")
     list_filter = ("is_active",)
     search_fields = ("email", "name")
     ordering = ("email",)
-    readonly_fields = ("created_at", "updated_at", "active_asignacion")
+    readonly_fields = ("created_at", "updated_at", "active_asignacion","avatar_thumb")
     actions = [activar_usuarios, desactivar_usuarios]
+
+    def avatar_thumb(self, obj):
+        if getattr(obj, "avatar", None):
+            return format_html('<img src="{}" style="height:48px;width:48px;object-fit:cover;border-radius:50%;">', obj.avatar.url)
+        return "—"
+    avatar_thumb.short_description = "Foto"
 
     def has_module_permission(self, request):
         return request.user.is_superuser

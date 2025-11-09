@@ -45,6 +45,9 @@ urlpatterns = [
         template_name="password/password_reset_complete.html",
     ), name="password_reset_complete"),
 
+    #editar perfil
+    path('profile/edit/', views.profile_edit, name='profile_edit'),
+
     # 4. CRUD de Usuarios y Perfiles (fuera del admin)
     path("usuarios/", views_crud.usuarios_list, name="usuarios_list"),
     path("usuarios/nuevo/", views_crud.usuarios_create, name="usuarios_create"),
@@ -55,4 +58,8 @@ urlpatterns = [
     path("perfiles/nuevo/", views_crud.perfiles_create, name="perfiles_create"),
     path("perfiles/<int:pk>/editar/", views_crud.perfiles_update, name="perfiles_update"),
     path("perfiles/<int:pk>/eliminar/", views_crud.perfiles_delete, name="perfiles_delete"),
+
+    path("password-reset/", views.password_reset_request_view, name="password_reset"),
+    path("password-reset/verify/", views.password_reset_verify_view, name="password_reset_confirm"),
+    path("password-reset/complete/", lambda r: render(r,"accounts/password/password_reset_complete.html"), name="password_reset_complete"),
 ]
