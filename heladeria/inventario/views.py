@@ -229,6 +229,205 @@ def eliminar_insumo(request, insumo_id):
 
 # --- LISTAR LOTES DE INSUMO ---
 @login_required
+@perfil_required(allow=("Administrador", "Encargado", "Bodeguero"))
+def exportar_lotes(request):
+    """
+    Exporta la lista de lotes de insumos a Excel o PDF, respetando filtros y orden.
+    """
+    # 1. Preparación del QuerySet (Similar a listar_insumos_lote)
+    qs = (
+        models.InsumoLote.objects.filter(is_active=True)
+        .select_related("insumo", "bodega")
+        .annotate(
+            cant_act=Coalesce(F("cantidad_actual"), 0, output_field=DecimalField()),
+            cant_ini=Coalesce(F("cantidad_inicial"), 0, output_field=DecimalField()),
+        )
+    )
+
+    # Filtros de búsqueda (q)
+    q = (request.GET.get("q") or "").strip()
+    search_fields=["insumo__nombre", "bodega__nombre"]
+    if q:
+        q_objs = []
+        for f in search_fields:
+            q_objs.append(Q(**{f"{f}__icontains": q}))
+        qs = qs.filter(reduce(operator.or_, q_objs))
+    
+    # Orden (sort y order)
+    allowed_sort = {"insumo", "bodega", "fingreso", "fexpira", "cact", "cini"}
+    sort = request.GET.get("sort")
+    if sort not in allowed_sort:
+        sort = request.session.get("sort_lotes", "insumo")
+    if sort not in allowed_sort:
+        sort = "insumo"
+
+    sort_map = {
+        "insumo":  "insumo__nombre",
+        "bodega":  "bodega__nombre",
+        "fingreso":"fecha_ingreso",
+        "fexpira": "fecha_expiracion",
+        "cact":    "cant_act",
+        "cini":    "cant_ini",
+    }
+    
+    order = request.GET.get("order")
+    allowed_order = {"asc", "desc"}
+    if order not in allowed_order:
+        order = request.session.get("order_lotes", "asc")
+    if order not in allowed_order:
+        order = "asc"
+        
+    tie_break = "id"
+    ordering = sort_map[sort] if order == "asc" else f"-{sort_map[sort]}"
+    qs = qs.order_by(ordering, tie_break)
+    
+    # Obtener todos los datos sin paginación
+    lotes = qs.all()
+    hoy = date.today()
+    
+    # 2. Lógica de Exportación
+    exportar = request.GET.get("exportar")
+
+    if exportar == "excel":
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = f'attachment; filename="lotes_{hoy.isoformat()}.xlsx"'
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Lotes de Insumos"
+
+        # Título
+        title = "Reporte de Lotes de Insumos"
+        ws.merge_cells("A1:G1")
+        ws.cell(row=1, column=1, value=title).font = Font(size=14, bold=True)
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
+        
+        headers = [
+            "Insumo", "Bodega", "Fecha de Ingreso", 
+            "Fecha de Expiración", "Cantidad Inicial", 
+            "Cantidad Actual", "ID Lote"
+        ]
+        ws.append(headers)
+        
+        # Estilo para encabezados
+        header_row = ws[2]
+        for cell in header_row:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+
+        # Datos
+        row_num = 3
+        for i, lote in enumerate(lotes):
+            # Alternar color de fondo de las filas
+            bg_color = 'E6E6FA' if i % 2 == 0 else 'FFFFFF' # Lavanda pálida / Blanco
+            
+            data = [
+                lote.insumo.nombre,
+                lote.bodega.nombre,
+                lote.fecha_ingreso.strftime("%Y-%m-%d") if lote.fecha_ingreso else "",
+                lote.fecha_expiracion.strftime("%Y-%m-%d") if lote.fecha_expiracion else "N/A",
+                float(lote.cantidad_inicial),
+                float(lote.cantidad_actual),
+                lote.id
+            ]
+            ws.append(data)
+            
+            # Aplicar estilo de fondo y formato de números
+            fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+            
+            for col_idx in range(1, len(data) + 1):
+                cell = ws.cell(row=row_num, column=col_idx)
+                cell.fill = fill
+                # Formato de números para las cantidades
+                if col_idx in [5, 6]:
+                    cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
+            row_num += 1
+
+        # Ajustar ancho de columnas
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try: 
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            ws.column_dimensions[column].width = adjusted_width
+            
+        # Guardar en buffer
+        buffer = BytesIO()
+        wb.save(buffer)
+        response.write(buffer.getvalue())
+        return response
+
+    elif exportar == "pdf":
+        bio = BytesIO()
+        doc = SimpleDocTemplate(
+            bio,
+            pagesize=landscape(A4), # Usar orientación horizontal
+            leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20,
+        )
+        
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Título
+        titulo = Paragraph("<b>Reporte de Lotes de Insumos</b>", styles["h1"])
+        story.append(titulo)
+        story.append(Spacer(1, 12))
+
+        # Datos de la tabla
+        data = [
+            ["Insumo", "Bodega", "F. Ingreso", "F. Exp.", "Cant. Inicial", "Cant. Actual", "ID Lote"]
+        ]
+        
+        for lote in lotes:
+            data.append([
+                lote.insumo.nombre,
+                lote.bodega.nombre,
+                lote.fecha_ingreso.strftime("%Y-%m-%d") if lote.fecha_ingreso else "",
+                lote.fecha_expiracion.strftime("%Y-%m-%d") if lote.fecha_expiracion else "N/A",
+                f"{lote.cantidad_inicial:,.2f}",
+                f"{lote.cantidad_actual:,.2f}",
+                str(lote.id)
+            ])
+            
+        # Estilos
+        table_style = [
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A86E8')), # Azul para el encabezado
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            # Alternancia de filas (Blanco y Gris Claro)
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F5F5F5'), colors.white]),
+        ]
+        
+        # Crear y añadir la tabla (se ajustan los anchos para el formato horizontal A4)
+        t = Table(data, colWidths=[200, 150, 80, 80, 80, 80, 40])
+        t.setStyle(TableStyle(table_style))
+        story.append(t)
+        
+        # Construir el documento
+        doc.build(story)
+        pdf_value = bio.getvalue()
+        bio.close()
+        response = HttpResponse(pdf_value, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="lotes_{hoy.isoformat()}.pdf"'
+        return response
+
+    return HttpResponseBadRequest("Método de exportación no válido.")
+
+
+# --- LISTAR LOTES DE INSUMO ---
+@login_required
 @perfil_required(allow=("Administrador", "Encargado"), readonly_for=("Bodeguero",))
 def listar_insumos_lote(request):
     """

@@ -55,7 +55,7 @@ class UsuarioApp(AbstractBaseUser, PermissionsMixin):
     )
 
     avatar = models.ImageField(
-        upload_to="users/",
+        upload_to="media/users/",
         null=True, blank=True,
         validators=[FileExtensionValidator(allowed_extensions=["jpg","jpeg","png"])],
         help_text="Imagen JPG/PNG. Máx 2MB."

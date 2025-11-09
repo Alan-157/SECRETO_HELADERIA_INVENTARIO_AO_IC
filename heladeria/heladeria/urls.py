@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 # Importa la vista principal (asumida en inventario/views.py)
-from heladeria.heladeria import settings
+from . import settings
 from inventario.views import dashboard_view 
 from django.conf.urls.static import static
 

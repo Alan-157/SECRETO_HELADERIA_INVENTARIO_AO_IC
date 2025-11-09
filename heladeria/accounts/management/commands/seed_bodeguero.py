@@ -13,7 +13,7 @@ class Command(BaseCommand):
 
         user, created = User.objects.get_or_create(
             email="bodeguero@local.cl",
-            defaults={"name": "Bodeguero", "is_staff": True, "is_superuser": False, "is_active": True},
+            defaults={"name": "Bodeguero", "is_staff": True, "is_superuser": False, "is_active": True, "phone":"999999999"},
         )
         if created:
             user.set_password("Bodeguero1234")
