@@ -45,6 +45,9 @@ urlpatterns = [
         template_name="password/password_reset_complete.html",
     ), name="password_reset_complete"),
 
+    #editar perfil
+    path('profile/edit/', views.profile_edit, name='profile_edit'),
+
     # 4. CRUD de Usuarios y Perfiles (fuera del admin)
     path("usuarios/", views_crud.usuarios_list, name="usuarios_list"),
     path("usuarios/nuevo/", views_crud.usuarios_create, name="usuarios_create"),

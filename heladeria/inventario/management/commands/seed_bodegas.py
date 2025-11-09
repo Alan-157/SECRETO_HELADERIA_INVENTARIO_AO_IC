@@ -12,9 +12,9 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE("Iniciando la carga de bodegas y ubicaciones..."))
 
         bodegas_data = [
-            {"nombre": "Bodega Principal", "direccion": "Gabriel Gonzalez Videla 2777, La Serena"},
-            {"nombre": "Bodega Secundaria", "direccion": "Pasaje Falso 1234, Coquimbo"},
-            {"nombre": "Bodega Frutas", "direccion": "Avenida del Mar 5000, La Serena"}
+            {"nombre": "Bodega Principal", "direccion": "Gabriel Gonzalez Videla 2777, La Serena","descripcion":"bodega1"},
+            {"nombre": "Bodega Secundaria", "direccion": "Pasaje Falso 1234, Coquimbo","descripcion":"bodeg2"},
+            {"nombre": "Bodega Frutas", "direccion": "Avenida del Mar 5000, La Serena","descripcion":"bodega3"},
         ]
 
         bodegas_creadas = 0

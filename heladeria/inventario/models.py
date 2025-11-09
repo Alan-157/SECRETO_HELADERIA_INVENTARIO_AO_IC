@@ -29,6 +29,7 @@ class Categoria(BaseModel):
 class Bodega(BaseModel):
     nombre = models.CharField(max_length=100)
     direccion = models.CharField(max_length=255)
+    descripcion = models.TextField(blank=True, verbose_name="Descripción")
     def __str__(self):
         return self.nombre
 

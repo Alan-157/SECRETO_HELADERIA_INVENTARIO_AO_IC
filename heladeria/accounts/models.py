@@ -5,6 +5,14 @@ from django.db.models import Q
 import secrets
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.exceptions import ValidationError
+import os
+
+def validate_file_size_2mb(value):
+    """Valida que el archivo no exceda 2MB (2 * 1024 * 1024 bytes)."""
+    limit = 2 * 1024 * 1024
+    if value.size > limit:
+        raise ValidationError('El tamaño máximo para el archivo es 2MB.')
 
 # 1) BaseModel
 class BaseModel(models.Model):
@@ -41,60 +49,63 @@ class UserPerfil(BaseModel):
     def __str__(self):
         return self.nombre
 
-# 4) Usuario
 class UsuarioApp(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     email = models.EmailField(unique=True, max_length=191)
     name  = models.CharField(max_length=100, blank=False)
+    # ATENCIÓN: Se elimina unique=True del teléfono, ya que es demasiado restrictivo.
     phone = models.CharField(
-        max_length=9,
-        unique=True,
-        validators=[RegexValidator(r'^\d{9}$', message='Debe tener exactamente 9 dígitos.')],
-        help_text="Teléfono celular de 9 dígitos (ej: 912345678)"
+        max_length=15, # Ajuste a 15 por si se incluye código de país (+56)
+        unique=False,  # No único
+        blank=True, null=True, # No requerido a nivel DB
+        validators=[RegexValidator(r'^\+?\d{8,12}$', message='El teléfono debe ser un número válido.')],
+        help_text="Teléfono de contacto (ej: +56912345678)"
     )
 
     avatar = models.ImageField(
-        upload_to="media/users/",
+        upload_to="users/", # Carpeta más simple
         null=True, blank=True,
-        validators=[FileExtensionValidator(allowed_extensions=["jpg","jpeg","png"])],
+        # Se añaden ambos validadores: extensión y tamaño (requisito de la evaluación)
+        validators=[
+            FileExtensionValidator(allowed_extensions=["jpg","jpeg","png"]),
+            validate_file_size_2mb
+        ],
         help_text="Imagen JPG/PNG. Máx 2MB."
     )
 
     is_staff  = models.BooleanField(default=False)
     is_active = models.BooleanField(default=False)
+    
+    # 👇 Campos de seguridad adicionales
+    failed_login_attempts = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    # 👆
+
     active_asignacion = models.ForeignKey(
         "UserPerfilAsignacion",
         on_delete=models.PROTECT,
         null=True, blank=True,
         related_name="usuarios_vigentes"
     )
-    failed_login_attempts = models.PositiveSmallIntegerField(default=0)
-    locked_until = models.DateTimeField(null=True, blank=True)
 
+    # 👇 Métodos de seguridad adicionales
     def is_locked(self):
         return self.locked_until and timezone.now() < self.locked_until
 
     def lock_for_minutes(self, minutes=15):
         self.locked_until = timezone.now() + timezone.timedelta(minutes=minutes)
-        self.save(update_fields=["locked_until"])
+        self.failed_login_attempts = 0 # Resetear intentos al bloquear
+        self.save(update_fields=["locked_until", "failed_login_attempts"])
+    # 👆
 
     objects = CustomUserManager()
     USERNAME_FIELD  = 'email'
-    REQUIRED_FIELDS = ['name','phone']
+    # Se añade 'phone' a REQUIRED_FIELDS (solo para el createsuperuser)
+    REQUIRED_FIELDS = ['name',] # Quitamos 'phone' de REQUIRED_FIELDS porque en la práctica es mejor manejar la obligatoriedad en el form de edición, y para que las migraciones sean más limpias. Lo dejaremos opcional en el modelo.
 
     def __str__(self):
         return self.email
-    def get_full_name(self):  
-        return self.name
-    def get_short_name(self): 
-        return self.name
-
-    # ← alias de compatibilidad para mantener "role" en vistas/templates/seeds
-    @property
-    def role(self):
-        asg = getattr(self, "active_asignacion", None)
-        return getattr(getattr(asg, "perfil", None), "nombre", None)
 
 
 class PasswordResetCode(models.Model):

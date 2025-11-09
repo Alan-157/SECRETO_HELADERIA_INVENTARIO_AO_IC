@@ -2,7 +2,7 @@
 
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .forms import RegisterForm # Importa el formulario que creaste
+from .forms import RegisterForm, UserProfileEditForm# Importa el formulario que creaste
 from django.contrib.auth import login # Opcional: si quieres loguear al usuario inmediatamente después del registro
 from django.views.decorators.http import require_http_methods
 from django.core.mail import send_mail
@@ -13,6 +13,7 @@ from django.template.loader import render_to_string
 from django.contrib.sites.shortcuts import get_current_site
 from django.core.mail import EmailMultiAlternatives
 from django.views.decorators.http import require_http_methods
+from django.contrib.auth.decorators import login_required
 
 # NOTA: La vista de login (LoginView) no está aquí, está en urls.py
 
@@ -82,3 +83,32 @@ def password_reset_verify_view(request):
         return redirect("accounts:password_reset_complete")
 
     return render(request, "accounts/password/password_reset_confirm.html", {"form": form})
+
+@login_required # Solo usuarios autenticados pueden acceder
+def profile_edit(request):
+    """
+    Permite al usuario autenticado editar sus propios datos de perfil.
+    """
+    # Usamos la instancia del usuario autenticado
+    user = request.user
+    
+    if request.method == 'POST':
+        # Nota: si el formulario maneja ImageField (avatar), se debe pasar request.FILES
+        form = UserProfileEditForm(request.POST, request.FILES, instance=user)
+        if form.is_valid():
+            form.save()
+            # Mensaje de éxito
+            messages.success(request, '✅ Tu perfil ha sido actualizado correctamente.')
+            return redirect('accounts:profile_edit') # Redirigir a la misma vista o al dashboard
+        else:
+            messages.error(request, '⚠️ Por favor, revisa los errores en el formulario.')
+    else:
+        # Petición GET: muestra el formulario con los datos actuales
+        form = UserProfileEditForm(instance=user)
+
+    context = {
+        "form": form,
+        "titulo": "Editar mi Perfil",
+    }
+    # La plantilla se creará en el siguiente paso
+    return render(request, "accounts/profile_edit_form.html", context)

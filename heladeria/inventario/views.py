@@ -24,6 +24,7 @@ from .forms import (
 )
 from io import BytesIO
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, numbers, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, numbers
 from reportlab.lib.pagesizes import A4, landscape
@@ -227,7 +228,7 @@ def eliminar_insumo(request, insumo_id):
     insumo.save()
     return JsonResponse({"ok": True, "message": f"El insumo '{insumo.nombre}' fue eliminado."})
 
-# --- LISTAR LOTES DE INSUMO ---
+# --- exportar LOTES DE INSUMO ---
 @login_required
 @perfil_required(allow=("Administrador", "Encargado", "Bodeguero"))
 def exportar_lotes(request):
@@ -236,7 +237,7 @@ def exportar_lotes(request):
     """
     # 1. Preparación del QuerySet (Similar a listar_insumos_lote)
     qs = (
-        models.InsumoLote.objects.filter(is_active=True)
+        InsumoLote.objects.filter(is_active=True)
         .select_related("insumo", "bodega")
         .annotate(
             cant_act=Coalesce(F("cantidad_actual"), 0, output_field=DecimalField()),
@@ -257,23 +258,22 @@ def exportar_lotes(request):
     allowed_sort = {"insumo", "bodega", "fingreso", "fexpira", "cact", "cini"}
     sort = request.GET.get("sort")
     if sort not in allowed_sort:
-        sort = request.session.get("sort_lotes", "insumo")
-    if sort not in allowed_sort:
-        sort = "insumo"
+        # Aquí no usamos request.session.get porque la exportación no debe depender
+        # del estado de la sesión, sino de los parámetros de la URL.
+        # Si no viene en GET, usamos un valor por defecto.
+        sort = "insumo" 
 
     sort_map = {
-        "insumo":  "insumo__nombre",
-        "bodega":  "bodega__nombre",
+        "insumo":   "insumo__nombre",
+        "bodega":   "bodega__nombre",
         "fingreso":"fecha_ingreso",
         "fexpira": "fecha_expiracion",
-        "cact":    "cant_act",
-        "cini":    "cant_ini",
+        "cact":     "cant_act",
+        "cini":     "cant_ini",
     }
     
     order = request.GET.get("order")
     allowed_order = {"asc", "desc"}
-    if order not in allowed_order:
-        order = request.session.get("order_lotes", "asc")
     if order not in allowed_order:
         order = "asc"
         
@@ -289,11 +289,13 @@ def exportar_lotes(request):
     exportar = request.GET.get("exportar")
 
     if exportar == "excel":
+        # --- Exportar a Excel (openpyxl) ---
         response = HttpResponse(
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         response["Content-Disposition"] = f'attachment; filename="lotes_{hoy.isoformat()}.xlsx"'
 
+        # Workbook y Worksheet
         wb = Workbook()
         ws = wb.active
         ws.title = "Lotes de Insumos"
@@ -313,9 +315,11 @@ def exportar_lotes(request):
         
         # Estilo para encabezados
         header_row = ws[2]
+        header_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type="solid") # Verde claro
         for cell in header_row:
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal="center")
+            cell.fill = header_fill
 
         # Datos
         row_num = 3
@@ -342,20 +346,26 @@ def exportar_lotes(request):
                 cell.fill = fill
                 # Formato de números para las cantidades
                 if col_idx in [5, 6]:
+                    # Usamos FORMAT_NUMBER_COMMA_SEPARATED1 para formato con separador de miles y dos decimales
                     cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
             row_num += 1
 
         # Ajustar ancho de columnas
         for col in ws.columns:
             max_length = 0
-            column = col[0].column_letter
+            column = col[1].column_letter
             for cell in col:
                 try: 
+                    # Considerar encabezados y datos
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
                 except:
                     pass
-            adjusted_width = (max_length + 2)
+            # Añadir un margen (2 a 4 caracteres)
+            adjusted_width = (max_length + 4)
+            # Limitar el ancho máximo para columnas con poco contenido
+            if column in ('C', 'D', 'E', 'F', 'G') and adjusted_width < 15:
+                adjusted_width = 15
             ws.column_dimensions[column].width = adjusted_width
             
         # Guardar en buffer
@@ -365,6 +375,7 @@ def exportar_lotes(request):
         return response
 
     elif exportar == "pdf":
+        # --- Exportar a PDF (reportlab) ---
         bio = BytesIO()
         doc = SimpleDocTemplate(
             bio,
@@ -403,15 +414,20 @@ def exportar_lotes(request):
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('ALIGN', (0, 1), (-1, -1), 'CENTER'),
+            # Alineación del contenido (cantidades centradas, texto a la izquierda)
+            ('ALIGN', (0, 1), (1, -1), 'LEFT'), # Insumo y Bodega a la izquierda
+            ('ALIGN', (2, 1), (-2, -1), 'CENTER'), # Fechas y Cantidades al centro
+            ('ALIGN', (-1, 1), (-1, -1), 'CENTER'), # ID Lote al centro
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
             # Alternancia de filas (Blanco y Gris Claro)
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F5F5F5'), colors.white]),
         ]
         
-        # Crear y añadir la tabla (se ajustan los anchos para el formato horizontal A4)
-        t = Table(data, colWidths=[200, 150, 80, 80, 80, 80, 40])
+        # Crear y añadir la tabla (ajuste de anchos en puntos para A4 horizontal)
+        # Ancho total de A4 landscape es ~792. Usamos 752 para el margen de 20px
+        # 220 (Insumo) + 120 (Bodega) + 80 (F. Ingreso) + 80 (F. Exp) + 100 (C. Ini) + 100 (C. Act) + 52 (ID) = 752
+        t = Table(data, colWidths=[220, 120, 80, 80, 100, 100, 52])
         t.setStyle(TableStyle(table_style))
         story.append(t)
         

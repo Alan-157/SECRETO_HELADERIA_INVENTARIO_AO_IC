@@ -287,3 +287,45 @@ class UsuarioUpdateForm(forms.ModelForm):
         if domain in DISPOSABLE_DOMAINS:
             raise ValidationError("Este dominio de correo no es permitido.")
         return email
+
+
+class UserProfileEditForm(forms.ModelForm):
+    """
+    Formulario para que el usuario edite sus propios datos (nombre, correo, teléfono, avatar).
+    """
+    class Meta:
+        model = User
+        fields = ("name", "email", "phone", "avatar")
+        widgets = {
+            "name": forms.TextInput(attrs={'class': 'form-control'}),
+            "email": forms.EmailInput(attrs={'class': 'form-control'}),
+            "phone": forms.TextInput(attrs={'class': 'form-control'}),
+            # Importante: Asegurar que el campo de archivo tenga la clase form-control
+            "avatar": forms.FileInput(attrs={'class': 'form-control'}), 
+        }
+        labels = {
+            "name": "Nombre completo",
+            "email": "Correo Electrónico",
+            "phone": "Teléfono",
+            "avatar": "Imagen de Perfil (Avatar)",
+        }
+
+    def clean_email(self):
+        """Valida unicidad del email, excluyendo al usuario actual."""
+        email = _email_normalized(self.cleaned_data.get("email"))
+        if not email:
+            raise ValidationError("Debes ingresar un correo.")
+        
+        # Excluir el propio id de la búsqueda de duplicados
+        qs = User.objects.filter(email__iexact=email)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+            
+        if qs.exists():
+            raise ValidationError("Este correo ya está en uso.")
+
+        domain = email.split("@")[-1]
+        if domain in DISPOSABLE_DOMAINS:
+            raise ValidationError("Este dominio de correo no es permitido.")
+            
+        return email
