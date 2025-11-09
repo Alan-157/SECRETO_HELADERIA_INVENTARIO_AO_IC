@@ -27,6 +27,7 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or "dev-unsafe"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG","False") == "True"
 
+
 ALLOWED_HOSTS =  os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
 
@@ -60,6 +61,7 @@ ROOT_URLCONF = 'heladeria.urls'
 
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 TEMPLATES = [
     {
