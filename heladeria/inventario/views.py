@@ -18,11 +18,11 @@ from .models import (
     OrdenInsumo, OrdenInsumoDetalle,
     ESTADO_ORDEN_CHOICES,              
 )
+from django.urls import reverse
 from .forms import (
     InsumoForm, CategoriaForm,
     MovimientoLineaFormSet, BodegaForm,
-    # === CORRECCIÓN: Se añaden EntradaForm y SalidaForm a la importación global ===
-    EntradaForm, SalidaForm 
+    EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, OrdenInsumoDetalleEditFormSet, 
     # =============================================================================
 )
 from io import BytesIO
@@ -75,8 +75,6 @@ def list_with_filters(
     q = (request.GET.get("q") or "").strip()
 
     if search_fields:
-        # Construye OR dinámico de Q(...) para los campos que existan en el modelo
-        # (si algún campo no existe en el QS/model, simplemente no se agregará)
         q_objs = []
         for f in search_fields:
             try:
@@ -148,7 +146,7 @@ def dashboard_view(request):
 # --- CRUD INSUMOS ---
 @login_required
 @perfil_required(
-    allow=("Administrador", "Admin", "Encargado"),
+    allow=("administrador", "Encargado"),
     readonly_for=("Bodeguero",)            # ← bodeguero puede ver listado
 )
 def listar_insumos(request):
@@ -189,7 +187,7 @@ def listar_insumos(request):
     )
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 def crear_insumo(request):
     if not user_has_role(request.user, "Administrador", "Encargado"):
         messages.error(request, "No tienes permisos para crear insumos.")
@@ -205,7 +203,7 @@ def crear_insumo(request):
 
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 def editar_insumo(request, insumo_id):
     if not user_has_role(request.user, "Administrador", "Encargado"):
         messages.error(request, "No tienes permisos para editar insumos.")
@@ -222,18 +220,31 @@ def editar_insumo(request, insumo_id):
 
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 def eliminar_insumo(request, insumo_id):
-    if request.method != "POST" or request.headers.get("x-requested-with") != "XMLHttpRequest":
-        return HttpResponseBadRequest("Solo AJAX")
     insumo = get_object_or_404(Insumo, id=insumo_id)
-    insumo.is_active = False
-    insumo.save()
-    return JsonResponse({"ok": True, "message": f"El insumo '{insumo.nombre}' fue eliminado."})
+
+    # Regla: si tiene lotes activos, no se puede eliminar
+    tiene_lotes = InsumoLote.objects.filter(insumo=insumo, is_active=True).exists()
+
+    if request.method == "POST":
+        if tiene_lotes:
+            messages.error(request, "No se puede eliminar el insumo: tiene lotes activos.")
+            return redirect("inventario:listar_insumos")
+        insumo.is_active = False
+        insumo.save(update_fields=["is_active"])
+        messages.success(request, f"El insumo '{insumo.nombre}' fue eliminado.")
+        return redirect("inventario:listar_insumos")
+
+    return render(
+        request,
+        "confirmar_eliminar.html",
+        {"titulo": f"Eliminar Insumo «{insumo.nombre}»", "cancel_url": reverse("inventario:listar_insumos")}
+    )
 
 # --- exportar LOTES DE INSUMO ---
 @login_required
-@perfil_required(allow=("Administrador", "Encargado", "Bodeguero"))
+@perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
 def exportar_lotes(request):
     """
     Exporta la lista de lotes de insumos a Excel o PDF, respetando filtros y orden.
@@ -447,7 +458,7 @@ def exportar_lotes(request):
 
 # --- LISTAR LOTES DE INSUMO ---
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"), readonly_for=("Bodeguero",))
+@perfil_required(allow=("administrador", "Encargado"), readonly_for=("Bodeguero",))
 def listar_insumos_lote(request):
     """
     Listado de lotes de insumos con filtros, orden y paginación (AJAX-friendly).
@@ -504,14 +515,24 @@ def listar_insumos_lote(request):
 
 # --- CATEGORÍAS ---
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"), readonly_for=("Bodeguero",))
+@perfil_required(allow=("administrador", "Encargado"), readonly_for=("Bodeguero",))
 def listar_categorias(request):
-    q = request.GET.get("q", "")
-    order = request.GET.get("order", "asc")
-    per_page = int(request.GET.get("per_page", 10))
+    allowed_pp = {"5", "10", "20"}
+    per_page_get = request.GET.get("per_page")
+    if per_page_get in allowed_pp:
+        request.session["per_page_categorias"] = int(per_page_get)
+    per_page = request.session.get("per_page_categorias", 10)
+
+    # 2) Persistir orden asc/desc en sesión (opcional, simétrico al resto)
+    order_get = request.GET.get("order")
+    if order_get in ("asc", "desc"):
+        request.session["order_categorias"] = order_get
+    order = request.session.get("order_categorias", "asc")
+
+    # 3) Búsqueda (no se persiste por diseño, pero puedes hacerlo igual que per_page si lo deseas)
+    q = (request.GET.get("q") or "").strip()
 
     categorias = Categoria.objects.all().order_by("nombre" if order == "asc" else "-nombre")
-
     if q:
         categorias = categorias.filter(
             Q(nombre__icontains=q) | Q(descripcion__icontains=q)
@@ -535,9 +556,9 @@ def listar_categorias(request):
     )
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 def crear_categoria(request):
-    if not user_has_role(request.user, "Administrador"):
+    if not user_has_role(request.user, "administrador"):
         messages.error(request, "No tienes permisos.")
         return redirect('inventario:listar_categorias')
 
@@ -550,7 +571,7 @@ def crear_categoria(request):
     return render(request, 'inventario/crear_categoria.html', {'form': form, 'titulo': 'Nueva Categoría'})
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 def editar_categoria(request, categoria_id):
     """Permite editar una categoría solo a Administradores."""
     if not user_has_role(request.user, "Administrador"):
@@ -568,26 +589,35 @@ def editar_categoria(request, categoria_id):
     return render(request, 'inventario/editar_categoria.html', context)
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 def eliminar_categoria(request, categoria_id):
-    """Permite eliminar (desactivar) una categoría solo a Administradores."""
+    # Solo Admin realmente elimina/desactiva
     if not user_has_role(request.user, "Administrador"):
         messages.error(request, "No tienes permisos para eliminar categorías.")
-        return redirect('inventario:listar_categorias')
+        return redirect("inventario:listar_categorias")
 
     categoria = get_object_or_404(Categoria, id=categoria_id)
-    if request.method == 'POST':
-        categoria.is_active = False
-        categoria.save()
-        messages.success(request, f"Categoría '{categoria.nombre}' eliminada.")
-        return redirect('inventario:listar_categorias')
 
-    context = {'categoria': categoria}
-    return render(request, 'inventario/eliminar_categoria_confirm.html', context)
+    # Regla: si tiene insumos activos, no se puede eliminar
+    tiene_insumos = Insumo.objects.filter(categoria=categoria, is_active=True).exists()
+    if request.method == "POST":
+        if tiene_insumos:
+            messages.error(request, "No se puede eliminar la categoría: tiene insumos activos.")
+            return redirect("inventario:listar_categorias")
+        categoria.is_active = False
+        categoria.save(update_fields=["is_active"])
+        messages.success(request, f"Categoría '{categoria.nombre}' eliminada.")
+        return redirect("inventario:listar_categorias")
+
+    return render(
+        request,
+        "confirmar_eliminar.html",
+        {"titulo": f"Eliminar Categoría «{categoria.nombre}»", "cancel_url": reverse("inventario:listar_categorias")}
+    )
 
 # --- MOVIMIENTOS UNIFICADOS ---
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def registrar_movimiento(request):
     """Registrar entradas/salidas (pueden o no pertenecer a una orden)."""
@@ -707,7 +737,7 @@ def registrar_movimiento(request):
 
 # --- EDITAR / ELIMINAR ENTRADAS Y SALIDAS ---
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def editar_entrada(request, pk):
     entrada = get_object_or_404(Entrada, pk=pk)
@@ -740,11 +770,21 @@ def editar_entrada(request, pk):
         messages.success(request, "Entrada modificada correctamente.")
         return redirect("inventario:listar_movimientos")
 
-    return render(request, "inventario/editar_movimiento.html", {"form": form, "titulo": "Editar Entrada"})
+    return render(
+    request,
+    "inventario/editar_movimiento.html",
+    {
+        "form": form,
+        "titulo": "Editar Entrada",
+        "cancel_url": reverse("inventario:listar_movimientos"),
+        "campo_fecha": form["fecha"],                 # ✅ BoundField seguro
+        "errores_fecha": form["fecha"].errors,       # ✅ errores del campo
+    },
+)
 
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def eliminar_entrada(request, pk):
     entrada = get_object_or_404(Entrada, pk=pk)
@@ -773,7 +813,7 @@ def eliminar_entrada(request, pk):
 
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def editar_salida(request, pk):
     salida = get_object_or_404(Salida, pk=pk)
@@ -798,11 +838,21 @@ def editar_salida(request, pk):
         messages.success(request, "Salida modificada correctamente.")
         return redirect("inventario:listar_movimientos")
 
-    return render(request, "inventario/editar_movimiento.html", {"form": form, "titulo": "Editar Salida"})
+    return render(
+    request,
+    "inventario/editar_movimiento.html",
+    {
+        "form": form,
+        "titulo": "Editar Salida",
+        "cancel_url": reverse("inventario:listar_movimientos"),
+        "campo_fecha": form["fecha_generada"],        # ✅ BoundField seguro
+        "errores_fecha": form["fecha_generada"].errors,
+    },
+)
 
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def eliminar_salida(request, pk):
     salida = get_object_or_404(Salida, pk=pk)
@@ -817,8 +867,9 @@ def eliminar_salida(request, pk):
 
     return render(request, "inventario/confirmar_eliminar.html", {"obj": salida, "tipo": "salida"})
 
+# --- LISTAR MOVIMIENTOS (ENTRADAS Y SALIDAS) ---
 @login_required
-@perfil_required(allow=("Administrador", "Encargado")) 
+@perfil_required(allow=("administrador", "Encargado")) 
 def listar_movimientos(request):
     titulo = "Movimientos de Inventario"
     q = (request.GET.get("q") or "").strip()
@@ -852,10 +903,11 @@ def listar_movimientos(request):
     })
 
 
+
 # --- Bodegas
 @login_required
 @perfil_required(
-    allow=("Administrador", "Encargado"),   # puede entrar Admin y Encargado
+    allow=("administrador", "Encargado"),   # puede entrar Admin y Encargado
     readonly_for=("Encargado",)             # Encargado = solo lectura
 )
 def listar_bodegas(request):
@@ -918,7 +970,7 @@ DetalleFormSet = inlineformset_factory(
 )
 
 @login_required
-@perfil_required(allow=("Administrador",))
+@perfil_required(allow=("administrador",))
 def crear_bodega(request):
     form = BodegaForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -928,7 +980,7 @@ def crear_bodega(request):
     return render(request, "inventario/bodega_form.html", {"form": form, "titulo": "Nueva Bodega"})
 
 @login_required
-@perfil_required(allow=("Administrador",))
+@perfil_required(allow=("administrador",))
 def editar_bodega(request, pk):
     obj = get_object_or_404(Bodega, pk=pk, is_active=True)
     form = BodegaForm(request.POST or None, instance=obj)
@@ -939,21 +991,34 @@ def editar_bodega(request, pk):
     return render(request, "inventario/bodega_form.html", {"form": form, "titulo": f"Editar: {obj.nombre}"})
 
 @login_required
-@perfil_required(allow=("Administrador",))
+@perfil_required(allow=("administrador",))
 def eliminar_bodega(request, pk):
-    if request.method != "POST" or request.headers.get("x-requested-with") != "XMLHttpRequest":
-        return HttpResponseBadRequest("Solo AJAX")
-    obj = get_object_or_404(Bodega, pk=pk)
-    obj.is_active = False
-    obj.save(update_fields=["is_active"])
-    return JsonResponse({"ok": True, "message": f"Bodega '{obj.nombre}' eliminada."})
+    bodega = get_object_or_404(Bodega, pk=pk)
+
+    # Regla: si tiene lotes activos asociados, no se puede eliminar
+    tiene_lotes = InsumoLote.objects.filter(bodega=bodega, is_active=True).exists()
+
+    if request.method == "POST":
+        if tiene_lotes:
+            messages.error(request, "No se puede eliminar la bodega: tiene lotes activos asociados.")
+            return redirect("inventario:listar_bodegas")
+        bodega.is_active = False
+        bodega.save(update_fields=["is_active"])
+        messages.success(request, f"Bodega '{bodega.nombre}' eliminada.")
+        return redirect("inventario:listar_bodegas")
+
+    return render(
+        request,
+        "confirmar_eliminar.html",
+        {"titulo": f"Eliminar Bodega «{bodega.nombre}»", "cancel_url": reverse("inventario:listar_bodegas")}
+    )
 
 
 # --- LISTAR ÓRDENES ---
 ESTADOS_ORDEN = ("PENDIENTE", "EN_CURSO", "CERRADA", "CANCELADA")
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"), readonly_for=("Bodeguero",))
+@perfil_required(allow=("administrador", "Encargado"), readonly_for=("Bodeguero",))
 def listar_ordenes(request):
     """Lista las órdenes y permite actualizar su estado manualmente."""
     qs = OrdenInsumo.objects.all().select_related("usuario")
@@ -1008,7 +1073,7 @@ def listar_ordenes(request):
     )
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 def orden_cambiar_estado(request, pk):
     orden = get_object_or_404(OrdenInsumo, pk=pk)
     nuevo = request.POST.get("estado")
@@ -1025,68 +1090,50 @@ def orden_cambiar_estado(request, pk):
     return redirect("inventario:listar_ordenes")
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado", "Bodeguero"))
+@perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
 @transaction.atomic
 def crear_orden(request):
-    if not user_has_role(request.user, "Administrador", "Encargado"):
-        messages.error(request, "No tienes permisos para crear órdenes.")
-        return redirect("inventario:listar_ordenes")
+    orden = OrdenInsumo()  # instancia vacía (aún no guardada)
+    formset = OrdenInsumoDetalleCreateFormSet(request.POST or None, instance=orden)
 
-    orden = OrdenInsumo(usuario=request.user)  # usuario por defecto
     if request.method == "POST":
-        form = OrdenForm(request.POST, instance=orden)
-        formset = DetalleFormSet(request.POST, instance=orden)
-        if form.is_valid() and formset.is_valid():
-            form.instance.usuario = request.user
-            orden = form.save()
-            formset.save()
-            orden.recalc_estado()  # por si ya deja cantidades atendidas en 0
-            messages.success(request, f"Orden #{orden.id} creada.")
+        if formset.is_valid():
+            orden.save()      # crea la orden
+            formset.save()    # crea sus detalles
+            messages.success(request, "Orden creada correctamente.")
             return redirect("inventario:listar_ordenes")
-    else:
-        form = OrdenForm(instance=orden)
-        formset = DetalleFormSet(instance=orden)
+        messages.error(request, "Revisa los errores en los ítems de la orden.")
 
     return render(request, "inventario/crear_orden.html", {
         "titulo": "Crear orden",
-        "form": form,
-        "formset": formset,
+        "formset": formset
     })
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def editar_orden(request, pk):
     orden = get_object_or_404(OrdenInsumo, pk=pk)
-    if not user_has_role(request.user, "Administrador", "Encargado"):
-        messages.error(request, "No tienes permisos para editar órdenes.")
-        return redirect("inventario:listar_ordenes")
+    formset = OrdenInsumoDetalleEditFormSet(request.POST or None, instance=orden)
 
     if request.method == "POST":
-        form = OrdenForm(request.POST, instance=orden)
-        formset = DetalleFormSet(request.POST, instance=orden)
-        if form.is_valid() and formset.is_valid():
-            form.save()
-            formset.save()
-            orden.recalc_estado()
-            messages.success(request, f"Orden #{orden.id} actualizada.")
+        if formset.is_valid():
+            formset.save()  # crea/actualiza/elimina detalles según DELETE
+            messages.success(request, "Orden actualizada.")
             return redirect("inventario:listar_ordenes")
-    else:
-        form = OrdenForm(instance=orden)
-        formset = DetalleFormSet(instance=orden)
+        messages.error(request, "Revisa los errores en los ítems de la orden.")
 
     return render(request, "inventario/crear_orden.html", {
-        "titulo": f"Editar orden #{orden.id}",
-        "form": form,
-        "formset": formset,
+        "titulo": f"Editar orden #{orden.pk}",
+        "formset": formset
     })
 
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def eliminar_orden(request, pk):
     orden = get_object_or_404(OrdenInsumo, pk=pk)
-    if not user_has_role(request.user, "Administrador", "Encargado"):
+    if not user_has_role(request.user, "administrador", "Encargado"):
         messages.error(request, "No tienes permisos para eliminar órdenes.")
         return redirect("inventario:listar_ordenes")
 
@@ -1104,7 +1151,7 @@ def eliminar_orden(request, pk):
 
 # --- REPORTES ---
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"))
+@perfil_required(allow=("administrador", "Encargado"))
 def reporte_disponibilidad(request):
     """
     Reporte de disponibilidad de insumos con:
@@ -1118,10 +1165,16 @@ def reporte_disponibilidad(request):
     # -------- flags de columnas (HTML) --------
     # por defecto mostramos: stock_total, precio_unitario, prox_vencimiento, lotes
     def _b(name, default=True):
-        val = request.GET.get(name, None)
-        if val is None:
+        """
+        Lee tanto 'show_*' (nuevo) como 'col_*' (legado) y devuelve bool.
+        """
+        raw = request.GET.get(name, None)
+        if raw is None and name.startswith("show_"):
+            raw = request.GET.get(name.replace("show_", "col_"), None)  # compat con col_*
+        if raw is None:
             return default
-        return val in ("1", "true", "on", "yes")
+        return str(raw).lower() in ("1", "true", "on", "yes")
+
     show_precio_unitario = _b("show_precio_unitario", True)
     show_stock_total     = _b("show_stock_total", True)
     show_prox_venc       = _b("show_prox_venc", True)
@@ -1337,6 +1390,13 @@ def reporte_disponibilidad(request):
         return response
 
     # ---------- HTML (por defecto) ----------
+    colspan_lotes = 2 \
+    + int(show_categorias) \
+    + int(show_precio_unitario) \
+    + int(show_stock_total) \
+    + int(show_prox_venc) \
+    + int(show_precio_acum)
+
     context = {
         "categorias": categorias,
         "total_stock": total_stock,
@@ -1353,6 +1413,8 @@ def reporte_disponibilidad(request):
         # selección de insumos
         "all_insumo_names": all_insumo_names,
         "selected_insumos": set(selected_insumos),
+        "colspan_lotes": colspan_lotes,   # <- NUEVO
         "request": request,
     }
+
     return render(request, "inventario/reporte_disponibilidad.html", context)

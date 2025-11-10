@@ -3,6 +3,9 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from accounts.models import UserPerfil, UserPerfilAsignacion
+from django.core.files import File
+import os
+from django.conf import settings
 
 class Command(BaseCommand):
     help = "Crea usuario Encargado (inventario completo, sin usuarios)."
@@ -18,6 +21,11 @@ class Command(BaseCommand):
         if created:
             user.set_password("Encargado1234")
             user.save()
+
+            avatar_path = os.path.join(settings.MEDIA_ROOT, "users", "Alastor_tierno.jpg")
+            if os.path.exists(avatar_path):
+                with open(avatar_path, "rb") as img:
+                    user.avatar.save("encargado.jpg", File(img), save=True)
 
         UserPerfilAsignacion.objects.filter(user=user, ended_at__isnull=True).update(ended_at=timezone.now())
         asg = UserPerfilAsignacion.objects.create(user=user, perfil=perfil)

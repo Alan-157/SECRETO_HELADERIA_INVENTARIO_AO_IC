@@ -32,7 +32,7 @@
           <a href="{% url 'accounts:usuarios_update' u.id %}" class="btn btn-warning btn-sm">Editar</a>
           <form method="post" action="{% url 'accounts:usuarios_delete' u.id %}" style="display:inline;">
             {% csrf_token %}
-            <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+            <a href="{% url 'accounts:usuarios_delete' u.pk %}" class="btn btn-sm btn-danger js-delete" data-action="delete" data-url="{% url 'accounts:usuarios_delete' u.pk %}">Eliminar</a>
           </form>
         {% else %}
           <span class="text-muted">Solo lectura</span>

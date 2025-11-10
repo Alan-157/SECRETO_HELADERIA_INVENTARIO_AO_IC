@@ -55,6 +55,13 @@ DB_PASSWORD=Admin12345
 DB_HOST=127.0.0.1
 DB_PORT=3306
 ```
+
+CREATE USER 'heladeria_user'@'localhost' IDENTIFIED BY 'Admin12345';
+
+GRANT ALL PRIVILEGES ON heladeria.* TO 'heladeria_user'@'localhost';
+
+FLUSH PRIVILEGES;
+
 ## Ejecutar migraciones y superusuario
 python manage.py makemigrations
 python manage.py migrate

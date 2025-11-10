@@ -12,7 +12,7 @@
           <a href="{% url 'accounts:perfiles_update' p.id %}" class="btn btn-warning btn-sm">Editar</a>
           <form method="post" action="{% url 'accounts:perfiles_delete' p.id %}" style="display:inline;">
             {% csrf_token %}
-            <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+            <a href="{% url 'accounts:perfiles_delete' p.pk %}" class="btn btn-sm btn-danger js-delete" data-action="delete" data-url="{% url 'accounts:perfiles_delete' p.pk %}">  Eliminar</a>
           </form>
         {% else %}
           <span class="text-muted">Solo lectura</span>

@@ -11,6 +11,7 @@ from django.http import JsonResponse
 from django.db.models import Q
 from functools import reduce
 import operator
+from django.db import transaction
 
 
 # --- Función genérica para listas con filtros, orden y paginación ---
@@ -95,10 +96,10 @@ def list_with_filters(
 
 # --- CRUD de Usuarios ---
 @login_required
-@perfil_required(allow=("admin",))
+@perfil_required(allow=("administrador",))
 def usuarios_list(request):
     qs = UsuarioApp.objects.select_related("active_asignacion__perfil")
-    read_only = not (request.user.is_superuser or user_has_role(request.user, "admin"))
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "administrador"))
 
     # --- Campo de orden (sort) ---
     allowed_sort = {"name", "email"}
@@ -135,7 +136,7 @@ def usuarios_list(request):
     )
 
 @login_required
-@perfil_required(allow=("admin",))
+@perfil_required(allow=("administrador",))
 def usuarios_create(request):
     if request.method == "POST":
         form = UsuarioCreateForm(request.POST)
@@ -148,10 +149,16 @@ def usuarios_create(request):
     return render(request, "accounts/usuarios_form.html", {"form": form, "titulo": "Nuevo Usuario"})
 
 @login_required
-@perfil_required(allow=("admin",))
+@perfil_required(allow=("administrador",))
 def usuarios_update(request, pk):
     user = get_object_or_404(UsuarioApp, pk=pk)
-    form = UsuarioUpdateForm(request.POST or None, instance=user)
+    if user.is_superuser:
+        messages.error(request, "No puedes editar al superusuario.")
+        return redirect("accounts:usuarios_list")
+    if user.pk == request.user.pk:
+        messages.error(request, "Para modificar tu propia cuenta, usa la sección Perfil.")
+        return redirect("accounts:profile_edit")
+    form = UsuarioUpdateForm(request.POST or None, request.FILES or None, instance=user)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, " Usuario actualizado correctamente.")
@@ -159,22 +166,41 @@ def usuarios_update(request, pk):
     return render(request, "accounts/usuarios_form.html", {"form": form, "titulo": "Editar Usuario"})
 
 @login_required
-@perfil_required(allow=("admin",))
+@perfil_required(allow=("administrador",))
 def usuarios_delete(request, pk):
     user = get_object_or_404(UsuarioApp, pk=pk)
-    if request.method == "POST":
-        user.delete()
-        messages.success(request, " Usuario eliminado correctamente.")
-        return redirect("accounts:usuarios_list")
-    return render(request, "accounts/usuarios_confirm_delete.html", {"user": user})
 
+    # NO borrar superuser, ni a sí mismo, ni admins si no eres superuser
+    if user.is_superuser:
+        messages.error(request, "No puedes eliminar al superusuario.")
+        return redirect("accounts:usuarios_list")
+    if user.pk == request.user.pk:
+        messages.error(request, "No puedes eliminar tu propia cuenta.")
+        return redirect("accounts:usuarios_list")
+    target_role = (getattr(getattr(user, "active_asignacion", None), "perfil", None).nombre or "").strip().lower()
+    if target_role in {"administrador", "admin"} and not request.user.is_superuser:
+        messages.error(request, "Solo el superusuario puede eliminar a usuarios con perfil Administrador.")
+        return redirect("accounts:usuarios_list")
+
+    if request.method == "POST":
+        with transaction.atomic():
+            # Soft delete
+            user.is_active = False
+            # opcional: “anonimizar” para RGPD/auditoría y evitar colisiones únicas
+            user.email = f"deleted_{user.pk}@example.local"
+            user.name = f"Usuario eliminado #{user.pk}"
+            user.save(update_fields=["is_active", "email", "name"])
+        messages.success(request, "Usuario desactivado correctamente.")
+        return redirect("accounts:usuarios_list")
+
+    return render(request, "accounts/usuarios_confirm_delete.html", {"user": user})
 
 # --- CRUD de Perfiles ---
 @login_required
-@perfil_required(allow=("admin",))
+@perfil_required(allow=("administrador",))
 def perfiles_list(request):
     qs = UserPerfil.objects.all()
-    read_only = not (request.user.is_superuser or user_has_role(request.user, "admin"))
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "administrador"))
 
     return list_with_filters(
         request,
@@ -192,7 +218,7 @@ def perfiles_list(request):
     )
 
 @login_required
-@perfil_required(allow=("admin",))
+@perfil_required(allow=("administrador",))
 def perfiles_create(request):
     if request.method == "POST":
         nombre = request.POST.get("nombre")
@@ -205,7 +231,7 @@ def perfiles_create(request):
     return render(request, "accounts/perfiles_form.html", {"titulo": "Nuevo Perfil"})
 
 @login_required
-@perfil_required(allow=("admin",))
+@perfil_required(allow=("administrador",))
 def perfiles_update(request, pk):
     perfil = get_object_or_404(UserPerfil, pk=pk)
     if request.method == "POST":
@@ -217,7 +243,7 @@ def perfiles_update(request, pk):
     return render(request, "accounts/perfiles_form.html", {"perfil": perfil, "titulo": "Editar Perfil"})
 
 @login_required
-@perfil_required(allow=("admin",))
+@perfil_required(allow=("administrador",))
 def perfiles_delete(request, pk):
     perfil = get_object_or_404(UserPerfil, pk=pk)
     if request.method == "POST":

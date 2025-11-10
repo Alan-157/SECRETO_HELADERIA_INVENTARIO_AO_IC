@@ -43,7 +43,7 @@
           <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-warning">Editar</a>
           <form method="post" action="{% url 'inventario:eliminar_insumo' insumo.id %}" class="d-inline">
             {% csrf_token %}
-            <button type="button" class="btn btn-sm btn-danger" data-delete-form>Eliminar</button>
+            <a class="btn btn-sm btn-danger" href="{% url 'inventario:eliminar_insumo' insumo.id %}">Eliminar</a>
           </form>
         {% else %}
           <span class="text-muted">—</span>
