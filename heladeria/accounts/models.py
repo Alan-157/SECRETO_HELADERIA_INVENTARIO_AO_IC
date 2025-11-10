@@ -68,7 +68,7 @@ class UsuarioApp(AbstractBaseUser, PermissionsMixin):
         null=True, blank=True,
         # Se añaden ambos validadores: extensión y tamaño (requisito de la evaluación)
         validators=[
-            FileExtensionValidator(allowed_extensions=["jpg","jpeg","png"]),
+            FileExtensionValidator(allowed_extensions=["jpg","jpeg","png","webp"]),
             validate_file_size_2mb
         ],
         help_text="Imagen JPG/PNG. Máx 2MB."

@@ -18,7 +18,7 @@
             <!-- ✅ Formulario de eliminación conectado a la URL -->
             <form method="post" action="{% url 'inventario:eliminar_bodega' b.id %}" class="d-inline" data-ajax="true">
               {% csrf_token %}
-              <button type="button" class="btn btn-sm btn-danger" data-delete-form>Eliminar</button>
+              <a class="btn btn-sm btn-danger" href="{% url 'inventario:eliminar_bodega' b.id %}">Eliminar</a>
             </form>
 
           {% else %}

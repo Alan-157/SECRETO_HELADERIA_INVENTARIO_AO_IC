@@ -25,7 +25,7 @@
             {% else %}
               <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_insumos' %}">Insumos</a></li>
 
-              {% if perfil == 'admin' or perfil == 'administrador' or perfil == 'encargado' or user.is_superuser %}
+              {% if perfil == 'administrador' or perfil == 'encargado' or user.is_superuser %}
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_bodegas' %}">Bodegas</a></li>
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_lotes' %}">Lotes</a></li>
                 <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_categorias' %}">Categorías</a></li>
@@ -35,7 +35,7 @@
 
               <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_ordenes' %}">Órdenes</a></li>
 
-              {% if perfil == 'admin' or user.is_superuser %}
+              {% if perfil == 'administrador' or user.is_superuser %}
                 <li class="nav-item dropdown">
                   <a class="nav-link dropdown-toggle text-white" href="#" id="navbarAdminDropdown" role="button"
                      data-bs-toggle="dropdown" aria-expanded="false">

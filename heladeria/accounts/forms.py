@@ -26,7 +26,7 @@ def _validate_avatar(file):
         raise ValidationError(f"La imagen no puede superar {MAX_AVATAR_MB}MB.")
     # Mimetype simple
     ctype = (getattr(file, "content_type", "") or "").lower()
-    if not (ctype.startswith("image/jpeg") or ctype.startswith("image/png")):
+    if not (ctype.startswith("image/jpeg") or ctype.startswith("image/png") or ctype.startswith("image/webp")):
         raise ValidationError("Solo se permiten imágenes JPG o PNG.")
 
 def _email_normalized(email: str) -> str:
@@ -83,7 +83,7 @@ class RegisterForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ["name", "email", "password"]
+        fields = ["name", "email", "phone", "avatar", "password"]
         widgets = {
             "name": forms.TextInput(attrs={'class': 'form-control'}),
             "email": forms.EmailInput(attrs={'class': 'form-control'}),

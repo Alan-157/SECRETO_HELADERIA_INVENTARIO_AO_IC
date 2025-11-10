@@ -1,67 +1,97 @@
 {% extends "base.html" %}
-
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
-
 <div class="card shadow-sm">
-<div class="card-header bg-white py-3">
-<h3 class="mb-0">{{ titulo }}</h3>
-</div>
-<div class="card-body">
-<form method="post">
-{% csrf_token %}
+  <div class="card-header bg-white py-3">
+    <h3 class="mb-0">{{ titulo }}</h3>
+  </div>
 
-        {{ formset.management_form }}
-        
-        <p class="text-muted">Completa las filas que necesites. Las filas vacías serán ignoradas.</p>
+  <div class="card-body">
+    <form method="post">{% csrf_token %}
+      {{ formset.management_form }}
 
-        <div class="table-responsive">
-            <table class="table">
-                <thead class="table-light">
-                    <tr>
-                        <th scope="col" style="width: 60%;">Insumo</th>
-                        <th scope="col" style="width: 40%;">Cantidad Solicitada</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for form in formset %}
-                        <tr class="dynamic-form">
-                            <td>
-                                {{ form.insumo }}
-                                {% for error in form.insumo.errors %}
-                                    <div class="text-danger small mt-1">{{ error }}</div>
-                                {% endfor %}
-                            </td>
-                            <td>
-                                {{ form.cantidad_solicitada }}
-                                {% for error in form.cantidad_solicitada.errors %}
-                                    <div class="text-danger small mt-1">{{ error }}</div>
-                                {% endfor %}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                    
-                    {% if formset.non_form_errors %}
-                        <tr>
-                            <td colspan="2">
-                                <div class="alert alert-danger p-2">
-                                    {{ formset.non_form_errors }}
-                                </div>
-                            </td>
-                        </tr>
-                    {% endif %}
-                </tbody>
-            </table>
-        </div>
-        
-        <hr>
-        <div class="d-flex justify-content-end">
-            <a href="{% url 'inventario:listar_ordenes' %}" class="btn btn-secondary me-2">Cancelar</a>
-            <button type="submit" class="btn btn-primary">Guardar Orden</button>
-        </div>
+      <p class="text-muted">Completa las filas que necesites. Las filas vacías serán ignoradas.</p>
+
+      <div class="table-responsive">
+        <table class="table">
+          <thead class="table-light">
+            <tr>
+              <th style="width:60%;">Insumo</th>
+              <th style="width:40%;">Cantidad Solicitada</th>
+            </tr>
+          </thead>
+          <tbody id="formset-body">
+            {% for form in formset %}
+              <tr class="form-row">
+                <td>
+                  {{ form.insumo }}
+                  {% for e in form.insumo.errors %}
+                    <div class="text-danger small mt-1">{{ e }}</div>
+                  {% endfor %}
+                </td>
+                <td>
+                  {{ form.cantidad_solicitada }}
+                  {% for e in form.cantidad_solicitada.errors %}
+                    <div class="text-danger small mt-1">{{ e }}</div>
+                  {% endfor %}
+                </td>
+              </tr>
+            {% endfor %}
+            {% if formset.non_form_errors %}
+              <tr><td colspan="2">
+                <div class="alert alert-danger p-2">{{ formset.non_form_errors }}</div>
+              </td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Fila oculta “plantilla” del formset -->
+      <template id="empty-form-template">
+        <tr class="form-row">
+          <td>
+            {{ formset.empty_form.insumo }}
+          </td>
+          <td>
+            {{ formset.empty_form.cantidad_solicitada }}
+          </td>
+        </tr>
+      </template>
+
+      <hr>
+      <div class="d-flex gap-2 justify-content-end">
+        <button type="button" class="btn btn-secondary" id="add-row">Agregar ítem</button>
+        <a href="{% url 'inventario:listar_ordenes' %}" class="btn btn-secondary">Cancelar</a>
+        <button type="submit" class="btn btn-primary">Guardar Orden</button>
+      </div>
     </form>
+  </div>
 </div>
 
-</div>
+<script>
+(() => {
+  const prefix = "{{ formset.prefix }}"; // p.ej. "ordenitem_set"
+  const totalEl = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
+  const tbody = document.getElementById("formset-body");
+  const tpl = document.getElementById("empty-form-template");
+
+  document.getElementById("add-row").addEventListener("click", () => {
+    const index = parseInt(totalEl.value, 10);
+    const html = tpl.innerHTML.replace(/__prefix__/g, index); // Django usa __prefix__ en empty_form
+    const tmp = document.createElement("tbody");
+    tmp.innerHTML = html.trim();
+    const row = tmp.firstElementChild;
+
+    // limpiar valores por si el empty_form viene con algo
+    row.querySelectorAll("input, select, textarea").forEach(el => {
+      if (el.tagName === "INPUT") el.value = "";
+      if (el.tagName === "SELECT") el.selectedIndex = 0;
+    });
+
+    tbody.appendChild(row);
+    totalEl.value = index + 1;
+  });
+})();
+</script>
 {% endblock %}

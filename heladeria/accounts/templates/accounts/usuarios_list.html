@@ -130,6 +130,60 @@ Swal.fire({
   showConfirmButton: false
 });
 </script>
+<script>
+(function(){
+  // CSRF desde cookie
+  function getCookie(name){const v=`; ${document.cookie}`;const p=v.split(`; ${name}=`);if(p.length===2) return p.pop().split(';').shift();}
+  const csrftoken = getCookie('csrftoken');
+
+  const form = document.getElementById('filters-form');
+  const results = document.getElementById('results');
+  const pageInput = document.getElementById('page-input');
+
+  async function loadAjax(url){
+    const r = await fetch(url, { headers: { "X-Requested-With":"XMLHttpRequest" }});
+    if(!r.ok) return;
+    const payload = await r.json();
+    results.innerHTML = payload.html;
+    window.history.replaceState({}, "", url);
+  }
+  function buildURL(paramsOverride={}){
+    const data=new FormData(form);
+    for(const [k,v] of Object.entries(paramsOverride)) data.set(k,v);
+    const usp=new URLSearchParams(data);
+    return `${window.location.pathname}?${usp.toString()}`;
+  }
+
+  // Delegación: confirmación de borrado para cualquier .js-delete dentro de #results
+  results.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('[data-action="delete"], .js-delete');
+    if(!btn) return;
+    e.preventDefault();
+    const url = btn.getAttribute('data-url') || btn.getAttribute('href');
+
+    const res = await Swal.fire({
+      icon: 'warning',
+      title: '¿Eliminar usuario?',
+      text: 'Esta acción no se puede deshacer.',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar'
+    });
+    if(!res.isConfirmed) return;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest'}
+    });
+
+    // Refrescar lista por AJAX (volver a página 1)
+    pageInput.value = "1";
+    await loadAjax(buildURL());
+    Swal.fire({icon:'success', title:'Eliminado', timer:1500, showConfirmButton:false});
+  });
+})();
+</script>
+
 {% endfor %}
 
 {% endblock %}
