@@ -70,7 +70,7 @@ python manage.py createsuperuser
 ## Cómo cargar las semillas
 # Seed accounts
 python manage.py seed_roles
-python manage.py seed_admin
+python manage.py seed_administrador
 python manage.py seed_encargado
 python manage.py seed_bodeguero
 # Seed Inventario
