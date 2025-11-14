@@ -2,6 +2,7 @@ from decimal import Decimal
 from django.db import models
 from django.db.models import Sum
 from accounts.models import BaseModel, UsuarioApp
+from django.core.exceptions import ValidationError
 
 # --- CONSTANTES DE OPCIÓN ---
 TIPO_MOVIMIENTO_CHOICES = [
@@ -17,17 +18,27 @@ ESTADO_ORDEN_CHOICES = [
     ("CANCELADA", "Cancelada"),
 ]
 
+# --- NUEVAS OPCIONES DE UNIDAD DE MEDIDA ---
+UNIDAD_MEDIDA_CHOICES = [ 
+    ("KG", "Kilogramos"),
+    ("GR", "Gramos"),
+    ("LT", "Litros"),
+    ("ML", "Mililitros"),
+    ("UN", "Unidades"),
+    ("OTRO", "Otro"),
+]
+
 # --- MODELOS DE CATÁLOGO Y ESTRUCTURA ---
 
 class Categoria(BaseModel):
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=20)
     descripcion = models.TextField(blank=True, null=True)
     def __str__(self):
         return self.nombre
 
 
 class Bodega(BaseModel):
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=20)
     direccion = models.CharField(max_length=255)
     descripcion = models.TextField(blank=True, verbose_name="Descripción")
     def __str__(self):
@@ -36,7 +47,7 @@ class Bodega(BaseModel):
 
 class Ubicacion(BaseModel):
     bodega = models.ForeignKey(Bodega, on_delete=models.PROTECT, related_name="ubicaciones")
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=20)
     tipo = models.CharField(max_length=50, blank=True, null=True)
     def __str__(self):
         return f"{self.nombre} ({self.bodega.nombre})"
@@ -44,14 +55,29 @@ class Ubicacion(BaseModel):
 
 class Insumo(BaseModel):
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT, related_name="insumos")
-    nombre = models.CharField(max_length=100)
+    nombre = models.CharField(max_length=20)
     stock_minimo = models.DecimalField(max_digits=10, decimal_places=2)
     stock_maximo = models.DecimalField(max_digits=10, decimal_places=2)
-    unidad_medida = models.CharField(max_length=20)
+    # CAMBIO AQUÍ: Ahora usa CHOICES
+    unidad_medida = models.CharField(max_length=5, choices=UNIDAD_MEDIDA_CHOICES) 
     precio_unitario = models.IntegerField()
 
     def __str__(self):
         return self.nombre
+
+    # Validación de stock (mantenida del paso anterior)
+    def clean(self):
+        # Asegurarse de que ambos campos tengan un valor antes de comparar
+        if self.stock_minimo is not None and self.stock_maximo is not None:
+            if self.stock_minimo > self.stock_maximo:
+                # Se lanza un ValidationError con un mensaje para cada campo
+                raise ValidationError({
+                    'stock_minimo': 'El stock mínimo no puede ser mayor que el stock máximo.',
+                    'stock_maximo': 'El stock máximo debe ser mayor o igual al stock mínimo.'
+                })
+
+        # Llamar al clean() de la clase padre
+        super().clean()
 
 
 # --- MODELOS DE INVENTARIO Y TRANSACCIONES ---

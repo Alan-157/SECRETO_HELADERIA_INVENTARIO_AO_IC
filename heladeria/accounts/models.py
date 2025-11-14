@@ -45,15 +45,15 @@ class CustomUserManager(BaseUserManager):
 
 # 3) Perfil (único por nombre)
 class UserPerfil(BaseModel):
-    nombre = models.CharField(max_length=100, unique=True)  # ← unique!
+    nombre = models.CharField(max_length=20, unique=True)  # ← unique!
     def __str__(self):
         return self.nombre
 
 class UsuarioApp(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    email = models.EmailField(unique=True, max_length=191)
-    name  = models.CharField(max_length=100, blank=False)
+    email = models.EmailField(unique=True, max_length=30)
+    name  = models.CharField(max_length=20, blank=False)
     # ATENCIÓN: Se elimina unique=True del teléfono, ya que es demasiado restrictivo.
     phone = models.CharField(
         max_length=15, # Ajuste a 15 por si se incluye código de país (+56)

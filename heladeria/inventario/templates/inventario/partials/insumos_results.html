@@ -7,7 +7,8 @@
       <th class="text-center">Stock Mínimo</th>
       <th class="text-center">Stock Máximo</th>
       <th>Unidad</th>
-      <th class="text-end">Acciones</th>
+      <th class="text-center">Acciones Movimiento</th>
+      <th class="text-end">Administración</th>
     </tr>
   </thead>
   <tbody>
@@ -36,8 +37,27 @@
 
       <td class="text-center">{{ sm|floatformat:2 }}</td>
       <td class="text-center">{{ sx|floatformat:2 }}</td>
-      <td>{{ insumo.unidad_medida }}</td>
+      
+      {# CORRECCIÓN APLICADA AQUÍ #}
+      <td>{{ insumo.get_unidad_medida_display }}</td>
 
+      {# --- BOTONES DE ACCIÓN DE MOVIMIENTO --- #}
+      <td class="text-center">
+        {% if not read_only %}
+          <a href="{% url 'inventario:registrar_movimiento' %}?insumo_id={{ insumo.id }}&tipo=ENTRADA" 
+             class="btn btn-sm btn-success me-1" title="Registrar Entrada">
+            <i class="bi bi-plus-circle"></i> Entrada
+          </a>
+          <a href="{% url 'inventario:registrar_movimiento' %}?insumo_id={{ insumo.id }}&tipo=SALIDA" 
+             class="btn btn-sm btn-danger" title="Registrar Salida">
+            <i class="bi bi-dash-circle"></i> Salida
+          </a>
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
+
+      {# --- Columna de Administración Original --- #}
       <td class="text-end">
         {% if not read_only %}
           <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-warning">Editar</a>
@@ -52,7 +72,7 @@
     </tr>
     {% endwith %}
     {% empty %}
-    <tr><td colspan="7" class="text-center text-muted py-3">Sin resultados</td></tr>
+    <tr><td colspan="8" class="text-center text-muted py-3">Sin resultados</td></tr>
     {% endfor %}
   </tbody>
 </table>

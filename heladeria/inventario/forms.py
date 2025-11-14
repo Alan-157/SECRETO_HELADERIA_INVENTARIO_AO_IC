@@ -1,6 +1,6 @@
 from datetime import date
 from django import forms
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.forms import (
     inlineformset_factory,
     BaseInlineFormSet,
@@ -63,9 +63,29 @@ class InsumoForm(forms.ModelForm):
             "categoria": forms.Select(attrs={"class": "form-select"}),
             "stock_minimo": forms.NumberInput(attrs={"class": "form-control"}),
             "stock_maximo": forms.NumberInput(attrs={"class": "form-control"}),
-            "unidad_medida": forms.TextInput(attrs={"class": "form-control"}),
-            "precio_unitario": forms.NumberInput(attrs={"class": "form-control"}),
+            "unidad_medida": forms.Select(attrs={"class": "form-select"}),
+            
+            # CORRECCIÓN CLIENTE: Límite de 5 dígitos (máx 99999)
+            "precio_unitario": forms.NumberInput(attrs={
+                "class": "form-control",
+                "max": "99999", # Validación HTML5
+                "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)" # Truncado inmediato (workaround)
+            }),
         }
+
+    def clean_nombre(self):
+        """Asegura que no existan insumos con el mismo nombre (case-insensitive)."""
+        nombre = self.cleaned_data["nombre"].strip()
+        # Filtramos por nombre ignorando mayúsculas/minúsculas y que el insumo esté activo
+        qs = Insumo.objects.filter(nombre__iexact=nombre)
+
+        # Si estamos editando un insumo existente, nos excluimos a nosotros mismos de la comprobación
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        if qs.exists():
+            raise forms.ValidationError("⚠ Ya existe otro insumo con este nombre.")
+        return nombre
 
     def clean_stock_minimo(self):
         minimo = self.cleaned_data.get("stock_minimo")
@@ -78,11 +98,20 @@ class InsumoForm(forms.ModelForm):
         if maximo is not None and maximo < 0:
             raise forms.ValidationError("El stock máximo no puede ser negativo.")
         return maximo
-
+    
     def clean_precio_unitario(self):
         precio = self.cleaned_data.get("precio_unitario")
-        if precio is not None and precio < 0:
-            raise forms.ValidationError("El precio unitario no puede ser negativo.")
+        MAX_DIGITS = 99999 # El número más grande de 5 dígitos
+        
+        if precio is not None:
+            if precio < 0:
+                raise forms.ValidationError("El precio unitario no puede ser negativo.")
+            
+            # AÑADIDO: Validación del límite de 5 dígitos
+            if precio > MAX_DIGITS:
+                # Usamos f-string con formato para mejor lectura del error
+                raise forms.ValidationError(f"El precio unitario no puede exceder los {MAX_DIGITS:,} (5 dígitos).")
+                
         return precio
 
 
@@ -90,11 +119,21 @@ class InsumoForm(forms.ModelForm):
 # MOVIMIENTOS
 # -------------------------------------------------
 class EntradaForm(forms.ModelForm):
-    # Validación positiva con DecimalField
+    # Validación positiva y límite de 5 dígitos (99999)
     cantidad = forms.DecimalField(
         label="Cantidad",
-        validators=[MinValueValidator(0.01, message="La cantidad debe ser mayor que cero.")],
-        widget=forms.NumberInput(attrs={"class": "form-control"}),
+        validators=[
+            MinValueValidator(0.01, message="La cantidad debe ser mayor que cero."),
+            # VALIDACIÓN SERVIDOR: Asegura que el valor total no exceda 99,999
+            MaxValueValidator(99999, message="La cantidad no puede exceder 99,999 (5 dígitos enteros).")
+        ],
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "max": "99999.99", # LÍMITE HTML5 para 5 enteros y 2 decimales (DecimalField)
+            # TRUNCADO CLIENTE: Limita la longitud total a 8 caracteres (5 enteros + 1 punto + 2 decimales)
+            # Esto ayuda a limitar la parte entera a 5 dígitos al escribir.
+            "oninput": "if(this.value.includes('.') && this.value.split('.')[0].length > 5) { this.value = this.value.split('.')[0].slice(0, 5) + '.' + this.value.split('.')[1]; } else if (this.value.length > 5 && !this.value.includes('.')) { this.value = this.value.slice(0, 5); }"
+        }),
     )
 
     class Meta:
@@ -111,10 +150,20 @@ class EntradaForm(forms.ModelForm):
 
 
 class SalidaForm(forms.ModelForm):
+    # Validación positiva y límite de 5 dígitos (99999)
     cantidad = forms.DecimalField(
         label="Cantidad",
-        validators=[MinValueValidator(0.01, message="La cantidad debe ser mayor que cero.")],
-        widget=forms.NumberInput(attrs={"class": "form-control"}),
+        validators=[
+            MinValueValidator(0.01, message="La cantidad debe ser mayor que cero."),
+            # VALIDACIÓN SERVIDOR: Asegura que el valor total no exceda 99,999
+            MaxValueValidator(99999, message="La cantidad no puede exceder 99,999 (5 dígitos enteros).")
+        ],
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "max": "99999.99", # LÍMITE HTML5 para 5 enteros y 2 decimales (DecimalField)
+            # TRUNCADO CLIENTE: Mismo script de límite de longitud
+            "oninput": "if(this.value.includes('.') && this.value.split('.')[0].length > 5) { this.value = this.value.split('.')[0].slice(0, 5) + '.' + this.value.split('.')[1]; } else if (this.value.length > 5 && !this.value.includes('.')) { this.value = this.value.slice(0, 5); }"
+        }),
     )
 
     class Meta:
@@ -189,9 +238,7 @@ OrdenInsumoDetalleEditFormSet = inlineformset_factory(
 )
 
 
-# -------------------------------------------------
-# Formulario de línea para movimientos múltiples (UI avanzada)
-# -------------------------------------------------
+# Formulario de línea para movimientos múltipless
 
 class MovimientoLineaForm(forms.Form):
     tipo = forms.ChoiceField(choices=TIPO_CHOICES, initial="ENTRADA", label="Tipo")
@@ -231,7 +278,7 @@ class MovimientoLineaForm(forms.Form):
                     "La fecha del movimiento no puede ser anterior al día de hoy."
                 )
         return fecha_mov
-
+    
     def clean(self):
         cd = super().clean()
         tipo  = cd.get("tipo")
@@ -270,10 +317,7 @@ class MovimientoLineaForm(forms.Form):
 
 MovimientoLineaFormSet = formset_factory(MovimientoLineaForm, extra=1, can_delete=True)
 
-
-# -------------------------------------------------
 # BODEGAS
-# -------------------------------------------------
 
 class BodegaForm(forms.ModelForm):
     class Meta:

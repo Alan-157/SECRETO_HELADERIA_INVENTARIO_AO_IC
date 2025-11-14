@@ -1,14 +1,53 @@
 {% extends "base.html" %}
-{% block title %}{{ titulo }}{% endblock %}
+
 {% block content %}
-<div class="card">
-  <div class="card-body">
-    <h5 class="mb-3">{{ titulo }}</h5>
-    <p class="text-muted">Esta acción no se puede deshacer.</p>
-    <form method="post">{% csrf_token %}
-      <a href="{% url 'inventario:listar_ordenes' %}" class="btn btn-secondary">Cancelar</a>
-      <button type="submit" class="btn btn-danger">Eliminar</button>
-    </form>
-  </div>
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">Confirmar Eliminación</h5>
+            </div>
+            <div class="card-body">
+                
+                <h4 class="card-title mb-3">{{ titulo }}</h4>
+
+                <p class="text-danger fw-bold">
+                    ⚠️ Esta acción no se puede deshacer. ¿Estás seguro de que deseas eliminar este elemento?
+                </p>
+
+                {% if insumo and insumo.stock_total is not None %}
+                    {% if insumo.stock_total > 0 %}
+                        <div class="alert alert-warning">
+                            <strong>¡Atención!</strong> Este insumo tiene un stock actual de 
+                            <strong>{{ insumo.stock_total|floatformat:2 }}</strong>. 
+                            La eliminación está bloqueada por esta razón.
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            El stock actual de este insumo es **0.00**. La eliminación procederá.
+                        </div>
+                    {% endif %}
+                {% endif %}
+                <hr>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="confirm" value="true">
+                    
+                    <a href="{{ cancel_url }}" class="btn btn-secondary me-2">Cancelar</a>
+                    
+                    {% if insumo and insumo.stock_total > 0 %}
+                        <button type="button" class="btn btn-danger" disabled>
+                            Eliminar (Stock > 0)
+                        </button>
+                    {% else %}
+                        <button type="submit" class="btn btn-danger">
+                            Confirmar Eliminación
+                        </button>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
 </div>
-{% endblock %}
+{% endblock content %}

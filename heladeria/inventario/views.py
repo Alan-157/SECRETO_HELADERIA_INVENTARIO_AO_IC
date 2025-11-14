@@ -213,7 +213,7 @@ def editar_insumo(request, insumo_id):
     form = InsumoForm(request.POST or None, instance=insumo)
     if request.method == 'POST' and form.is_valid():
         form.save()
-        messages.success(request, f"📝 Insumo '{insumo.nombre}' actualizado.")
+        messages.success(request, f"El Insumo '{insumo.nombre}' fue actualizado.")
         return redirect('inventario:listar_insumos')
 
     return render(request, 'inventario/editar_insumo.html', {'form': form, 'titulo': f'Editar {insumo.nombre}'})
@@ -222,23 +222,39 @@ def editar_insumo(request, insumo_id):
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 def eliminar_insumo(request, insumo_id):
-    insumo = get_object_or_404(Insumo, id=insumo_id)
-
-    # Regla: si tiene lotes activos, no se puede eliminar
-    tiene_lotes = InsumoLote.objects.filter(insumo=insumo, is_active=True).exists()
+    # 1. Obtener el Insumo y calcular el stock total de sus lotes activos
+    from decimal import Decimal # Re-importación local por si acaso, aunque está global
+    insumo = get_object_or_404(
+        Insumo.objects.annotate(
+            stock_total=Coalesce(
+                Sum('lotes__cantidad_actual', filter=Q(lotes__is_active=True)), 
+                Decimal("0.00"), 
+                output_field=DecimalField()
+            )
+        ), 
+        id=insumo_id
+    )
+    
+    stock_actual = insumo.stock_total
 
     if request.method == "POST":
-        if tiene_lotes:
-            messages.error(request, "No se puede eliminar el insumo: tiene lotes activos.")
+        # 2. Regla: NO se puede eliminar si el stock actual es mayor que cero.
+        if stock_actual > Decimal("0.00"):
+            messages.error(
+                request, 
+                f"🚫 No se puede eliminar el insumo '{insumo.nombre}' porque tiene stock activo ({stock_actual:.2f})."
+            )
             return redirect("inventario:listar_insumos")
+            
+        # 3. Procede con la eliminación (desactivación) si el stock es cero
         insumo.is_active = False
         insumo.save(update_fields=["is_active"])
-        messages.success(request, f"El insumo '{insumo.nombre}' fue eliminado.")
+        messages.success(request, f"🗑️ El insumo '{insumo.nombre}' fue eliminado.")
         return redirect("inventario:listar_insumos")
 
     return render(
         request,
-        "confirmar_eliminar.html",
+        "inventario/confirmar_eliminar.html",
         {"titulo": f"Eliminar Insumo «{insumo.nombre}»", "cancel_url": reverse("inventario:listar_insumos")}
     )
 
@@ -684,7 +700,7 @@ def registrar_movimiento(request):
                         fecha_ingreso=fecha,
                         fecha_expiracion=fecha_exp,
                         cantidad_inicial=cantidad,
-                        cantidad_actual=cantidad,
+                        cantidad_actual=Decimal("0.00"), # <-- CORRECCIÓN DOBLE CONTEO
                         usuario=request.user,
                     )
                 elif not lote:
@@ -704,6 +720,11 @@ def registrar_movimiento(request):
                     detalle.save(update_fields=["cantidad_atendida"])
 
             elif tipo == "SALIDA":
+                # VALIDACIÓN: La SALIDA no debe tener fecha de expiración
+                if fecha_exp:
+                    messages.error(request, "Una SALIDA no puede registrar una fecha de expiración.")
+                    raise transaction.TransactionManagementError("Salida con fecha de expiración")
+                    
                 if crear_nuevo:
                     messages.error(request, "No aplica 'Crear nuevo lote' para SALIDA.")
                     raise transaction.TransactionManagementError("Salida con crear_nuevo_lote")
@@ -718,7 +739,7 @@ def registrar_movimiento(request):
                     tipo="USO_PRODUCCION", observaciones=obs,
                     orden=orden_obj, detalle=detalle
                 )
-                lote.cantidad_actual -= cant
+                lote.cantidad_actual -= cant # <-- Resta de stock (la lógica ya era correcta)
                 lote.save(update_fields=["cantidad_actual"])
 
         if orden_obj:
@@ -727,7 +748,30 @@ def registrar_movimiento(request):
         messages.success(request, "Movimiento registrado correctamente.")
         return redirect('inventario:listar_movimientos')
 
+    # Bloque GET, modificado para precargar insumo y tipo desde listar_insumos
     formset = MovimientoLineaFormSet()
+    
+    # Manejar precarga si vienen insumo_id y tipo (desde listar_insumos)
+    if request.method == "GET":
+        insumo_id = request.GET.get("insumo_id")
+        tipo_movimiento = request.GET.get("tipo") # ENTRADA o SALIDA
+        
+        insumo_obj = None
+        if insumo_id:
+            try:
+                insumo_obj = get_object_or_404(Insumo, id=insumo_id)
+            except Exception:
+                messages.warning(request, "El insumo solicitado no es válido.")
+
+        # Si hay un insumo válido, precargamos el formset
+        if insumo_obj and tipo_movimiento in ("ENTRADA", "SALIDA"):
+            initial_data = [{
+                'insumo': insumo_obj.id,
+                'tipo': tipo_movimiento,
+                # Dejamos cantidad y ubicación vacíos para que el usuario los complete
+            }]
+            formset = MovimientoLineaFormSet(initial=initial_data)
+
     return render(request, "inventario/registrar_movimiento.html", {
         "formset": formset,
         "titulo": "Registrar movimiento",

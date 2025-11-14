@@ -9,33 +9,33 @@ class Command(BaseCommand):
 
         insumos_data = [
             # Lácteos
-            {"nombre": "Leche Entera", "categoria_nombre": "Lácteos", "unidad_medida": "Litro", "stock_minimo": 20, "stock_maximo": 100, "precio_unitario": 1200},
-            {"nombre": "Crema de Leche (35%)", "categoria_nombre": "Lácteos", "unidad_medida": "Litro", "stock_minimo": 10, "stock_maximo": 50, "precio_unitario": 4500},
-            {"nombre": "Leche en Polvo", "categoria_nombre": "Lácteos", "unidad_medida": "Kilo", "stock_minimo": 5, "stock_maximo": 25, "precio_unitario": 8000},
+            {"nombre": "Leche Entera", "categoria_nombre": "Lácteos", "unidad_medida": "LT", "stock_minimo": 20, "stock_maximo": 100, "precio_unitario": 1200},
+            {"nombre": "Crema de Leche (35%)", "categoria_nombre": "Lácteos", "unidad_medida": "LT", "stock_minimo": 10, "stock_maximo": 50, "precio_unitario": 4500},
+            {"nombre": "Leche en Polvo", "categoria_nombre": "Lácteos", "unidad_medida": "KG", "stock_minimo": 5, "stock_maximo": 25, "precio_unitario": 8000},
 
             # Frutas Congeladas
-            {"nombre": "Pulpa de Frutilla", "categoria_nombre": "Frutas Congeladas", "unidad_medida": "Kilo", "stock_minimo": 10, "stock_maximo": 80, "precio_unitario": 3500},
-            {"nombre": "Pulpa de Mango", "categoria_nombre": "Frutas Congeladas", "unidad_medida": "Kilo", "stock_minimo": 10, "stock_maximo": 80, "precio_unitario": 4200},
-            {"nombre": "Arándanos Congelados", "categoria_nombre": "Frutas Congeladas", "unidad_medida": "Kilo", "stock_minimo": 5, "stock_maximo": 40, "precio_unitario": 4000},
+            {"nombre": "Pulpa de Frutilla", "categoria_nombre": "Frutas Congeladas", "unidad_medida": "KG", "stock_minimo": 10, "stock_maximo": 80, "precio_unitario": 3500},
+            {"nombre": "Pulpa de Mango", "categoria_nombre": "Frutas Congeladas", "unidad_medida": "KG", "stock_minimo": 10, "stock_maximo": 80, "precio_unitario": 4200},
+            {"nombre": "Arándanos Congelados", "categoria_nombre": "Frutas Congeladas", "unidad_medida": "KG", "stock_minimo": 5, "stock_maximo": 40, "precio_unitario": 4000},
 
             # Azúcares y Endulzantes
-            {"nombre": "Azúcar Granulada", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida": "Kilo", "stock_minimo": 25, "stock_maximo": 150, "precio_unitario": 1300},
-            {"nombre": "Glucosa", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida": "Kilo", "stock_minimo": 5, "stock_maximo": 20, "precio_unitario": 3000},
-            {"nombre": "Dextrosa", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida": "Kilo", "stock_minimo": 5, "stock_maximo": 20, "precio_unitario": 3200},
+            {"nombre": "Azúcar Granulada", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida": "KG", "stock_minimo": 25, "stock_maximo": 150, "precio_unitario": 1300},
+            {"nombre": "Glucosa", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida": "KG", "stock_minimo": 5, "stock_maximo": 20, "precio_unitario": 3000},
+            {"nombre": "Dextrosa", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida": "KG", "stock_minimo": 5, "stock_maximo": 20, "precio_unitario": 3200},
 
             # Chocolates y Confites
-            {"nombre": "Cacao Amargo en Polvo", "categoria_nombre": "Chocolates y Confites", "unidad_medida": "Kilo", "stock_minimo": 2, "stock_maximo": 15, "precio_unitario": 15000},
-            {"nombre": "Cobertura de Chocolate 70%", "categoria_nombre": "Chocolates y Confites", "unidad_medida": "Kilo", "stock_minimo": 5, "stock_maximo": 30, "precio_unitario": 18000},
-            {"nombre": "Chips de Chocolate", "categoria_nombre": "Chocolates y Confites", "unidad_medida": "Kilo", "stock_minimo": 3, "stock_maximo": 20, "precio_unitario": 9000},
+            {"nombre": "Cacao Amargo en Polvo", "categoria_nombre": "Chocolates y Confites", "unidad_medida": "KG", "stock_minimo": 2, "stock_maximo": 15, "precio_unitario": 15000},
+            {"nombre": "Cobertura de Chocolate 70%", "categoria_nombre": "Chocolates y Confites", "unidad_medida": "KG", "stock_minimo": 5, "stock_maximo": 30, "precio_unitario": 18000},
+            {"nombre": "Chips de Chocolate", "categoria_nombre": "Chocolates y Confites", "unidad_medida": "KG", "stock_minimo": 3, "stock_maximo": 20, "precio_unitario": 9000},
 
             # Envases y Descartables
-            {"nombre": "Conos de Galleta", "categoria_nombre": "Envases y Descartables", "unidad_medida": "Unidad", "stock_minimo": 100, "stock_maximo": 500, "precio_unitario": 150},
-            {"nombre": "Vasos de Polipapel 4oz", "categoria_nombre": "Envases y Descartables", "unidad_medida": "Unidad", "stock_minimo": 200, "stock_maximo": 1000, "precio_unitario": 80},
-            {"nombre": "Cucharitas de Helado", "categoria_nombre": "Envases y Descartables", "unidad_medida": "Unidad", "stock_minimo": 500, "stock_maximo": 2000, "precio_unitario": 30},
+            {"nombre": "Conos de Galleta", "categoria_nombre": "Envases y Descartables", "unidad_medida": "UN", "stock_minimo": 100, "stock_maximo": 500, "precio_unitario": 150},
+            {"nombre": "Vasos de Polipapel 4oz", "categoria_nombre": "Envases y Descartables", "unidad_medida": "UN", "stock_minimo": 200, "stock_maximo": 1000, "precio_unitario": 80},
+            {"nombre": "Cucharitas de Helado", "categoria_nombre": "Envases y Descartables", "unidad_medida": "UN", "stock_minimo": 500, "stock_maximo": 2000, "precio_unitario": 30},
             
             # Frutos Secos
-            {"nombre": "Nueces Mariposa", "categoria_nombre": "Frutos Secos", "unidad_medida": "Kilo", "stock_minimo": 2, "stock_maximo": 10, "precio_unitario": 12000},
-            {"nombre": "Almendras Laminadas", "categoria_nombre": "Frutos Secos", "unidad_medida": "Kilo", "stock_minimo": 2, "stock_maximo": 10, "precio_unitario": 14000},
+            {"nombre": "Nueces Mariposa", "categoria_nombre": "Frutos Secos", "unidad_medida": "KG", "stock_minimo": 2, "stock_maximo": 10, "precio_unitario": 12000},
+            {"nombre": "Almendras Laminadas", "categoria_nombre": "Frutos Secos", "unidad_medida": "KG", "stock_minimo": 2, "stock_maximo": 10, "precio_unitario": 14000},
         ]
 
         insumos_creados = 0
@@ -47,7 +47,7 @@ class Command(BaseCommand):
                 # Preparamos los datos para el insumo, excluyendo el nombre de la categoría
                 defaults = {
                     "categoria": categoria,
-                    "unidad_medida": data["unidad_medida"],
+                    "unidad_medida": data["unidad_medida"], # <-- ¡CORREGIDO! Usando códigos cortos
                     "stock_minimo": data["stock_minimo"],
                     "stock_maximo": data["stock_maximo"],
                     "precio_unitario": data["precio_unitario"],
@@ -69,7 +69,7 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"ERROR: La categoría '{data['categoria_nombre']}' no existe. Ejecuta 'seed_categorias' primero. Saltando insumo '{data['nombre']}'."))
 
         if insumos_creados > 0:
-             self.stdout.write(self.style.SUCCESS(f"\n¡Se crearon {insumos_creados} nuevos insumos!"))
+            self.stdout.write(self.style.SUCCESS(f"\n¡Se crearon {insumos_creados} nuevos insumos!"))
         else:
             self.stdout.write(self.style.WARNING("\nNo se crearon insumos nuevos, todos ya existían."))
 

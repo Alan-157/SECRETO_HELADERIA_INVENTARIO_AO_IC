@@ -4,26 +4,53 @@
 {% block content %}
 
 <div class="row justify-content-center">
-<div class="col-md-8 col-lg-6">
-<div class="card shadow-sm">
-<div class="card-header">
-<h3 class="mb-0">{{ titulo }}</h3>
-</div>
-<div class="card-body">
-<p>
-¿Estás seguro de que deseas eliminar (marcar como inactivo) el insumo <strong>"{{ insumo.nombre }}"</strong>?
-</p>
-<p class="text-muted">
-Esta acción no se puede deshacer. El insumo desaparecerá de las listas principales.
-</p>
+    <div class="col-md-8 col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header bg-danger text-white">
+                <h3 class="mb-0">{{ titulo }}</h3>
+            </div>
+            <div class="card-body">
+                <p>
+                    ¿Estás seguro de que deseas eliminar (marcar como inactivo) el insumo <strong>"{{ insumo.nombre }}"</strong>?
+                </p>
+                <p class="text-muted">
+                    Esta acción no se puede deshacer. El insumo desaparecerá de las listas principales.
+                </p>
 
-            <form method="post" action="{% url 'inventario:eliminar_insumo' insumo.id %}" data-ajax="true" class="d-inline">
-                {% csrf_token %}
-                <button type="button" class="btn btn-sm btn-danger" data-delete-form>Eliminar</button>
-            </form>
+                {% if insumo and insumo.stock_total is not None %}
+                    {% if insumo.stock_total > 0 %}
+                        <div class="alert alert-danger mt-3">
+                            <strong>🚫 ¡ERROR!</strong> No se puede eliminar. Este insumo tiene stock actual de 
+                            <strong>{{ insumo.stock_total|floatformat:2 }}</strong>. 
+                            Solo los insumos con stock cero pueden eliminarse.
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info mt-3">
+                            ✅ Stock actual: <strong>{{ insumo.stock_total|floatformat:2 }}</strong>. La eliminación está permitida.
+                        </div>
+                    {% endif %}
+                {% endif %}
+                <hr>
+
+                <div class="d-flex justify-content-start">
+                    <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-secondary me-2">Cancelar</a>
+
+                    <form method="post" action="{% url 'inventario:eliminar_insumo' insumo.id %}" class="d-inline">
+                        {% csrf_token %}
+                        
+                        {% if insumo.stock_total > 0 %}
+                            <button type="button" class="btn btn-danger" disabled title="Eliminación bloqueada por stock.">
+                                Eliminar
+                            </button>
+                        {% else %}
+                            <button type="submit" class="btn btn-danger">
+                                Confirmar Eliminación
+                            </button>
+                        {% endif %}
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
-</div>
-
 </div>
 {% endblock %}
