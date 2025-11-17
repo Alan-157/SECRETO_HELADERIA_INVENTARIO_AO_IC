@@ -37,8 +37,8 @@
 
       <td class="text-center">{{ sm|floatformat:2 }}</td>
       <td class="text-center">{{ sx|floatformat:2 }}</td>
-      
-      {# CORRECCIÓN APLICADA AQUÍ #}
+
+      {# Unidad de medida #}
       <td>{{ insumo.get_unidad_medida_display }}</td>
 
       {# --- BOTONES DE ACCIÓN DE MOVIMIENTO --- #}
@@ -57,13 +57,22 @@
         {% endif %}
       </td>
 
-      {# --- Columna de Administración Original --- #}
+      {# --- Columna de Administración --- #}
       <td class="text-end">
         {% if not read_only %}
-          <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-warning">Editar</a>
-          <form method="post" action="{% url 'inventario:eliminar_insumo' insumo.id %}" class="d-inline">
+          <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-warning">
+            Editar
+          </a>
+
+          <form method="post"
+                action="{% url 'inventario:eliminar_insumo' insumo.id %}"
+                class="d-inline">
             {% csrf_token %}
-            <a class="btn btn-sm btn-danger" href="{% url 'inventario:eliminar_insumo' insumo.id %}">Eliminar</a>
+            <button type="submit"
+                    class="btn btn-sm btn-danger"
+                    data-delete-insumo="1">
+              Eliminar
+            </button>
           </form>
         {% else %}
           <span class="text-muted">—</span>
@@ -72,7 +81,9 @@
     </tr>
     {% endwith %}
     {% empty %}
-    <tr><td colspan="8" class="text-center text-muted py-3">Sin resultados</td></tr>
+    <tr>
+      <td colspan="8" class="text-center text-muted py-3">Sin resultados</td>
+    </tr>
     {% endfor %}
   </tbody>
 </table>
@@ -88,11 +99,15 @@
         </a>
       </li>
     {% else %}
-      <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
+      <li class="page-item disabled">
+        <span class="page-link">« Anterior</span>
+      </li>
     {% endif %}
 
     <li class="page-item disabled">
-      <span class="page-link">Página {{ insumos.number }} de {{ insumos.paginator.num_pages }}</span>
+      <span class="page-link">
+        Página {{ insumos.number }} de {{ insumos.paginator.num_pages }}
+      </span>
     </li>
 
     {% if insumos.has_next %}
@@ -103,7 +118,9 @@
         </a>
       </li>
     {% else %}
-      <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
+      <li class="page-item disabled">
+        <span class="page-link">Siguiente »</span>
+      </li>
     {% endif %}
   </ul>
 </nav>

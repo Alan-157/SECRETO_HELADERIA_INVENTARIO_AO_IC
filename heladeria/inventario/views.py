@@ -34,7 +34,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from datetime import date
+from datetime import date,timedelta
 import csv
 from django.http import HttpResponse
 
@@ -42,7 +42,6 @@ from functools import reduce
 import operator
 from django.db.models import Q
 from django.template.loader import render_to_string
-
 from inventario import models
 
 
@@ -150,16 +149,22 @@ def dashboard_view(request):
     readonly_for=("Bodeguero",)            # ← bodeguero puede ver listado
 )
 def listar_insumos(request):
+    # Base queryset con stock_actual calculado
     qs = (
         Insumo.objects.filter(is_active=True)
-        .annotate(stock_actual=Coalesce(Sum('lotes__cantidad_actual'), 0, output_field=DecimalField()))
-        .select_related('categoria')
+        .annotate(
+            stock_actual=Coalesce(
+                Sum("lotes__cantidad_actual"),
+                0,
+                output_field=DecimalField()
+            )
+        )
+        .select_related("categoria")
     )
 
+    # --- SORT (lo guardamos en sesión) ---
     allowed_sort = {"nombre", "categoria", "stock", "unidad"}
-    sort = request.GET.get("sort")
-    if sort not in allowed_sort:
-        sort = request.session.get("sort_insumos", "nombre")
+    sort = request.GET.get("sort") or request.session.get("sort_insumos") or "nombre"
     if sort not in allowed_sort:
         sort = "nombre"
     request.session["sort_insumos"] = sort
@@ -170,7 +175,14 @@ def listar_insumos(request):
         "stock": "stock_actual",
         "unidad": "unidad_medida",
     }
-    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Admin", "Encargado"))
+
+    # --- Permisos para mostrar botones de edición / eliminar ---
+    read_only = not (
+        request.user.is_superuser
+        or user_has_role(request.user, "Administrador", "Admin", "Encargado")
+    )
+
+    # --- Delega todo (búsqueda, orden, paginación y AJAX) al helper ---
     return list_with_filters(
         request,
         qs,
@@ -183,7 +195,11 @@ def listar_insumos(request):
         default_per_page=10,
         default_order="asc",
         tie_break="id",
-        extra_context={"read_only": read_only,"titulo": "Listado de Insumos", "sort": sort},
+        extra_context={
+            "read_only": read_only,
+            "titulo": "Listado de Insumos",
+            "sort": sort,
+        },
     )
 
 @login_required
@@ -260,10 +276,11 @@ def eliminar_insumo(request, insumo_id):
 
 # --- exportar LOTES DE INSUMO ---
 @login_required
-@perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
+@perfil_required(allow=("administrador", "Encargado"))
 def exportar_lotes(request):
     """
     Exporta la lista de lotes de insumos a Excel o PDF, respetando filtros y orden.
+    Soporta reporte especial de 'Próximos a vencer' usando ?proximos=1.
     """
     # 1. Preparación del QuerySet (Similar a listar_insumos_lote)
     qs = (
@@ -275,9 +292,23 @@ def exportar_lotes(request):
         )
     )
 
+    hoy = date.today()
+    dias_proximos = 14  # rango de días para considerar "próximos a vencer"
+
+    # ¿Es un reporte solo de próximos a vencer?
+    solo_proximos = (request.GET.get("proximos") == "1")
+
+    if solo_proximos:
+        limite = hoy + timedelta(days=dias_proximos)
+        qs = qs.filter(
+            fecha_expiracion__isnull=False,
+            fecha_expiracion__gte=hoy,
+            fecha_expiracion__lte=limite,
+        )
+
     # Filtros de búsqueda (q)
     q = (request.GET.get("q") or "").strip()
-    search_fields=["insumo__nombre", "bodega__nombre"]
+    search_fields = ["insumo__nombre", "bodega__nombre"]
     if q:
         q_objs = []
         for f in search_fields:
@@ -288,16 +319,14 @@ def exportar_lotes(request):
     allowed_sort = {"insumo", "bodega", "fingreso", "fexpira", "cact", "cini"}
     sort = request.GET.get("sort")
     if sort not in allowed_sort:
-        # Aquí no usamos request.session.get porque la exportación no debe depender
-        # del estado de la sesión, sino de los parámetros de la URL.
-        # Si no viene en GET, usamos un valor por defecto.
+        # La exportación no depende de la sesión, solo de la URL
         sort = "insumo" 
 
     sort_map = {
         "insumo":   "insumo__nombre",
         "bodega":   "bodega__nombre",
-        "fingreso":"fecha_ingreso",
-        "fexpira": "fecha_expiracion",
+        "fingreso": "fecha_ingreso",
+        "fexpira":  "fecha_expiracion",
         "cact":     "cant_act",
         "cini":     "cant_ini",
     }
@@ -313,17 +342,26 @@ def exportar_lotes(request):
     
     # Obtener todos los datos sin paginación
     lotes = qs.all()
-    hoy = date.today()
     
     # 2. Lógica de Exportación
     exportar = request.GET.get("exportar")
+
+    # Títulos según si es reporte general o de próximos a vencer
+    if solo_proximos:
+        titulo_reporte = "Reporte de Lotes de Insumos Próximos a Vencer"
+        sufijo_nombre = "lotes_proximos"
+    else:
+        titulo_reporte = "Reporte de Lotes de Insumos"
+        sufijo_nombre = "lotes"
 
     if exportar == "excel":
         # --- Exportar a Excel (openpyxl) ---
         response = HttpResponse(
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        response["Content-Disposition"] = f'attachment; filename="lotes_{hoy.isoformat()}.xlsx"'
+        response["Content-Disposition"] = (
+            f'attachment; filename="{sufijo_nombre}_{hoy.isoformat()}.xlsx"'
+        )
 
         # Workbook y Worksheet
         wb = Workbook()
@@ -331,9 +369,8 @@ def exportar_lotes(request):
         ws.title = "Lotes de Insumos"
 
         # Título
-        title = "Reporte de Lotes de Insumos"
         ws.merge_cells("A1:G1")
-        ws.cell(row=1, column=1, value=title).font = Font(size=14, bold=True)
+        ws.cell(row=1, column=1, value=titulo_reporte).font = Font(size=14, bold=True)
         ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
         
         headers = [
@@ -345,7 +382,7 @@ def exportar_lotes(request):
         
         # Estilo para encabezados
         header_row = ws[2]
-        header_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type="solid") # Verde claro
+        header_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type="solid")  # Verde claro
         for cell in header_row:
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal="center")
@@ -355,7 +392,7 @@ def exportar_lotes(request):
         row_num = 3
         for i, lote in enumerate(lotes):
             # Alternar color de fondo de las filas
-            bg_color = 'E6E6FA' if i % 2 == 0 else 'FFFFFF' # Lavanda pálida / Blanco
+            bg_color = 'E6E6FA' if i % 2 == 0 else 'FFFFFF'  # Lavanda pálida / Blanco
             
             data = [
                 lote.insumo.nombre,
@@ -364,7 +401,7 @@ def exportar_lotes(request):
                 lote.fecha_expiracion.strftime("%Y-%m-%d") if lote.fecha_expiracion else "N/A",
                 float(lote.cantidad_inicial),
                 float(lote.cantidad_actual),
-                lote.id
+                lote.id,
             ]
             ws.append(data)
             
@@ -376,7 +413,6 @@ def exportar_lotes(request):
                 cell.fill = fill
                 # Formato de números para las cantidades
                 if col_idx in [5, 6]:
-                    # Usamos FORMAT_NUMBER_COMMA_SEPARATED1 para formato con separador de miles y dos decimales
                     cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
             row_num += 1
 
@@ -385,20 +421,16 @@ def exportar_lotes(request):
             max_length = 0
             column = col[1].column_letter
             for cell in col:
-                try: 
-                    # Considerar encabezados y datos
+                try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
                 except:
                     pass
-            # Añadir un margen (2 a 4 caracteres)
             adjusted_width = (max_length + 4)
-            # Limitar el ancho máximo para columnas con poco contenido
             if column in ('C', 'D', 'E', 'F', 'G') and adjusted_width < 15:
                 adjusted_width = 15
             ws.column_dimensions[column].width = adjusted_width
             
-        # Guardar en buffer
         buffer = BytesIO()
         wb.save(buffer)
         response.write(buffer.getvalue())
@@ -409,7 +441,7 @@ def exportar_lotes(request):
         bio = BytesIO()
         doc = SimpleDocTemplate(
             bio,
-            pagesize=landscape(A4), # Usar orientación horizontal
+            pagesize=landscape(A4),
             leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20,
         )
         
@@ -417,7 +449,7 @@ def exportar_lotes(request):
         styles = getSampleStyleSheet()
 
         # Título
-        titulo = Paragraph("<b>Reporte de Lotes de Insumos</b>", styles["h1"])
+        titulo = Paragraph(f"<b>{titulo_reporte}</b>", styles["h1"])
         story.append(titulo)
         story.append(Spacer(1, 12))
 
@@ -434,39 +466,35 @@ def exportar_lotes(request):
                 lote.fecha_expiracion.strftime("%Y-%m-%d") if lote.fecha_expiracion else "N/A",
                 f"{lote.cantidad_inicial:,.2f}",
                 f"{lote.cantidad_actual:,.2f}",
-                str(lote.id)
+                str(lote.id),
             ])
             
-        # Estilos
         table_style = [
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A86E8')), # Azul para el encabezado
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A86E8')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            # Alineación del contenido (cantidades centradas, texto a la izquierda)
-            ('ALIGN', (0, 1), (1, -1), 'LEFT'), # Insumo y Bodega a la izquierda
-            ('ALIGN', (2, 1), (-2, -1), 'CENTER'), # Fechas y Cantidades al centro
-            ('ALIGN', (-1, 1), (-1, -1), 'CENTER'), # ID Lote al centro
+            ('ALIGN', (0, 1), (1, -1), 'LEFT'),
+            ('ALIGN', (2, 1), (-2, -1), 'CENTER'),
+            ('ALIGN', (-1, 1), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            # Alternancia de filas (Blanco y Gris Claro)
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F5F5F5'), colors.white]),
         ]
         
-        # Crear y añadir la tabla (ajuste de anchos en puntos para A4 horizontal)
-        # Ancho total de A4 landscape es ~792. Usamos 752 para el margen de 20px
-        # 220 (Insumo) + 120 (Bodega) + 80 (F. Ingreso) + 80 (F. Exp) + 100 (C. Ini) + 100 (C. Act) + 52 (ID) = 752
+        # A4 apaisado
         t = Table(data, colWidths=[220, 120, 80, 80, 100, 100, 52])
         t.setStyle(TableStyle(table_style))
         story.append(t)
         
-        # Construir el documento
         doc.build(story)
         pdf_value = bio.getvalue()
         bio.close()
         response = HttpResponse(pdf_value, content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="lotes_{hoy.isoformat()}.pdf"'
+        response["Content-Disposition"] = (
+            f'attachment; filename="{sufijo_nombre}_{hoy.isoformat()}.pdf"'
+        )
         return response
 
     return HttpResponseBadRequest("Método de exportación no válido.")
@@ -478,7 +506,10 @@ def exportar_lotes(request):
 def listar_insumos_lote(request):
     """
     Listado de lotes de insumos con filtros, orden y paginación (AJAX-friendly).
+    Soporta filtro de vencimiento: ?vencimiento=proximos&dias=30
     """
+    hoy = date.today()
+
     qs = (
         InsumoLote.objects.filter(is_active=True)
         .select_related("insumo", "bodega")
@@ -488,6 +519,24 @@ def listar_insumos_lote(request):
             cant_ini=Coalesce(F("cantidad_inicial"), 0, output_field=DecimalField()),
         )
     )
+
+    # -------- filtro de vencimiento (reporte de próximos a vencer) --------
+    vencimiento = request.GET.get("vencimiento")  # None o "proximos"
+    default_dias = 30
+    try:
+        dias = int(request.GET.get("dias", default_dias))
+        if dias <= 0 or dias > 365:
+            dias = default_dias
+    except ValueError:
+        dias = default_dias
+
+    if vencimiento == "proximos":
+        limite = hoy + timedelta(days=dias)
+        qs = qs.filter(
+            fecha_expiracion__isnull=False,
+            fecha_expiracion__gte=hoy,
+            fecha_expiracion__lte=limite,
+        )
 
     # sort permitido
     allowed_sort = {"insumo", "bodega", "fingreso", "fexpira", "cact", "cini"}
@@ -525,7 +574,9 @@ def listar_insumos_lote(request):
             "read_only": read_only,
             "titulo": "Lotes de Insumos",
             "sort": sort,
-            "today": date.today(),
+            "today": hoy,
+            "filtro_vencimiento": vencimiento or "todos",
+            "dias_proximos": dias,
         },
     )
 
@@ -539,16 +590,16 @@ def listar_categorias(request):
         request.session["per_page_categorias"] = int(per_page_get)
     per_page = request.session.get("per_page_categorias", 10)
 
-    # 2) Persistir orden asc/desc en sesión (opcional, simétrico al resto)
     order_get = request.GET.get("order")
     if order_get in ("asc", "desc"):
         request.session["order_categorias"] = order_get
     order = request.session.get("order_categorias", "asc")
 
-    # 3) Búsqueda (no se persiste por diseño, pero puedes hacerlo igual que per_page si lo deseas)
     q = (request.GET.get("q") or "").strip()
 
-    categorias = Categoria.objects.all().order_by("nombre" if order == "asc" else "-nombre")
+    categorias = Categoria.objects.all().order_by(
+        "nombre" if order == "asc" else "-nombre"
+    )
     if q:
         categorias = categorias.filter(
             Q(nombre__icontains=q) | Q(descripcion__icontains=q)
@@ -558,17 +609,33 @@ def listar_categorias(request):
     page_number = request.GET.get("page")
     categorias_page = paginator.get_page(page_number)
 
-    if request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return render(
-            request,
-            "inventario/partials/categorias_results.html",
-            {"categorias": categorias_page, "per_page": per_page, "q": q, "order": order},
-        )
+    read_only = not (
+        request.user.is_superuser
+        or user_has_role(request.user, "Administrador", "Admin", "Encargado")
+    )
 
+    context = {
+        "categorias": categorias_page,
+        "per_page": per_page,
+        "q": q,
+        "order": order,
+        "read_only": read_only,
+    }
+
+    # ⚡ AJAX -> JSON
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        html = render_to_string(
+            "inventario/partials/categorias_results.html",
+            context,
+            request=request,
+        )
+        return JsonResponse({"html": html})
+
+    # render normal
     return render(
         request,
         "inventario/listar_categorias.html",
-        {"categorias": categorias_page, "per_page": per_page, "q": q, "order": order},
+        context,
     )
 
 @login_required
@@ -1087,12 +1154,15 @@ def listar_ordenes(request):
         "actualizado": "updated_at",
     }
 
-    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Admin", "Encargado"))
+    read_only = not (
+        request.user.is_superuser
+        or user_has_role(request.user, "Administrador", "Admin", "Encargado")
+    )
 
     return list_with_filters(
         request,
         qs,
-        search_fields=[],
+        search_fields=[],  # ya filtraste q arriba
         order_field=sort_map[sort],
         session_prefix="ordenes",
         context_key="ordenes",
@@ -1107,7 +1177,7 @@ def listar_ordenes(request):
             "estado": estado_f,
             "sort": sort,
             "ESTADOS_ORDEN": ESTADOS_ORDEN,
-            "read_only": read_only,   # ← IMPORTANTE
+            "read_only": read_only,
         },
     )
 
@@ -1216,6 +1286,389 @@ def eliminar_orden(request, pk):
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 def reporte_disponibilidad(request):
+    """
+    Reporte de disponibilidad de insumos con:
+    - Filtro por insumos (nombre) via checkboxes.
+    - Flags de columnas a mostrar.
+    - Lotes indentados por insumo (en HTML).
+    - Export: CSV/XLSX/PDF (respetan filtro de insumos).
+    - Soporte AJAX para actualizar solo la tabla.
+    """
+    hoy = date.today()
+
+    # -------- flags de columnas (HTML) --------
+    # por defecto mostramos: stock_total, precio_unitario, prox_vencimiento, lotes
+    def _b(name, default=True):
+        """
+        Lee tanto 'show_*' (nuevo) como 'col_*' (legado) y devuelve bool.
+        """
+        raw = request.GET.get(name, None)
+        if raw is None and name.startswith("show_"):
+            raw = request.GET.get(name.replace("show_", "col_"), None)  # compat con col_*
+        if raw is None:
+            return default
+        return str(raw).lower() in ("1", "true", "on", "yes")
+
+    show_precio_unitario = _b("show_precio_unitario", True)
+    show_stock_total     = _b("show_stock_total", True)
+    show_prox_venc       = _b("show_prox_venc", True)
+    show_lotes           = _b("show_lotes", True)
+    show_categorias      = _b("show_categorias", False)
+    show_precio_acum     = _b("show_precio_acum", False)
+
+    # -------- selección por insumo (nombres) --------
+    selected_insumos = request.GET.getlist("insumo")   # lista de nombres exactos
+
+    # Base queryset de insumos (activos + categoría activa)
+    insumos_base = (
+        Insumo.objects.filter(is_active=True, categoria__is_active=True)
+        .select_related("categoria")
+    )
+
+    # Si vienen seleccionados, filtramos por nombre (case-insensitive)
+    if selected_insumos:
+        insumos_base = insumos_base.filter(nombre__in=selected_insumos)
+
+    # Prefetch de lotes activos para cada insumo (ordenados por fecha de expiración)
+    lotes_qs = (
+        InsumoLote.objects
+        .filter(is_active=True)
+        .select_related("bodega")
+        .order_by("fecha_expiracion", "id")
+    )
+
+    # Anotaciones de stock total, #lotes con stock, prox venc
+    insumos_qs = (
+        insumos_base
+        .annotate(
+            stock_total=Coalesce(
+                Sum(
+                    "lotes__cantidad_actual",
+                    filter=Q(lotes__is_active=True),
+                    output_field=DecimalField(max_digits=12, decimal_places=2),
+                ),
+                0,
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            lotes_con_stock=Count(
+                "lotes",
+                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
+                distinct=True,
+            ),
+            prox_vencimiento=Min(
+                "lotes__fecha_expiracion",
+                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
+            ),
+        )
+        .prefetch_related(Prefetch("lotes", queryset=lotes_qs, to_attr="lotes_vis"))
+        .order_by("categoria__nombre", "nombre")
+    )
+
+    # Dataset para checkboxes (todos los nombres disponibles, ordenados)
+    all_insumo_names = list(
+        Insumo.objects.filter(is_active=True, categoria__is_active=True)
+        .order_by("nombre")
+        .values_list("nombre", flat=True)
+    )
+
+    # Agrupado por categoría (para HTML)
+    categorias = []
+    cat_actual = None
+    buffer = []
+    for i in insumos_qs:
+        if not cat_actual or i.categoria_id != cat_actual.id:
+            if buffer:
+                categorias.append({"categoria": cat_actual, "insumos": buffer})
+                buffer = []
+            cat_actual = i.categoria
+        # cálculo auxiliar para HTML
+        i.precio_acumulado = (i.stock_total or 0) * (i.precio_unitario or 0)
+        buffer.append(i)
+    if buffer:
+        categorias.append({"categoria": cat_actual, "insumos": buffer})
+
+    total_stock = sum((i.stock_total or 0) for i in insumos_qs)
+    total_valor = sum(
+        ((i.stock_total or 0) * (i.precio_unitario or 0))
+        for i in insumos_qs
+    )
+
+    fmt = (request.GET.get("format") or "").lower()
+
+    # ------- EXPORTS (respetan filtro de insumos, mantienen columnas clásicas) -------
+    if fmt == "csv":
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = (
+            f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.csv"'
+        )
+        writer = csv.writer(response)
+        # misma estructura de columnas que PDF (más categoría)
+        writer.writerow(
+            [
+                "Categoría",
+                "Insumo",
+                "Unidad",
+                "Precio Unitario",
+                "Stock Total",
+                "Lotes con Stock",
+                "Próx. Vencimiento",
+            ]
+        )
+        for bloque in categorias:
+            for i in bloque["insumos"]:
+                writer.writerow(
+                    [
+                        bloque["categoria"].nombre if bloque["categoria"] else "",
+                        i.nombre,
+                        i.unidad_medida,
+                        f"{i.precio_unitario}",
+                        f"{i.stock_total:.2f}",
+                        i.lotes_con_stock,
+                        i.prox_vencimiento.isoformat()
+                        if i.prox_vencimiento
+                        else "—",
+                    ]
+                )
+        writer.writerow([])
+        writer.writerow(
+            ["", "", "", "TOTALES", f"{Decimal(total_stock):.2f}", "", ""]
+        )
+        writer.writerow(
+            ["", "", "", "VALOR TOTAL", f"{Decimal(total_valor):.2f}", "", ""]
+        )
+        return response
+
+    # ---------- XLSX ----------
+    if fmt in ("xlsx", "excel"):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Disponibilidad"
+
+        title = f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}"
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+        ws.cell(row=1, column=1, value=title).font = Font(size=14, bold=True)
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
+
+        headers = [
+            "Categoría",
+            "Insumo",
+            "Unidad",
+            "Precio Unitario",
+            "Stock Total",
+            "Lotes con Stock",
+            "Próx. Vencimiento",
+        ]
+        ws.append(headers)
+
+        # Estilo encabezado (similar al PDF: fondo gris claro)
+        header_fill = PatternFill(
+            start_color="D9D9D9", end_color="D9D9D9", fill_type="solid"
+        )
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=2, column=col)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+            cell.fill = header_fill
+
+        # Datos
+        row_num = 3
+        for bloque in categorias:
+            for i in bloque["insumos"]:
+                ws.append(
+                    [
+                        bloque["categoria"].nombre,
+                        i.nombre,
+                        i.unidad_medida,
+                        float(i.precio_unitario or 0),
+                        float(i.stock_total or 0),
+                        int(i.lotes_con_stock or 0),
+                        (
+                            i.prox_vencimiento.isoformat()
+                            if i.prox_vencimiento
+                            else "—"
+                        ),
+                    ]
+                )
+                row_num += 1
+
+        # Totales
+        ws.append([])
+        ws.append(["", "", "", "TOTALES", float(total_stock), "", ""])
+        ws.append(["", "", "", "VALOR TOTAL", float(total_valor), "", ""])
+
+        # Estilos y tamaños
+        col_widths = [18, 30, 10, 18, 16, 18, 18]
+        for idx, width in enumerate(col_widths, start=1):
+            ws.column_dimensions[get_column_letter(idx)].width = width
+
+        # Formatos numéricos
+        for row in ws.iter_rows(
+            min_row=3, min_col=4, max_col=5, max_row=ws.max_row
+        ):
+            for cell in row:
+                if cell.column == 4:
+                    cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                elif cell.column == 5:
+                    cell.number_format = "0.00"
+
+        bio = BytesIO()
+        wb.save(bio)
+        bio.seek(0)
+        response = HttpResponse(
+            bio.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+        )
+        response[
+            "Content-Disposition"
+        ] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.xlsx"'
+        return response
+
+    # ---------- PDF ----------
+    if fmt == "pdf":
+        bio = BytesIO()
+        doc = SimpleDocTemplate(
+            bio,
+            pagesize=landscape(A4),
+            leftMargin=20,
+            rightMargin=20,
+            topMargin=20,
+            bottomMargin=20,
+            title="Reporte de Disponibilidad de Insumos",
+        )
+        styles = getSampleStyleSheet()
+        story = []
+
+        story.append(
+            Paragraph(
+                f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}",
+                styles["Title"],
+            )
+        )
+        story.append(Spacer(1, 8))
+
+        table_head = [
+            "Insumo",
+            "Unidad",
+            "Precio Unitario",
+            "Stock Total",
+            "Lotes con Stock",
+            "Próx. Vencimiento",
+        ]
+
+        for bloque in categorias:
+            story.append(
+                Paragraph(
+                    f"Categoría: {bloque['categoria'].nombre}",
+                    styles["Heading3"],
+                )
+            )
+            data = [table_head]
+            for i in bloque["insumos"]:
+                data.append(
+                    [
+                        i.nombre,
+                        i.unidad_medida,
+                        f"{(i.precio_unitario or 0):,.0f}",
+                        f"{(i.stock_total or 0):,.2f}",
+                        int(i.lotes_con_stock or 0),
+                        (
+                            i.prox_vencimiento.strftime("%Y-%m-%d")
+                            if i.prox_vencimiento
+                            else "—"
+                        ),
+                    ]
+                )
+            t = Table(
+                data, colWidths=[140, 60, 90, 90, 90, 110]
+            )
+            t.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                        ("ALIGN", (2, 1), (-2, -1), "RIGHT"),
+                        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [colors.whitesmoke, colors.white],
+                        ),
+                    ]
+                )
+            )
+            story.append(t)
+            story.append(Spacer(1, 10))
+
+        # Totales
+        story.append(Spacer(1, 6))
+        story.append(
+            Paragraph(
+                f"<b>Stock total:</b> {Decimal(total_stock):,.2f}",
+                styles["Normal"],
+            )
+        )
+        story.append(
+            Paragraph(
+                f"<b>Precio total:</b> {Decimal(total_valor):,.0f}",
+                styles["Normal"],
+            )
+        )
+
+        doc.build(story)
+        pdf_value = bio.getvalue()
+        bio.close()
+        response = HttpResponse(pdf_value, content_type="application/pdf")
+        response[
+            "Content-Disposition"
+        ] = f'attachment; filename=\"reporte_disponibilidad_{hoy.isoformat()}.pdf\"'
+        return response
+
+    # ---------- HTML (por defecto) ----------
+    colspan_lotes = (
+        2
+        + int(show_categorias)
+        + int(show_precio_unitario)
+        + int(show_stock_total)
+        + int(show_prox_venc)
+        + int(show_precio_acum)
+    )
+
+    context = {
+        "categorias": categorias,
+        "total_stock": total_stock,
+        "total_valor": total_valor,
+        "hoy": hoy,
+        "titulo": "Reporte de Disponibilidad de Insumos",
+        # flags UI
+        "show_precio_unitario": show_precio_unitario,
+        "show_stock_total": show_stock_total,
+        "show_prox_venc": show_prox_venc,
+        "show_lotes": show_lotes,
+        "show_categorias": show_categorias,
+        "show_precio_acum": show_precio_acum,
+        # selección de insumos
+        "all_insumo_names": all_insumo_names,
+        "selected_insumos": set(selected_insumos),
+        "colspan_lotes": colspan_lotes,
+        "request": request,
+    }
+
+    # Si es AJAX, devolvemos solo el fragmento HTML de la tabla
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        html = render_to_string(
+            "inventario/partials/reporte_disponibilidad_results.html",
+            context,
+            request=request,
+        )
+        return JsonResponse({"ok": True, "html": html})
+
+    return render(request, "inventario/reporte_disponibilidad.html", context)
     """
     Reporte de disponibilidad de insumos con:
     - Filtro por insumos (nombre) via checkboxes.

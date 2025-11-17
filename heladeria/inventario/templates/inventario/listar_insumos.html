@@ -1,11 +1,12 @@
+{# inventario/listar_insumos.html #}
 {% extends "base.html" %}
 {% block title %}{{ titulo }}{% endblock %}
+
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="mb-0">{{ titulo }}</h3>
 
-  {# Solo admin/encargado (no bodeguero): se controla con read_only del contexto #}
   {% if not read_only %}
     <a href="{% url 'inventario:crear_insumo' %}" class="btn btn-primary">
       ➕ Nuevo Insumo
@@ -14,40 +15,44 @@
 </div>
 
 <form id="filters-form" class="row g-2 mb-3" method="get">
-  <div class="col-12 col-md-4">
-    <input id="q-input" name="q" type="text" class="form-control"
-           placeholder="Buscar por nombre, categoría o unidad..." value="{{ q|default:'' }}">
+  <div class="col-md-4">
+    <input type="search"
+           name="q"
+           id="q-input"
+           class="form-control"
+           placeholder="Buscar por nombre o categoría..."
+           value="{{ q|default:'' }}">
   </div>
 
-  <div class="col-6 col-md-2">
-    <select name="sort" id="sort-select" class="form-select">
-      <option value="nombre"   {% if sort == 'nombre' %}selected{% endif %}>Ordenar por: Nombre</option>
-      <option value="categoria"{% if sort == 'categoria' %}selected{% endif %}>Ordenar por: Categoría</option>
-      <option value="stock"    {% if sort == 'stock' %}selected{% endif %}>Ordenar por: Stock</option>
-      <option value="unidad"   {% if sort == 'unidad' %}selected{% endif %}>Ordenar por: Unidad</option>
-    </select>
+  <div class="col-md-3">
+    <div class="input-group">
+      <span class="input-group-text">Ordenar por</span>
+      <select name="sort" id="sort-select" class="form-select">
+        <option value="">Por defecto</option>
+        <option value="nombre"   {% if sort == 'nombre' %}selected{% endif %}>Nombre</option>
+        <option value="categoria"{% if sort == 'categoria' %}selected{% endif %}>Categoría</option>
+        <option value="stock"    {% if sort == 'stock' %}selected{% endif %}>Stock actual</option>
+      </select>
+    </div>
   </div>
 
-  <div class="col-6 col-md-2">
+  <div class="col-md-2">
     <select name="order" id="order-select" class="form-select">
-      <option value="asc"  {% if order == 'asc' %}selected{% endif %}>A-Z / ↑</option>
-      <option value="desc" {% if order == 'desc' %}selected{% endif %}>Z-A / ↓</option>
+      <option value="asc"  {% if order != 'desc' %}selected{% endif %}>Ascendente</option>
+      <option value="desc" {% if order == 'desc' %}selected{% endif %}>Descendente</option>
     </select>
   </div>
 
-  <div class="col-6 col-md-2">
+  <div class="col-md-2">
     <select name="per_page" id="per-page-select" class="form-select">
-      <option value="5"  {% if per_page == 5 %}selected{% endif %}>5 por página</option>
       <option value="10" {% if per_page == 10 %}selected{% endif %}>10 por página</option>
-      <option value="20" {% if per_page == 20 %}selected{% endif %}>20 por página</option>
+      <option value="25" {% if per_page == 25 %}selected{% endif %}>25 por página</option>
+      <option value="50" {% if per_page == 50 %}selected{% endif %}>50 por página</option>
+      <option value="100" {% if per_page == 100 %}selected{% endif %}>100 por página</option>
     </select>
   </div>
 
-  <div class="col-6 col-md-2">
-    <button class="btn btn-outline-primary w-100" type="submit">Aplicar</button>
-  </div>
-
-  <input type="hidden" id="page-input" name="page" value="{{ insumos.number|default:'1' }}">
+  <input type="hidden" name="page" id="page-input" value="{{ insumos.number }}">
 </form>
 
 <div id="results">
@@ -59,13 +64,13 @@
 {% block extra_js %}
 <script>
 (function(){
-  const form = document.getElementById('filters-form');
-  const results = document.getElementById('results');
-  const qInput = document.getElementById('q-input');
-  const sortSelect = document.getElementById('sort-select');
-  const orderSelect = document.getElementById('order-select');
-  const perPageSelect = document.getElementById('per-page-select');
-  const pageInput = document.getElementById('page-input');
+  const form           = document.getElementById('filters-form');
+  const results        = document.getElementById('results');
+  const qInput         = document.getElementById('q-input');
+  const sortSelect     = document.getElementById('sort-select');
+  const orderSelect    = document.getElementById('order-select');
+  const perPageSelect  = document.getElementById('per-page-select');
+  const pageInput      = document.getElementById('page-input');
 
   const buildURL = () => {
     const params = new URLSearchParams(new FormData(form));
@@ -73,29 +78,65 @@
   };
 
   async function loadAjax(url){
-    const resp = await fetch(url, {headers: {"X-Requested-With":"XMLHttpRequest"}});
-    if (!resp.ok) return;
-    const data = await resp.json();
-    results.innerHTML = data.html;
-    history.replaceState({}, "", url);
+    try{
+      const resp = await fetch(url, {
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      results.innerHTML = data.html;
+      history.replaceState({}, "", url);
+    }catch(err){
+      console.error("Error AJAX insumos:", err);
+    }
   }
 
-  const debounce = (fn, ms=350) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+  const debounce = (fn, ms = 350) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  };
 
-  qInput.addEventListener('input', debounce(()=>{ pageInput.value="1"; loadAjax(buildURL()); }));
-  sortSelect.addEventListener('change', ()=>{ pageInput.value="1"; loadAjax(buildURL()); });
-  orderSelect.addEventListener('change', ()=>{ pageInput.value="1"; loadAjax(buildURL()); });
-  perPageSelect.addEventListener('change', ()=>{ pageInput.value="1"; loadAjax(buildURL()); });
+  // Buscar mientras escribe
+  qInput.addEventListener('input', debounce(() => {
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  }));
 
-  // Paginación y eliminar por AJAX (delegación)
-  results.addEventListener('click', (e)=>{
+  // Cambios en selects
+  sortSelect.addEventListener('change', () => {
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  orderSelect.addEventListener('change', () => {
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  perPageSelect.addEventListener('change', () => {
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  // Paginación y eliminar (delegación)
+  results.addEventListener('click', (e) => {
     const a = e.target.closest('a[data-ajax-link]');
-    if (a){ e.preventDefault(); loadAjax(a.href); return; }
+    if (a){
+      e.preventDefault();
+      loadAjax(a.href);
+      return;
+    }
 
     const delBtn = e.target.closest('button[data-delete-insumo]');
     if (delBtn){
       const f = delBtn.closest('form');
-      if (confirm('¿Eliminar este insumo?')) f.submit();
+      if (f && confirm('¿Eliminar este insumo?')){
+        // submit normal, NO por AJAX (te respeta CSRF y lógica actual)
+        f.submit();
+      }
     }
   });
 })();

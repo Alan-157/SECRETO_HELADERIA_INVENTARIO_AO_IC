@@ -30,14 +30,62 @@
 </div>
 
 <script>
-document.getElementById("filterForm").addEventListener("input", function(e) {
-  const form = e.currentTarget;
-  const params = new URLSearchParams(new FormData(form)).toString();
-  fetch("?" + params, {headers: {"X-Requested-With": "XMLHttpRequest"}})
-    .then(res => res.text())
-    .then(html => {
-      document.getElementById("resultados").innerHTML = html;
+(function(){
+  const form = document.getElementById("filterForm");
+  const results = document.getElementById("resultados");
+
+  const qInput      = form.querySelector('input[name="q"]');
+  const orderSelect = form.querySelector('select[name="order"]');
+  const perSelect   = form.querySelector('select[name="per_page"]');
+
+  const buildURL = () => {
+    const params = new URLSearchParams(new FormData(form));
+    return `${location.pathname}?${params.toString()}`;
+  };
+
+  async function loadAjax(url){
+    try {
+      const res = await fetch(url, {
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      });
+      if (!res.ok) return;
+
+      // 🔑 AHORA SÍ: leemos JSON
+      const data = await res.json();
+      results.innerHTML = data.html;
+      history.replaceState({}, "", url);
+    } catch (err) {
+      console.error("Error AJAX categorías:", err);
+    }
+  }
+
+  const debounce = (fn, ms = 350) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  };
+
+  // Buscar mientras escribes en el input
+  qInput.addEventListener("input", debounce(() => {
+    loadAjax(buildURL());
+  }));
+
+  // Cambios en order / per_page
+  [orderSelect, perSelect].forEach(el => {
+    el.addEventListener("change", () => {
+      loadAjax(buildURL());
     });
-});
+  });
+
+  // Paginación por AJAX (links con data-ajax-link en el partial)
+  results.addEventListener("click", (e) => {
+    const a = e.target.closest("a[data-ajax-link]");
+    if (!a) return;
+    e.preventDefault();
+    loadAjax(a.href);
+  });
+})();
 </script>
 {% endblock %}

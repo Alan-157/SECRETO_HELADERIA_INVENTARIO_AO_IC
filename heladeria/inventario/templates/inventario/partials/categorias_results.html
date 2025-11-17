@@ -13,10 +13,19 @@
         <td>{{ c.descripcion|default:"—" }}</td>
         <td class="text-end">
           {% if not read_only %}
-            <a href="{% url 'inventario:editar_categoria' c.id %}" class="btn btn-sm btn-warning">Editar</a>
-            <form method="post" action="{% url 'inventario:eliminar_categoria' c.id %}" class="d-inline" data-ajax="true">
+            <a href="{% url 'inventario:editar_categoria' c.id %}"
+               class="btn btn-sm btn-warning">
+              Editar
+            </a>
+            <form method="post"
+                  action="{% url 'inventario:eliminar_categoria' c.id %}"
+                  class="d-inline">
               {% csrf_token %}
-              <a class="btn btn-sm btn-danger" href="{% url 'inventario:eliminar_categoria' c.id %}">Eliminar</a>
+              <button type="submit"
+                      class="btn btn-sm btn-danger"
+                      data-delete-categoria="1">
+                Eliminar
+              </button>
             </form>
           {% else %}
             <span class="text-muted">Solo lectura</span>
@@ -24,7 +33,11 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="3" class="text-center text-muted">Sin resultados</td></tr>
+      <tr>
+        <td colspan="3" class="text-center text-muted">
+          Sin resultados
+        </td>
+      </tr>
     {% endfor %}
   </tbody>
 </table>
@@ -33,11 +46,35 @@
 <nav aria-label="Paginación" class="mt-3">
   <ul class="pagination justify-content-center">
     {% if categorias.has_previous %}
-      <li class="page-item"><a class="page-link" data-ajax-link href="?page={{ categorias.previous_page_number }}">«</a></li>
+      <li class="page-item">
+        <a class="page-link" data-ajax-link
+           href="?page={{ categorias.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}">
+          «
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link">«</span>
+      </li>
     {% endif %}
-    <li class="page-item disabled"><span class="page-link">Página {{ categorias.number }} de {{ categorias.paginator.num_pages }}</span></li>
+
+    <li class="page-item disabled">
+      <span class="page-link">
+        Página {{ categorias.number }} de {{ categorias.paginator.num_pages }}
+      </span>
+    </li>
+
     {% if categorias.has_next %}
-      <li class="page-item"><a class="page-link" data-ajax-link href="?page={{ categorias.next_page_number }}">»</a></li>
+      <li class="page-item">
+        <a class="page-link" data-ajax-link
+           href="?page={{ categorias.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}">
+          »
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link">»</span>
+      </li>
     {% endif %}
   </ul>
 </nav>
