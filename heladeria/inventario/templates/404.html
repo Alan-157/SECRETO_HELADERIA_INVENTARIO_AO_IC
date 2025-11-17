@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Página no encontrada (404){% endblock %}
+
+{% block content %}
+<div class="container text-center py-5">
+    <h1 class="display-1 text-danger">404</h1>
+    <h2 class="mb-4">¡Ups! Página no encontrada.</h2>
+    <p class="lead mb-4">
+        Lo sentimos, la URL a la que intentas acceder no existe.
+    </p>
+
+    <div class="mt-5">
+        <a href="{% url 'dashboard' %}" class="btn btn-lg btn-primary me-3">
+            Ir al Dashboard
+        </a>
+        <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-lg btn-outline-secondary">
+            Ver Insumos
+        </a>
+    </div>
+    
+    <div class="mt-5">
+        <img src="{% static 'img/logo_secreto.jpg' %}" alt="Logo Secreto" width="100" class="rounded-circle border border-danger">
+        <p class="text-muted mt-2">Secreto Heladería</p>
+    </div>
+</div>
+{% endblock %}

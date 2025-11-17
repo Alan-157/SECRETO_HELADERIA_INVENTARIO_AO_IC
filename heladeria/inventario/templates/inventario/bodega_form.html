@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3 class="mb-3">{{ titulo }}</h3>
+  <form method="post" class="card card-body shadow-sm">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label class="form-label">Nombre</label>
+      {{ form.nombre }}
+      {% for e in form.nombre.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Dirección</label>
+      {{ form.direccion }}
+      {% for e in form.direccion.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-secondary" href="{% url 'inventario:listar_bodegas' %}">Volver</a>
+      <button class="btn btn-primary" type="submit">Guardar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

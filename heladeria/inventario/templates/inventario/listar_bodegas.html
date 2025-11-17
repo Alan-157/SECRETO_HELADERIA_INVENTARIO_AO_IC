@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<div class="container mt-4" id="bodegas-root">
+  <h3 class="mb-3">{{ titulo }}</h3>
+
+  <form id="filtros-bodegas" class="row g-2 mb-3" method="get">
+  <div class="col-md-3">
+    <input type="text" class="form-control" name="q" value="{{ q|default:'' }}"
+           placeholder="Buscar por nombre o dirección…">
+  </div>
+
+  <div class="col-md-3">
+    <select class="form-select" name="sort">
+      <option value="nombre"    {% if sort == "nombre" %}selected{% endif %}>Nombre</option>
+      <option value="direccion" {% if sort == "direccion" %}selected{% endif %}>Dirección</option>
+    </select>
+  </div>
+
+  {# NUEVO: dirección de orden #}
+  <div class="col-md-2">
+    <select class="form-select" name="order">
+      <option value="asc"  {% if order == "asc" %}selected{% endif %}>A-Z</option>
+      <option value="desc" {% if order == "desc" %}selected{% endif %}>Z-A</option>
+    </select>
+  </div>
+
+  <div class="col-md-2">
+    <select class="form-select" name="per_page">
+      <option value="5"  {% if per_page == 5 %}selected{% endif %}>5 por página</option>
+      <option value="10" {% if per_page == 10 %}selected{% endif %}>10 por página</option>
+      <option value="20" {% if per_page == 20 %}selected{% endif %}>20 por página</option>
+    </select>
+  </div>
+
+  <div class="col-md-1 d-grid">
+    <button class="btn btn-primary" type="submit">Aplicar</button>
+  </div>
+</form>
+
+  {% if not read_only %}
+    <a href="{% url 'inventario:crear_bodega' %}" class="btn btn-success mb-3">➕ Nueva Bodega</a>
+  {% endif %}
+
+  <div id="bodegas-results">
+    {% include "inventario/partials/bodegas_results.html" %}
+  </div>
+</div>
+
+<script>
+(function(){
+  const root = document.getElementById('bodegas-root');
+  const form = document.getElementById('filtros-bodegas');
+  function ajaxifyLinks(scope){
+    scope.querySelectorAll('[data-ajax-link]').forEach(a=>{
+      a.addEventListener('click', function(ev){
+        ev.preventDefault();
+        fetch(this.href, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+          .then(r=>r.json()).then(({html})=>{
+            document.getElementById('bodegas-results').innerHTML = html;
+            ajaxifyLinks(document.getElementById('bodegas-results'));
+            wireDeletes();
+          });
+      });
+    });
+  }
+  function wireDeletes(){
+    root.querySelectorAll('[data-delete-bodega]').forEach(btn=>{
+      btn.addEventListener('click', function(ev){
+        ev.preventDefault();
+        if(!confirm('¿Eliminar esta bodega?')) return;
+        fetch(this.dataset.url, {method:'POST', headers:{
+          'X-CSRFToken': '{{ csrf_token }}',
+          'X-Requested-With':'XMLHttpRequest'
+        }}).then(r=>r.json()).then(({ok,message})=>{
+          if(ok){
+            // recargar resultados actuales
+            const url = new URL(window.location);
+            url.searchParams.set('page', '{{ bodegas.number|default:1 }}');
+            fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+              .then(r=>r.json()).then(({html})=>{
+                document.getElementById('bodegas-results').innerHTML = html;
+                ajaxifyLinks(document.getElementById('bodegas-results'));
+                wireDeletes();
+                if(message) alert(message);
+              });
+          }
+        });
+      });
+    });
+  }
+  // submit con AJAX
+  form.addEventListener('submit', function(ev){
+    ev.preventDefault();
+    const url = new URL(window.location);
+    new FormData(form).forEach((v,k)=>url.searchParams.set(k,v));
+    fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+      .then(r=>r.json()).then(({html})=>{
+        document.getElementById('bodegas-results').innerHTML = html;
+        ajaxifyLinks(document.getElementById('bodegas-results'));
+        wireDeletes();
+      });
+  });
+  ajaxifyLinks(document.getElementById('bodegas-results'));
+  wireDeletes();
+})();
+</script>
+{% endblock %}

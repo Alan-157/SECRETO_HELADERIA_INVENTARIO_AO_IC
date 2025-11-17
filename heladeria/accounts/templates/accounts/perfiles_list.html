@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3>Perfiles</h3>
+
+  {% if not read_only %}
+    <a href="{% url 'accounts:perfiles_create' %}" class="btn btn-primary mb-3">➕ Nuevo Perfil</a>
+  {% endif %}
+
+  <form id="filters-form" method="get" class="row g-2 align-items-center mb-3">
+    <div class="col-12 col-md-6">
+      <input type="text"
+             name="q"
+             value="{{ q|default:'' }}"
+             class="form-control"
+             placeholder="Buscar por nombre de perfil..."
+             id="q-input">
+    </div>
+
+    <div class="col-6 col-md-2">
+      <select name="order" class="form-select" id="order-select">
+        <option value="asc"  {% if order|default:'asc' == 'asc' %}selected{% endif %}>Nombre (A-Z)</option>
+        <option value="desc" {% if order == 'desc' %}selected{% endif %}>Nombre (Z-A)</option>
+      </select>
+    </div>
+
+    <div class="col-6 col-md-2">
+      <select name="per_page" class="form-select" id="per-page-select">
+        <option value="5"  {% if per_page|default:20 == 5 %}selected{% endif %}>5 por página</option>
+        <option value="10" {% if per_page|default:20 == 10 %}selected{% endif %}>10 por página</option>
+        <option value="20" {% if per_page|default:20 == 20 %}selected{% endif %}>20 por página</option>
+      </select>
+    </div>
+
+    <div class="col-12 col-md-2 d-grid">
+      <button type="submit" class="btn btn-outline-primary">Aplicar</button>
+    </div>
+
+    <input type="hidden" name="page" value="1" id="page-input">
+  </form>
+
+  <div id="results">
+    {# Primera carga: render normal del partial #}
+    {% include "accounts/partials/perfiles_results.html" %}
+  </div>
+</div>
+
+<script>
+(function(){
+  const form = document.getElementById('filters-form');
+  const results = document.getElementById('results');
+  const qInput = document.getElementById('q-input');
+  const orderSelect = document.getElementById('order-select');
+  const perPageSelect = document.getElementById('per-page-select');
+  const pageInput = document.getElementById('page-input');
+
+  // --- Debounce helper ---
+  function debounce(fn, delay){
+    let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); };
+  }
+
+  // Construye URL con los valores actuales del form
+  function buildURL(paramsOverride={}) {
+    const data = new FormData(form);
+    for (const [k,v] of Object.entries(paramsOverride)) data.set(k, v);
+    const usp = new URLSearchParams(data);
+    return `${window.location.pathname}?${usp.toString()}`;
+  }
+
+  // Cargar por AJAX y reemplazar resultados
+  async function loadAjax(url){
+    const resp = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }});
+    if(!resp.ok) return;
+    const payload = await resp.json();
+    results.innerHTML = payload.html;
+    // Actualiza la URL del navegador (sin recargar)
+    window.history.replaceState({}, "", url);
+  }
+
+  // --- Buscar en tiempo real (300ms debounce) ---
+  const liveSearch = debounce(()=>{
+    // Reinicia a página 1 cuando cambia la búsqueda
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  }, 300);
+
+  // Eventos
+  qInput.addEventListener('input', liveSearch);
+
+  orderSelect.addEventListener('change', ()=>{
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  perPageSelect.addEventListener('change', ()=>{
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  // Interceptar submit (botón Aplicar) para hacerlo por AJAX
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  // Delegación: interceptar clicks de paginación dentro de #results
+  results.addEventListener('click', function(e){
+    const a = e.target.closest('a[data-ajax-link]');
+    if(!a) return;
+    e.preventDefault();
+    // Si el link trae page=... lo respetamos; si no, no tocamos pageInput
+    const url = a.getAttribute('href');
+    loadAjax(url);
+  });
+})();
+</script>
+<script>
+(function(){
+  function getCookie(name){const v=`; ${document.cookie}`;const p=v.split(`; ${name}=`);if(p.length===2) return p.pop().split(';').shift();}
+  const csrftoken = getCookie('csrftoken');
+
+  const form = document.getElementById('filters-form');
+  const results = document.getElementById('results');
+  const pageInput = document.getElementById('page-input');
+
+  async function loadAjax(url){
+    const r = await fetch(url, { headers: { "X-Requested-With":"XMLHttpRequest" }});
+    if(!r.ok) return;
+    const payload = await r.json();
+    results.innerHTML = payload.html;
+    window.history.replaceState({}, "", url);
+  }
+  function buildURL(paramsOverride={}){
+    const data=new FormData(form);
+    for(const [k,v] of Object.entries(paramsOverride)) data.set(k,v);
+    const usp=new URLSearchParams(data);
+    return `${window.location.pathname}?${usp.toString()}`;
+  }
+
+  results.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('[data-action="delete"], .js-delete');
+    if(!btn) return;
+    e.preventDefault();
+    const url = btn.getAttribute('data-url') || btn.getAttribute('href');
+
+    const res = await Swal.fire({
+      icon: 'warning',
+      title: '¿Eliminar perfil?',
+      text: 'Esta acción no se puede deshacer.',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar'
+    });
+    if(!res.isConfirmed) return;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest'}
+    });
+
+    pageInput.value = "1";
+    await loadAjax(buildURL());
+    Swal.fire({icon:'success', title:'Eliminado', timer:1500, showConfirmButton:false});
+  });
+})();
+</script>
+
+{% endblock %}

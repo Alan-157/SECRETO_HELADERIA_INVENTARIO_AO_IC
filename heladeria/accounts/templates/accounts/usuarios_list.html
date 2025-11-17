@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+  <h3>Usuarios</h3>
+
+  {% if not read_only %}
+    <a href="{% url 'accounts:usuarios_create' %}" class="btn btn-primary mb-3">➕ Nuevo Usuario</a>
+  {% endif %}
+
+  {# Filtros: buscador + orden + per page #}
+  <form id="filters-form" method="get" class="row g-2 align-items-center mb-3">
+    <div class="col-12 col-md-6">
+      <input type="text"
+             name="q"
+             value="{{ q|default:'' }}"
+             class="form-control"
+             placeholder="Buscar por nombre, email o perfil…"
+             id="q-input">
+    </div>
+
+      <div class="col-6 col-md-2">
+        <select name="sort" class="form-select" id="sort-select">
+          <option value="name"  {% if sort == 'name' %}selected{% endif %}>Ordenar por: Nombre</option>
+          <option value="email" {% if sort == 'email' %}selected{% endif %}>Ordenar por: Correo</option>
+        </select>
+      </div>
+
+      <div class="col-6 col-md-2">
+        <select name="order" class="form-select" id="order-select">
+          <option value="asc"  {% if order == 'asc' %}selected{% endif %}>A-Z</option>
+          <option value="desc" {% if order == 'desc' %}selected{% endif %}>Z-A</option>
+        </select>
+      </div>
+
+    <div class="col-6 col-md-2">
+      <select name="per_page" class="form-select" id="per-page-select">
+        <option value="5"  {% if per_page|default:20 == 5 %}selected{% endif %}>5 por página</option>
+        <option value="10" {% if per_page|default:20 == 10 %}selected{% endif %}>10 por página</option>
+        <option value="20" {% if per_page|default:20 == 20 %}selected{% endif %}>20 por página</option>
+      </select>
+    </div>
+
+    <div class="col-12 col-md-2 d-grid">
+      <button type="submit" class="btn btn-outline-primary">Aplicar</button>
+    </div>
+
+    {# reiniciar a página 1 al cambiar criterios #}
+    <input type="hidden" name="page" value="1" id="page-input">
+  </form>
+
+  <div id="results">
+    {# primera carga: render del partial #}
+    {% include "accounts/partials/usuarios_results.html" %}
+  </div>
+</div>
+
+<script>
+(function(){
+  const form = document.getElementById('filters-form');
+  const results = document.getElementById('results');
+  const qInput = document.getElementById('q-input');
+  const orderSelect = document.getElementById('order-select');
+  const perPageSelect = document.getElementById('per-page-select');
+  const pageInput = document.getElementById('page-input');
+
+  function debounce(fn, delay){
+    let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); };
+  }
+
+  function buildURL(paramsOverride={}) {
+    const data = new FormData(form);
+    for (const [k,v] of Object.entries(paramsOverride)) data.set(k, v);
+    const usp = new URLSearchParams(data);
+    return `${window.location.pathname}?${usp.toString()}`;
+  }
+
+  async function loadAjax(url){
+    const resp = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }});
+    if (!resp.ok) return;
+    const payload = await resp.json();
+    results.innerHTML = payload.html;
+    window.history.replaceState({}, "", url);
+  }
+
+  const liveSearch = debounce(()=>{
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  }, 300);
+
+  qInput.addEventListener('input', liveSearch);
+
+  orderSelect.addEventListener('change', ()=>{
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  perPageSelect.addEventListener('change', ()=>{
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    pageInput.value = "1";
+    loadAjax(buildURL());
+  });
+
+  // Interceptar links de paginación dentro del partial
+  results.addEventListener('click', function(e){
+    const a = e.target.closest('a[data-ajax-link]');
+    if(!a) return;
+    e.preventDefault();
+    loadAjax(a.getAttribute('href'));
+  });
+})();
+const sortSelect = document.getElementById('sort-select');
+
+sortSelect.addEventListener('change', ()=>{
+  pageInput.value = "1";
+  loadAjax(buildURL());
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{% for message in messages %}
+<script>
+Swal.fire({
+  icon: '{{ message.tags|default:"info" }}',
+  title: '{{ message|escapejs }}',
+  timer: 2000,
+  showConfirmButton: false
+});
+</script>
+<script>
+(function(){
+  // CSRF desde cookie
+  function getCookie(name){const v=`; ${document.cookie}`;const p=v.split(`; ${name}=`);if(p.length===2) return p.pop().split(';').shift();}
+  const csrftoken = getCookie('csrftoken');
+
+  const form = document.getElementById('filters-form');
+  const results = document.getElementById('results');
+  const pageInput = document.getElementById('page-input');
+
+  async function loadAjax(url){
+    const r = await fetch(url, { headers: { "X-Requested-With":"XMLHttpRequest" }});
+    if(!r.ok) return;
+    const payload = await r.json();
+    results.innerHTML = payload.html;
+    window.history.replaceState({}, "", url);
+  }
+  function buildURL(paramsOverride={}){
+    const data=new FormData(form);
+    for(const [k,v] of Object.entries(paramsOverride)) data.set(k,v);
+    const usp=new URLSearchParams(data);
+    return `${window.location.pathname}?${usp.toString()}`;
+  }
+
+  // Delegación: confirmación de borrado para cualquier .js-delete dentro de #results
+  results.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('[data-action="delete"], .js-delete');
+    if(!btn) return;
+    e.preventDefault();
+    const url = btn.getAttribute('data-url') || btn.getAttribute('href');
+
+    const res = await Swal.fire({
+      icon: 'warning',
+      title: '¿Eliminar usuario?',
+      text: 'Esta acción no se puede deshacer.',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar'
+    });
+    if(!res.isConfirmed) return;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrftoken, 'X-Requested-With': 'XMLHttpRequest'}
+    });
+
+    // Refrescar lista por AJAX (volver a página 1)
+    pageInput.value = "1";
+    await loadAjax(buildURL());
+    Swal.fire({icon:'success', title:'Eliminado', timer:1500, showConfirmButton:false});
+  });
+})();
+</script>
+
+{% endfor %}
+
+{% endblock %}

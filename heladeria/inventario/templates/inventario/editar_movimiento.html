@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header bg-white py-3">
+    <h3 class="mb-0">{{ titulo }}</h3>
+  </div>
+  <div class="card-body">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      <div class="row g-3">
+        {# Ajusta los campos según tu form: EntradaForm / SalidaForm #}
+        <div class="col-md-6">
+          <label class="form-label">Insumo</label>
+          {{ form.insumo }}
+          {{ form.insumo.errors }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Lote</label>
+          {{ form.insumo_lote }}
+          {{ form.insumo_lote.errors }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Ubicación</label>
+          {{ form.ubicacion }}
+          {{ form.ubicacion.errors }}
+        </div>
+        {# Entrada usa 'fecha'; Salida usa 'fecha_generada'. Muestra el que exista #}
+        <div class="col-md-6">
+          <label class="form-label">Fecha</label>
+          {{ campo_fecha }}
+          {% if errores_fecha %}
+            {{ errores_fecha }}
+          {% endif %}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Cantidad</label>
+          {{ form.cantidad }}
+          {{ form.cantidad.errors }}
+        </div>
+        {# Solo ENTRADA avanzada: campos extra si los usas en tu form de línea #}
+        {% if form.fields.crear_nuevo_lote %}
+        <div class="col-md-6">
+          <div class="form-check mt-4">
+            {{ form.crear_nuevo_lote }} <label class="form-check-label">Crear nuevo lote</label>
+          </div>
+          {{ form.crear_nuevo_lote.errors }}
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Fecha de expiración</label>
+          {{ form.fecha_expiracion }}
+          {{ form.fecha_expiracion.errors }}
+        </div>
+        {% endif %}
+
+        {% if form.observaciones %}
+        <div class="col-12">
+          <label class="form-label">Observaciones</label>
+          {{ form.observaciones }}
+          {{ form.observaciones.errors }}
+        </div>
+        {% endif %}
+      </div>
+
+      <hr>
+      <div class="d-flex justify-content-end gap-2">
+        <a href="{{ cancel_url }}" class="btn btn-secondary">Cancelar</a>
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

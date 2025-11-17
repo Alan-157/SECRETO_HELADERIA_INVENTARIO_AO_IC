@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white d-flex align-items-center justify-content-between">
+        <h3 class="mb-0">{{ titulo }}</h3>
+        <button id="add-line" type="button" class="btn btn-sm btn-outline-primary">+ Agregar ítem</button>
+    </div>
+
+    <div class="card-body">
+        
+        {% if orden %}
+            <div class="alert alert-info">
+                Registrando movimientos para la **Orden #{{ orden.id }}** (Estado: {{ orden.estado }}).
+            </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+            {% if orden %}
+                <input type="hidden" name="orden_id" value="{{ orden.id }}">
+            {% endif %}
+            {% csrf_token %}
+            {{ formset.management_form }}
+            
+            {% if formset.non_form_errors %}
+                <div class="alert alert-danger">
+                    <strong>Errores Generales:</strong>
+                    <ul>
+                        {% for error in formset.non_form_errors %}
+                            <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="min-width:120px;">Tipo</th>
+                            <th>Insumo</th>
+                            <th style="min-width:160px;">Lote existente</th>
+                            <th style="min-width:120px;">Nuevo lote</th>
+                            <th class="col-exp" style="min-width:160px;">Expiración</th>
+                            <th>Ubicación</th>
+                            <th style="min-width:120px;">Cantidad</th>
+                            <th style="min-width:140px;">Fecha</th>
+                            <th>Obs.</th>
+                            <th style="width:40px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="formset-body">
+                        {% for f in formset %}
+                        <tr class="fs-row {% if f.errors %}table-danger{% endif %}">
+                            <td>{{ f.tipo }}{% for e in f.tipo.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ f.insumo }}{% for e in f.insumo.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ f.insumo_lote }}{% for e in f.insumo_lote.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>
+                                <div class="form-check">
+                                    {{ f.crear_nuevo_lote }}
+                                    <label class="form-check-label">{{ f.crear_nuevo_lote.label }}</label>
+                                </div>
+                                {% for e in f.crear_nuevo_lote.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+                            </td>
+
+                            <!-- COLUMNA EXPIRACIÓN -->
+                            <td class="col-exp">
+                                {{ f.fecha_expiracion }}
+                                {% for e in f.fecha_expiracion.errors %}
+                                <div class="text-danger small">{{ e }}</div>
+                                {% endfor %}
+                            </td>
+
+                            <td>{{ f.ubicacion }}{% for e in f.ubicacion.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ f.cantidad }}{% for e in f.cantidad.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ f.fecha }}{% for e in f.fecha.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+                            <td>{{ f.observaciones }}{% for e in f.observaciones.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
+
+                            <td>
+                                {{ f.id }}
+                                {% if formset.can_delete %}
+                                    {{ f.DELETE }} 
+                                    <button type="button" class="btn btn-sm btn-outline-danger del-line">×</button>
+                                {% endif %}
+                            </td>
+                        </tr>
+
+                        {% if f.non_field_errors %}
+                        <tr class="table-danger"><td colspan="10">
+                            <div class="text-danger small">
+                                <strong>Error en la línea:</strong> {{ f.non_field_errors|join:", " }}
+                            </div>
+                        </td></tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+                <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- TEMPLATE PARA NUEVA FILA -->
+<script type="text/template" id="empty-form-row">
+    <tr class="fs-row">
+        <td>{{ formset.empty_form.tipo }}</td>
+        <td>{{ formset.empty_form.insumo }}</td>
+        <td>{{ formset.empty_form.insumo_lote }}</td>
+        <td>
+            <div class="form-check">
+                {{ formset.empty_form.crear_nuevo_lote }}
+                <label class="form-check-label">{{ formset.empty_form.crear_nuevo_lote.label }}</label>
+            </div>
+        </td>
+        <td class="col-exp">{{ formset.empty_form.fecha_expiracion }}</td>
+        <td>{{ formset.empty_form.ubicacion }}</td>
+        <td>{{ formset.empty_form.cantidad }}</td>
+        <td>{{ formset.empty_form.fecha }}</td>
+        <td>{{ formset.empty_form.observaciones }}</td>
+        <td>
+            {{ formset.empty_form.id }}
+            {{ formset.empty_form.DELETE }}
+            <button type="button" class="btn btn-sm btn-outline-danger del-line">×</button>
+        </td>
+    </tr>
+</script>
+
+<script>
+// ---------------------------
+// AGREGAR Y ELIMINAR LÍNEAS
+// ---------------------------
+(function(){
+    const tbody = document.getElementById("formset-body");
+    const addBtn = document.getElementById("add-line");
+    const total = document.getElementById("id_form-TOTAL_FORMS");
+    const rawTpl = document.getElementById("empty-form-row").textContent;
+
+    addBtn.addEventListener("click", function(){
+        const index = parseInt(total.value, 10);
+        const html = rawTpl.replace(/__prefix__/g, index);
+
+        const range = document.createRange();
+        range.selectNode(document.body);
+        const fragment = range.createContextualFragment(html.trim());
+        const tr = fragment.querySelector('tr');
+
+        tbody.appendChild(tr);
+        total.value = index + 1;
+
+        ocultarColumnaExpiracion();
+    });
+
+    tbody.addEventListener("click", function(e){
+        if (e.target.classList.contains("del-line")){
+            const tr = e.target.closest("tr");
+            const del = tr.querySelector('input[name$="-DELETE"]');
+            if (del) del.checked = true;
+            tr.style.display = "none";
+            ocultarColumnaExpiracion();
+        }
+    });
+})();
+
+// ------------------------------------------------------
+// SCRIPT PARA OCULTAR COLUMNA "FECHA DE EXPIRACIÓN"
+// ------------------------------------------------------
+function ocultarColumnaExpiracion() {
+    const indice = 4; // COLUMNA FECHA EXPIRACIÓN
+    const ths = document.querySelectorAll("thead th");
+    const filas = document.querySelectorAll("#formset-body tr.fs-row");
+
+    let todasSalida = true;
+
+    filas.forEach((fila) => {
+        const tipo = fila.querySelector("select[name*='tipo']");
+        const celdas = fila.querySelectorAll("td");
+
+        if (!tipo || celdas.length <= indice) return;
+
+        if (tipo.value === "SALIDA") {
+            celdas[indice].style.display = "none";
+
+            const input = celdas[indice].querySelector("input");
+            if (input) input.value = "";
+        } else {
+            todasSalida = false;
+            celdas[indice].style.display = "table-cell";
+        }
+    });
+
+    // Ocultar TH solo si todas las filas son SALIDA
+    ths[indice].style.display = todasSalida ? "none" : "table-cell";
+}
+
+document.addEventListener("change", (e) => {
+    if (e.target.matches("select[name*='tipo']")) {
+        ocultarColumnaExpiracion();
+    }
+});
+
+document.addEventListener("DOMContentLoaded", ocultarColumnaExpiracion);
+
+</script>
+
+<style>
+    input[name$="-DELETE"] {
+        display: none;
+    }
+</style>
+
+{% endblock %}

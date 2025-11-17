@@ -1,0 +1,114 @@
+{% load static %}
+<nav class="navbar navbar-expand-lg" style="background-color: #A41C2D;">
+  <div class="container-fluid container">
+    <a class="navbar-brand d-flex align-items-center text-white" href="{% url 'dashboard' %}">
+      <img src="{% static 'img/logo_secreto.jpg' %}" 
+           alt="Secreto Heladería" width="40" height="40" 
+           class="me-2 rounded-circle border border-light">
+      <strong>Secreto Heladería</strong>
+    </a>
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+            aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation"
+            style="border-color: rgba(255,255,255,0.5);">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav me-auto">
+        {% if user.is_authenticated %}
+          {% with perfil=user.active_asignacion.perfil.nombre|default_if_none:""|lower %}
+
+            {% if perfil == 'bodeguero' and not user.is_superuser %}
+              <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_insumos' %}">Insumos</a></li>
+              <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_ordenes' %}">Órdenes</a></li>
+            {% else %}
+              <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_insumos' %}">Insumos</a></li>
+
+              {% if perfil == 'administrador' or perfil == 'encargado' or user.is_superuser %}
+                <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_bodegas' %}">Bodegas</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_lotes' %}">Lotes</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_categorias' %}">Categorías</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_movimientos' %}">Movimientos</a></li>
+                <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:reporte_disponibilidad' %}">Reporte</a></li>
+              {% endif %}
+
+              <li class="nav-item"><a class="nav-link text-white" href="{% url 'inventario:listar_ordenes' %}">Órdenes</a></li>
+
+              {% if perfil == 'administrador' or user.is_superuser %}
+                <li class="nav-item dropdown">
+                  <a class="nav-link dropdown-toggle text-white" href="#" id="navbarAdminDropdown" role="button"
+                     data-bs-toggle="dropdown" aria-expanded="false">
+                    Administración
+                  </a>
+                  <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{% url 'accounts:usuarios_list' %}">Usuarios</a></li>
+                    <li><a class="dropdown-item" href="{% url 'accounts:perfiles_list' %}">Perfiles</a></li>
+                    
+                  </ul>
+                </li>
+              {% endif %}
+            {% endif %}
+          {% endwith %}
+
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle text-white d-flex align-items-center" href="#" id="navbarDropdown" role="button"
+               data-bs-toggle="dropdown" aria-expanded="false">
+              {# Avatar o icono de perfil #}
+              {% if user.avatar %}
+                  <img src="{{ user.avatar.url }}" alt="Avatar" class="user-avatar-small me-2">
+              {% else %}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-person-circle me-2" viewBox="0 0 16 16">
+                      <path d="M11 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0"/>
+                      <path fill-rule="evenodd" d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8m8-7a7 7 0 0 0-5.468 11.37C3.242 11.233 4.805 10 8 10s4.757 1.232 5.468 2.37A7 7 0 0 0 8 1"/>
+                  </svg>
+              {% endif %}
+              Hola, {{ user.name|default:user.email }}
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              {# Nueva opción para editar perfil #}
+              <li><a class="dropdown-item" href="{% url 'accounts:profile_edit' %}">Editar Perfil</a></li> 
+              <li><a class="dropdown-item" href="{% url 'accounts:password_change' %}">Cambiar Contraseña</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <form action="{% url 'accounts:logout' %}" method="post" class="d-inline">
+                  {% csrf_token %}
+                  <button type="submit" class="dropdown-item">Cerrar Sesión</button>
+                </form>
+              </li>
+            </ul>
+          </li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link text-white" href="{% url 'accounts:login' %}">Ingresar</a></li>
+        {% endif %}
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<style>
+/* Hover color y contraste */
+.navbar-nav .nav-link:hover,
+.navbar-nav .nav-link.active {
+  background-color: #7D1623;
+  border-radius: 4px;
+  transition: background-color 0.3s ease-in-out;
+}
+
+/* Estilo para el avatar pequeño en la navbar (NUEVO) */
+.user-avatar-small {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* Botón desplegable en blanco */
+.navbar-toggler {
+  border-color: rgba(255,255,255,.5);
+}
+.navbar-toggler-icon {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255,255,255,1)' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 7h22 M4 15h22 M4 23h22'/%3e%3c/svg%3e");
+}
+</style>

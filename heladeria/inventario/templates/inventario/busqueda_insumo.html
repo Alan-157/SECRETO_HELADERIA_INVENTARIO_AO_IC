@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+<h3 class="mb-0">{{ titulo }}</h3>
+<!-- Formulario de Búsqueda -->
+<form method="get" class="d-flex" style="width: 300px;">
+<input class="form-control me-2" type="search" placeholder="Buscar por nombre o categoría..." name="q" value="{{ request.GET.q }}">
+<button class="btn btn-outline-secondary" type="submit">Buscar</button>
+</form>
+</div>
+
+{% if user.is_superuser or user.role|lower == 'administrador' or user.role|lower == 'encargado' %}
+
+<p><a href="{% url 'inventario:crear_insumo' %}" class="btn btn-success">Crear Insumo</a></p>
+{% endif %}
+
+{% if insumos %}
+
+<div class="table-responsive">
+<table class="table table-striped table-hover">
+<thead>
+<tr>
+<th>Nombre</th>
+<th>Categoría</th>
+<th>Stock Mínimo</th>
+<th>Unidad</th>
+<th>Acciones</th>
+</tr>
+</thead>
+<tbody>
+{% for insumo in insumos %}
+<tr>
+<td>{{ insumo.nombre }}</td>
+<td>{{ insumo.categoria.nombre }}</td>
+<td>{{ insumo.stock_minimo }}</td>
+<td>{{ insumo.unidad_medida }}</td>
+<td>
+<a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-primary">Editar</a>
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
+<div class="alert alert-info">
+{% if request.GET.q %}
+No se encontraron insumos que coincidan con "<strong>{{ request.GET.q }}</strong>".
+{% else %}
+No hay insumos registrados.
+{% endif %}
+</div>
+{% endif %}
+{% endblock %}

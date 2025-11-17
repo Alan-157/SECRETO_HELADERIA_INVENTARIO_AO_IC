@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+<div class="col-md-8 col-lg-6">
+<div class="card shadow-sm">
+<div class="card-header">
+<h3 class="mb-0">{{ titulo }}</h3>
+</div>
+<div class="card-body">
+<form method="post" novalidate>
+{% csrf_token %}
+
+                {{ form.as_p }} 
+                
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
+                    <button class="btn btn-{% if tipo_movimiento == 'Entrada' %}success{% else %}primary{% endif %}" type="submit">Guardar Movimiento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+</div>
+{% endblock %}
