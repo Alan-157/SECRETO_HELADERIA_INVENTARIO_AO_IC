@@ -35,6 +35,9 @@ urlpatterns = [
 
     # 3. Rutas de Autenticación (Login, Logout, Password Change, etc.)
     path('accounts/', include('accounts.urls', namespace='accounts')), 
+
+    # 4. Rutas de la API
+    path("api/", include("api.urls")),
     
     
 ]

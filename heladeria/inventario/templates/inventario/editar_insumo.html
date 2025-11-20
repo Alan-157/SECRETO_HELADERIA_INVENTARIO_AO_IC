@@ -9,24 +9,21 @@
         
         <div class="card shadow">
             <div class="card-body">
-                <form method="post" novalidate>
+                <form id="form-editar" method="post" novalidate>
                     {% csrf_token %}
                     
-                    {# Renderizar campos individualmente para mejor estilo y manejo de errores #}
                     {% for field in form %}
                         <div class="mb-3">
                             <label for="{{ field.id_for_label }}" class="form-label">
                                 {{ field.label }}
                             </label>
-                            
-                            {# Esto renderiza el campo de entrada (incluyendo el select de Unidad de Medida) #}
+
                             {{ field }}
                             
                             {% if field.help_text %}
                                 <div class="form-text">{{ field.help_text }}</div>
                             {% endif %}
                             
-                            {# Mostrar errores de campo específicos (incluyendo Stock Min > Stock Max) #}
                             {% for error in field.errors %}
                                 <div class="alert alert-danger p-1 mt-1 small">{{ error }}</div>
                             {% endfor %}
@@ -34,12 +31,45 @@
                     {% endfor %}
                     
                     <div class="d-flex justify-content-end gap-2 mt-4">
-                        <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-secondary">Cancelar</a>
-                        <button class="btn btn-success" type="submit">Guardar Cambios</button>
+                        <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+
+                        <!-- Botón SIN submit directo -->
+                        <button id="btn-guardar" class="btn btn-success" type="button">
+                            Guardar Cambios
+                        </button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
+
+{% endblock %}
+
+{% block extra_js %}
+<!-- Librería SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+document.getElementById("btn-guardar").addEventListener("click", function () {
+
+    Swal.fire({
+        title: "¿Confirmar edición?",
+        text: "Se guardarán los cambios realizados.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Sí, guardar",
+        cancelButtonText: "Cancelar",
+        reverseButtons: true
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Enviar formulario
+            document.getElementById("form-editar").submit();
+        }
+    });
+
+});
+</script>
 {% endblock %}

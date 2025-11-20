@@ -23,7 +23,6 @@ from .forms import (
     InsumoForm, CategoriaForm,
     MovimientoLineaFormSet, BodegaForm,
     EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, OrdenInsumoDetalleEditFormSet, 
-    # =============================================================================
 )
 from io import BytesIO
 from openpyxl import Workbook
@@ -43,7 +42,6 @@ import operator
 from django.db.models import Q
 from django.template.loader import render_to_string
 from inventario import models
-
 
 # --- Función genérica para listas con filtros, orden y paginación ---
 def list_with_filters(
@@ -145,9 +143,7 @@ def dashboard_view(request):
 # --- CRUD INSUMOS ---
 @login_required
 @perfil_required(
-    allow=("administrador", "Encargado"),
-    readonly_for=("Bodeguero",)            # ← bodeguero puede ver listado
-)
+    allow=("administrador", "Encargado"),readonly_for=("Bodeguero",))
 def listar_insumos(request):
     # Base queryset con stock_actual calculado
     qs = (

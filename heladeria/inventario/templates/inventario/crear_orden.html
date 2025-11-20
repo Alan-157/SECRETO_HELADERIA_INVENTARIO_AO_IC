@@ -13,7 +13,8 @@
   </div>
 
   <div class="card-body">
-    <form method="post" novalidate>
+    
+    <form id="form-orden" method="post" novalidate>
       {% csrf_token %}
       {{ formset.management_form }}
 
@@ -52,7 +53,6 @@
                 {% endfor %}
               </td>
 
-              <!-- hidden fields de la fila -->
               {% for hidden in form.hidden_fields %}
                 {{ hidden }}
               {% endfor %}
@@ -74,8 +74,13 @@
 
       <div class="d-flex justify-content-end gap-2">
         <a href="{% url 'inventario:listar_ordenes' %}" class="btn btn-secondary">Cancelar</a>
-        <button type="submit" class="btn btn-primary">Guardar Orden</button>
+
+        <!-- Cambiamos submit directo -->
+        <button type="button" id="btn-guardar-orden" class="btn btn-primary">
+          Guardar Orden
+        </button>
       </div>
+
     </form>
   </div>
 </div>
@@ -111,7 +116,6 @@
 
     const row = wrapper.firstElementChild;
 
-    // limpiar valores iniciales
     row.querySelectorAll("input, select").forEach(el => {
       if (el.tagName === "INPUT") el.value = "";
       if (el.tagName === "SELECT") el.selectedIndex = 0;
@@ -121,5 +125,30 @@
     totalEl.value = index + 1;
   });
 })();
+</script>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+document.getElementById("btn-guardar-orden").addEventListener("click", function () {
+
+    Swal.fire({
+        title: "¿Confirmar registro de orden?",
+        text: "Se guardarán los ítems añadidos a la orden.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Sí, guardar",
+        cancelButtonText: "Cancelar",
+        reverseButtons: true
+    }).then(result => {
+        if (result.isConfirmed) {
+            document.getElementById("form-orden").submit();
+        }
+    });
+
+});
 </script>
 {% endblock %}

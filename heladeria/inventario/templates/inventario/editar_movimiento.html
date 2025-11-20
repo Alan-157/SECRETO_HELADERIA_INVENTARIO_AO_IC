@@ -7,27 +7,31 @@
     <h3 class="mb-0">{{ titulo }}</h3>
   </div>
   <div class="card-body">
-    <form method="post" novalidate>
+    
+    <form id="form-movimiento" method="post" novalidate>
       {% csrf_token %}
       {{ form.non_field_errors }}
+      
       <div class="row g-3">
-        {# Ajusta los campos según tu form: EntradaForm / SalidaForm #}
+
         <div class="col-md-6">
           <label class="form-label">Insumo</label>
           {{ form.insumo }}
           {{ form.insumo.errors }}
         </div>
+
         <div class="col-md-6">
           <label class="form-label">Lote</label>
           {{ form.insumo_lote }}
           {{ form.insumo_lote.errors }}
         </div>
+
         <div class="col-md-6">
           <label class="form-label">Ubicación</label>
           {{ form.ubicacion }}
           {{ form.ubicacion.errors }}
         </div>
-        {# Entrada usa 'fecha'; Salida usa 'fecha_generada'. Muestra el que exista #}
+
         <div class="col-md-6">
           <label class="form-label">Fecha</label>
           {{ campo_fecha }}
@@ -35,19 +39,22 @@
             {{ errores_fecha }}
           {% endif %}
         </div>
+
         <div class="col-md-6">
           <label class="form-label">Cantidad</label>
           {{ form.cantidad }}
           {{ form.cantidad.errors }}
         </div>
-        {# Solo ENTRADA avanzada: campos extra si los usas en tu form de línea #}
+
         {% if form.fields.crear_nuevo_lote %}
         <div class="col-md-6">
           <div class="form-check mt-4">
-            {{ form.crear_nuevo_lote }} <label class="form-check-label">Crear nuevo lote</label>
+            {{ form.crear_nuevo_lote }}
+            <label class="form-check-label">Crear nuevo lote</label>
           </div>
           {{ form.crear_nuevo_lote.errors }}
         </div>
+
         <div class="col-md-6">
           <label class="form-label">Fecha de expiración</label>
           {{ form.fecha_expiracion }}
@@ -62,14 +69,48 @@
           {{ form.observaciones.errors }}
         </div>
         {% endif %}
+
       </div>
 
       <hr>
       <div class="d-flex justify-content-end gap-2">
         <a href="{{ cancel_url }}" class="btn btn-secondary">Cancelar</a>
-        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+
+        <!-- 🔔 Botón que activa SweetAlert2 -->
+        <button type="button" id="btn-guardar-mov" class="btn btn-primary">
+          Guardar cambios
+        </button>
       </div>
+
     </form>
+
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script>
+document.getElementById("btn-guardar-mov").addEventListener("click", function () {
+
+    Swal.fire({
+        title: "¿Confirmar registro?",
+        text: "Se guardarán los datos del movimiento.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Sí, guardar",
+        cancelButtonText: "Cancelar",
+        reverseButtons: true
+    }).then((result) => {
+
+        if (result.isConfirmed) {
+            document.getElementById("form-movimiento").submit();
+        }
+
+    });
+
+});
+</script>
 {% endblock %}

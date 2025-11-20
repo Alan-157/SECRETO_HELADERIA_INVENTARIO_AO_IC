@@ -7,3 +7,4 @@ tzdata==2025.2
 openpyxl
 Pillow==10.3.0
 reportlab==4.0
+djangorestframework
