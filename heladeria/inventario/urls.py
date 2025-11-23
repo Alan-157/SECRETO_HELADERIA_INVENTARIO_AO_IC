@@ -8,7 +8,7 @@ urlpatterns = [
     # --- CRUD de Insumos ---
     path('insumos/', views.listar_insumos, name='listar_insumos'),
     path('insumos/crear/', views.crear_insumo, name='crear_insumo'),
-    path('insumos/editar/<int:insumo_id>/', views.editar_insumo, name='editar_insumo'),
+    path('ajax/crear_unidad/', views.crear_unidad_medida_ajax, name='crear_unidad_medida_ajax'),    path('insumos/editar/<int:insumo_id>/', views.editar_insumo, name='editar_insumo'),
     path('insumos/eliminar/<int:insumo_id>/', views.eliminar_insumo, name='eliminar_insumo'),
     
     # --- Listados Varios ---

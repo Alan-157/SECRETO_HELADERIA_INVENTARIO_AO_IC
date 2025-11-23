@@ -1,92 +1,103 @@
-# inventario/management/commands/seed_lotes.py
 from django.core.management.base import BaseCommand
-from inventario.models import Insumo, Bodega, InsumoLote
-from accounts.models import UsuarioApp
-from datetime import date, timedelta
-from random import randint
+# Importamos el nuevo modelo UnidadMedida
+from inventario.models import Insumo, Categoria, UnidadMedida 
 
 class Command(BaseCommand):
-    help = "Crea un inventario inicial con lotes para varios insumos en diferentes bodegas."
+    help = "Crea un catálogo inicial de insumos de prueba para la heladería."
 
     def handle(self, *args, **kwargs):
-        self.stdout.write(self.style.NOTICE("Iniciando la carga de lotes de inventario..."))
-
-        usuario_admin = UsuarioApp.objects.filter(is_superuser=True).first()
-        if not usuario_admin:
-            self.stdout.write(self.style.ERROR(
-                "No se encontró un superusuario. Crea uno con 'python manage.py createsuperuser'."
-            ))
-            return
-
-        lotes_data = [
-            {"insumo": "Leche Entera",                 "bodega": "Bodega Principal",  "cantidad": randint(40, 60)},
-            {"insumo": "Crema de Leche (35%)",         "bodega": "Bodega Principal",  "cantidad": randint(20, 30)},
-            {"insumo": "Pulpa de Frutilla",            "bodega": "Bodega Frutas",     "cantidad": randint(30, 50)},
-            {"insumo": "Pulpa de Mango",               "bodega": "Bodega Frutas",     "cantidad": randint(25, 45)},
-            {"insumo": "Azúcar Granulada",             "bodega": "Bodega Principal",  "cantidad": randint(80, 120)},
-            {"insumo": "Cacao Amargo en Polvo",        "bodega": "Bodega Secundaria", "cantidad": randint(10, 15)},
-            {"insumo": "Conos de Galleta",             "bodega": "Bodega Secundaria", "cantidad": randint(200, 400)},
-            {"insumo": "Nueces Mariposa",              "bodega": "Bodega Secundaria", "cantidad": randint(5, 8)},
-        ]
-
-        # Helper: caducidad por producto (si no está, usa un rango amplio)
-        shelf_defaults = {
-            "Leche Entera": (90, 150),
-            "Crema de Leche (35%)": (60, 120),
-            "Pulpa de Frutilla": (180, 360),
-            "Pulpa de Mango": (180, 360),
-            "Azúcar Granulada": (365, 540),
-            "Cacao Amargo en Polvo": (365, 720),
-            "Conos de Galleta": (180, 360),
-            "Nueces Mariposa": (180, 360),
+        self.stdout.write(self.style.NOTICE("Iniciando la carga de insumos de prueba..."))
+        
+        # 1. Definición de Unidades de Medida a crear
+        unidades_map = {
+            "Litro": {"nombre_corto": "LT", "nombre_largo": "Litro"},
+            "Kilo": {"nombre_corto": "KG", "nombre_largo": "Kilo"},
+            "Unidad": {"nombre_corto": "UN", "nombre_largo": "Unidad"},
+            # Si tienes otros códigos como GR o ML, añádelos aquí.
         }
 
-        lotes_creados = 0
-        for data in lotes_data:
+        # 2. Creamos o verificamos las Unidades de Medida
+        self.stdout.write(self.style.NOTICE("Creando Unidades de Medida..."))
+        unidades_objects = {}
+        for largo, data in unidades_map.items():
+            unidad, creado = UnidadMedida.objects.get_or_create(
+                nombre_largo=largo,
+                defaults=data
+            )
+            unidades_objects[largo] = unidad
+            if creado:
+                self.stdout.write(self.style.SUCCESS(f"Unidad '{largo}' creada."))
+
+        self.stdout.write(self.style.NOTICE("Iniciando la creación de Insumos..."))
+
+        insumos_data = [
+            # Lácteos
+            {"nombre": "Leche Entera", "categoria_nombre": "Lácteos", "unidad_medida_key": "Litro", "stock_minimo": 20, "stock_maximo": 100, "precio_unitario": 1200},
+            {"nombre": "Crema de Leche (35%)", "categoria_nombre": "Lácteos", "unidad_medida_key": "Litro", "stock_minimo": 10, "stock_maximo": 50, "precio_unitario": 4500},
+            {"nombre": "Leche en Polvo", "categoria_nombre": "Lácteos", "unidad_medida_key": "Kilo", "stock_minimo": 5, "stock_maximo": 25, "precio_unitario": 8000},
+
+            # Frutas Congeladas
+            {"nombre": "Pulpa de Frutilla", "categoria_nombre": "Frutas Congeladas", "unidad_medida_key": "Kilo", "stock_minimo": 10, "stock_maximo": 80, "precio_unitario": 3500},
+            {"nombre": "Pulpa de Mango", "categoria_nombre": "Frutas Congeladas", "unidad_medida_key": "Kilo", "stock_minimo": 10, "stock_maximo": 80, "precio_unitario": 4200},
+            {"nombre": "Arándanos Congelados", "categoria_nombre": "Frutas Congeladas", "unidad_medida_key": "Kilo", "stock_minimo": 5, "stock_maximo": 40, "precio_unitario": 4000},
+
+            # Azúcares y Endulzantes
+            {"nombre": "Azúcar Granulada", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida_key": "Kilo", "stock_minimo": 25, "stock_maximo": 150, "precio_unitario": 1300},
+            {"nombre": "Glucosa", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida_key": "Kilo", "stock_minimo": 5, "stock_maximo": 20, "precio_unitario": 3000},
+            {"nombre": "Dextrosa", "categoria_nombre": "Azúcares y Endulzantes", "unidad_medida_key": "Kilo", "stock_minimo": 5, "stock_maximo": 20, "precio_unitario": 3200},
+
+            # Chocolates y Confites
+            {"nombre": "Cacao Amargo en Polvo", "categoria_nombre": "Chocolates y Confites", "unidad_medida_key": "Kilo", "stock_minimo": 2, "stock_maximo": 15, "precio_unitario": 15000},
+            {"nombre": "Cobertura de Chocolate 70%", "categoria_nombre": "Chocolates y Confites", "unidad_medida_key": "Kilo", "stock_minimo": 5, "stock_maximo": 30, "precio_unitario": 18000},
+            {"nombre": "Chips de Chocolate", "categoria_nombre": "Chocolates y Confites", "unidad_medida_key": "Kilo", "stock_minimo": 3, "stock_maximo": 20, "precio_unitario": 9000},
+
+            # Envases y Descartables
+            {"nombre": "Conos de Galleta", "categoria_nombre": "Envases y Descartables", "unidad_medida_key": "Unidad", "stock_minimo": 100, "stock_maximo": 500, "precio_unitario": 150},
+            {"nombre": "Vasos de Polipapel 4oz", "categoria_nombre": "Envases y Descartables", "unidad_medida_key": "Unidad", "stock_minimo": 200, "stock_maximo": 1000, "precio_unitario": 80},
+            {"nombre": "Cucharitas de Helado", "categoria_nombre": "Envases y Descartables", "unidad_medida_key": "Unidad", "stock_minimo": 500, "stock_maximo": 2000, "precio_unitario": 30},
+            
+            # Frutos Secos
+            {"nombre": "Nueces Mariposa", "categoria_nombre": "Frutos Secos", "unidad_medida_key": "Kilo", "stock_minimo": 2, "stock_maximo": 10, "precio_unitario": 12000},
+            {"nombre": "Almendras Laminadas", "categoria_nombre": "Frutos Secos", "unidad_medida_key": "Kilo", "stock_minimo": 2, "stock_maximo": 10, "precio_unitario": 14000},
+        ]
+
+        insumos_creados = 0
+        for data in insumos_data:
             try:
-                insumo = Insumo.objects.get(nombre=data["insumo"])
-                bodega = Bodega.objects.get(nombre=data["bodega"])
-                cantidad = data["cantidad"]
+                # 3. Obtenemos los objetos necesarios
+                categoria = Categoria.objects.get(nombre=data["categoria_nombre"])
+                unidad = unidades_objects[data["unidad_medida_key"]] # <-- Obtenemos el objeto UnidadMedida
 
-                # Fecha de ingreso distribuida en el pasado reciente
-                fecha_ingreso = date.today() - timedelta(days=randint(1, 30))
-
-                # Caducidad futura según producto
-                min_days, max_days = shelf_defaults.get(insumo.nombre, (90, 540))
-                fecha_expiracion = fecha_ingreso + timedelta(days=randint(min_days, max_days))
-
-                lote, creado = InsumoLote.objects.get_or_create(
-                    insumo=insumo,
-                    bodega=bodega,
-                    fecha_ingreso=fecha_ingreso,
-                    fecha_expiracion=fecha_expiracion,  # <-- REQUERIDO POR EL MODELO
-                    defaults={
-                        "cantidad_inicial": cantidad,
-                        "cantidad_actual": cantidad,
-                        "usuario": usuario_admin,
-                    },
+                # 4. Preparamos los defaults con el objeto UnidadMedida
+                defaults = {
+                    "categoria": categoria,
+                    "unidad_medida": unidad, # <-- Usamos el objeto
+                    "stock_minimo": data["stock_minimo"],
+                    "stock_maximo": data["stock_maximo"],
+                    "precio_unitario": data["precio_unitario"],
+                }
+                
+                # Creamos o obtenemos el insumo
+                insumo, creado = Insumo.objects.get_or_create(
+                    nombre=data["nombre"],
+                    defaults=defaults
                 )
 
                 if creado:
-                    self.stdout.write(self.style.SUCCESS(
-                        f"Lote de '{insumo.nombre}' en '{bodega.nombre}' "
-                        f"({cantidad} uds, expira {fecha_expiracion}) creado."
-                    ))
-                    lotes_creados += 1
+                    self.stdout.write(self.style.SUCCESS(f"Insumo '{insumo.nombre}' creado."))
+                    insumos_creados += 1
                 else:
-                    self.stdout.write(self.style.WARNING(
-                        f"Lote de '{insumo.nombre}' en '{bodega.nombre}' para {fecha_ingreso} ya existía."
-                    ))
+                    self.stdout.write(self.style.WARNING(f"Insumo '{insumo.nombre}' ya existe."))
 
-            except Insumo.DoesNotExist:
-                self.stdout.write(self.style.ERROR(
-                    f"Insumo '{data['insumo']}' no encontrado. Ejecuta 'seed_insumos'."
-                ))
-            except Bodega.DoesNotExist:
-                self.stdout.write(self.style.ERROR(
-                    f"Bodega '{data['bodega']}' no encontrada. Ejecuta 'seed_bodegas'."
-                ))
+            except Categoria.DoesNotExist:
+                self.stdout.write(self.style.ERROR(f"ERROR: La categoría '{data['categoria_nombre']}' no existe. Ejecuta 'seed_categorias' primero. Saltando insumo '{data['nombre']}'."))
+            except KeyError:
+                 self.stdout.write(self.style.ERROR(f"ERROR: La unidad '{data['unidad_medida_key']}' no fue definida en la lista de unidades. Saltando insumo '{data['nombre']}'."))
 
-        self.stdout.write(self.style.SUCCESS(
-            f"\nCarga de lotes finalizada. Se crearon {lotes_creados} nuevos lotes."
-        ))
+
+        if insumos_creados > 0:
+            self.stdout.write(self.style.SUCCESS(f"\n¡Se crearon {insumos_creados} nuevos insumos!"))
+        else:
+            self.stdout.write(self.style.WARNING("\nNo se crearon insumos nuevos, todos ya existían."))
+
+        self.stdout.write(self.style.SUCCESS("Carga de insumos finalizada."))

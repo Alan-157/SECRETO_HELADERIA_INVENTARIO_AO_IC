@@ -16,6 +16,7 @@ from .models import (
     OrdenInsumoDetalle,
     Salida,
     Ubicacion,
+    UnidadMedida,
 )
 
 TIPO_CHOICES = (("ENTRADA", "Entrada"), ("SALIDA", "Salida"))
@@ -63,7 +64,7 @@ class InsumoForm(forms.ModelForm):
             "categoria": forms.Select(attrs={"class": "form-select"}),
             "stock_minimo": forms.NumberInput(attrs={"class": "form-control"}),
             "stock_maximo": forms.NumberInput(attrs={"class": "form-control"}),
-            "unidad_medida": forms.TextInput(attrs={"class": "form-control"}),
+            "unidad_medida": forms.Select(attrs={"class": "form-select"}),
             "precio_unitario": forms.NumberInput(attrs={"class": "form-control"}),
         }
 
@@ -85,6 +86,15 @@ class InsumoForm(forms.ModelForm):
             raise forms.ValidationError("El precio unitario no puede ser negativo.")
         return precio
 
+
+class UnidadMedidaForm(forms.ModelForm):
+    class Meta:
+        model = UnidadMedida
+        fields = ("nombre_corto", "nombre_largo")
+        widgets = {
+            "nombre_corto": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: KG"}),
+            "nombre_largo": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Kilogramos"}),
+        }
 
 # -------------------------------------------------
 # MOVIMIENTOS

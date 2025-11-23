@@ -42,12 +42,19 @@ class Ubicacion(BaseModel):
         return f"{self.nombre} ({self.bodega.nombre})"
 
 
+class UnidadMedida(BaseModel):
+    nombre_corto = models.CharField(max_length=5, unique=True, verbose_name="Código (KG, LT)")
+    nombre_largo = models.CharField(max_length=50, unique=True, verbose_name="Nombre Completo (Kilogramos, Litros)")
+    
+    def __str__(self):
+        return f"{self.nombre_largo} ({self.nombre_corto})"
+
 class Insumo(BaseModel):
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT, related_name="insumos")
     nombre = models.CharField(max_length=100)
     stock_minimo = models.DecimalField(max_digits=10, decimal_places=2)
     stock_maximo = models.DecimalField(max_digits=10, decimal_places=2)
-    unidad_medida = models.CharField(max_length=20)
+    unidad_medida = models.ForeignKey(UnidadMedida, on_delete=models.PROTECT, related_name="insumos_medidos")
     precio_unitario = models.IntegerField()
 
     def __str__(self):

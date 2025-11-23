@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{{ titulo }}{% endblock %}
 
@@ -7,14 +8,164 @@
     <div class="col-md-8 col-lg-6">
         <h3 class="mb-3">{{ titulo }}</h3>
         
-        <form method="post" novalidate>
-            {% csrf_token %}
-            
-            {{ form.as_p }} 
-            
-            <button class="btn btn-success" type="submit">Guardar</button>
-            <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-secondary">Cancelar</a>
-        </form>
+        <div class="card shadow">
+            <div class="card-body">
+                <form method="post" novalidate id="insumo-form">
+                    {% csrf_token %}
+                    
+                    {% for field in form %}
+                        
+                        {# Estructura para el campo Unidad de Medida (ForeignKey) con botón + #}
+                        {% if field.name == 'unidad_medida' %}
+                            <div class="mb-3">
+                                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                                <div class="input-group">
+                                    {{ field }}
+                                    <button type="button" class="btn btn-outline-primary" 
+                                            data-bs-toggle="modal" data-bs-target="#unidadMedidaModal" 
+                                            title="Crear nueva Unidad de Medida">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                                {% for error in field.errors %}
+                                    <div class="alert alert-danger p-1 mt-1 small">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        
+                        {# Estructura para el resto de campos #}
+                        {% else %}
+                            <div class="mb-3">
+                                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                                {% for error in field.errors %}
+                                    <div class="alert alert-danger p-1 mt-1 small">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        
+                    {% endfor %}
+                    
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-secondary">Cancelar</a>
+                        <button class="btn btn-success" type="submit">Guardar Insumo</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
-{% endblock %}
+
+<div class="modal fade" id="unidadMedidaModal" tabindex="-1" aria-labelledby="unidadMedidaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="unidadMedidaModalLabel">Crear Nueva Unidad de Medida</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="unidad-form" method="post" action="{% url 'inventario:crear_unidad_medida_ajax' %}">
+            {% csrf_token %}
+            
+            {# Renderizar el formulario de la Unidad de Medida que pasamos en el contexto #}
+            {% for field in UnidadMedidaForm %} 
+                <div class="mb-3">
+                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                </div>
+            {% endfor %}
+
+            <div id="unidad-errors" class="alert alert-danger d-none"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-primary" id="save-unidad-btn">Guardar Unidad</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %} <---- ¡ESTA LÍNEA FALTABA!
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const saveBtn = document.getElementById('save-unidad-btn');
+    const modalElement = document.getElementById('unidadMedidaModal');
+    const modal = new bootstrap.Modal(modalElement);
+    const form = document.getElementById('unidad-form');
+    const selectUnidad = document.getElementById('id_unidad_medida');
+    const errorDiv = document.getElementById('unidad-errors');
+
+    if (!saveBtn) return; 
+
+    saveBtn.addEventListener('click', function() {
+        const formData = new FormData(form);
+        const url = form.action;
+
+        // Limpiar errores previos
+        document.querySelectorAll('#unidad-form .text-danger').forEach(el => el.remove());
+        errorDiv.classList.add('d-none');
+        errorDiv.innerHTML = '';
+        
+        fetch(url, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            }
+        })
+        .then(response => response.json().then(data => {
+            if (response.ok) {
+                // Éxito: Añadir la nueva unidad al select
+                const newOption = new Option(data.text, data.id, true, true);
+                selectUnidad.add(newOption);
+                
+                // Limpiar el formulario y cerrar modal
+                form.reset();
+                modal.hide();
+                alert(`Unidad "${data.text}" creada y seleccionada.`);
+
+            } else {
+                // Error: Mostrar errores de validación
+                errorDiv.classList.remove('d-none');
+                
+                let errorHtml = '<ul>';
+                const errors = data.errors;
+
+                for (let fieldName in errors) {
+                    const fieldErrors = errors[fieldName];
+                    const fieldInput = document.getElementById(`id_${fieldName}`);
+                    
+                    fieldErrors.forEach(err => {
+                        // El error de Django viene como un array de objetos con 'message'
+                        const errorMessage = err.message || JSON.stringify(err);
+                        errorHtml += `<li>${errorMessage}</li>`;
+                        
+                        // Mostrar error bajo el campo específico
+                        if(fieldInput) {
+                            fieldInput.insertAdjacentHTML('afterend', `<div class="text-danger small mt-1">${errorMessage}</div>`);
+                        }
+                    });
+                }
+                errorHtml += '</ul>';
+                errorDiv.innerHTML = errorHtml;
+            }
+        }))
+        .catch(error => {
+            console.error('Error de red o parseo:', error);
+            errorDiv.classList.remove('d-none');
+            errorDiv.innerHTML = 'Error de conexión o del servidor.';
+        });
+    });
+
+    // Resetear formulario al abrir el modal para limpiar errores
+    modalElement.addEventListener('show.bs.modal', function() {
+        form.reset();
+        document.querySelectorAll('#unidad-form .text-danger').forEach(el => el.remove());
+        errorDiv.classList.add('d-none');
+        errorDiv.innerHTML = '';
+    });
+});
+</script>
+{% endblock extra_js %} 

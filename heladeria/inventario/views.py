@@ -15,14 +15,14 @@ from django.contrib.auth.decorators import login_required
 from .models import (
     Insumo, Categoria, Bodega,
     Entrada, Salida, InsumoLote,
-    OrdenInsumo, OrdenInsumoDetalle,
+    OrdenInsumo, OrdenInsumoDetalle, UnidadMedida,
     ESTADO_ORDEN_CHOICES,              
 )
 from django.urls import reverse
 from .forms import (
     InsumoForm, CategoriaForm,
     MovimientoLineaFormSet, BodegaForm,
-    EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, OrdenInsumoDetalleEditFormSet, 
+    EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, OrdenInsumoDetalleEditFormSet, UnidadMedidaForm
     # =============================================================================
 )
 from io import BytesIO
@@ -199,7 +199,11 @@ def crear_insumo(request):
         messages.success(request, "✅ Insumo creado correctamente.")
         return redirect('inventario:listar_insumos')
 
-    return render(request, 'inventario/crear_insumo.html', {'form': form, 'titulo': 'Nuevo Insumo'})
+    return render(request, 'inventario/crear_insumo.html', {
+        'form': form, 
+        'titulo': 'Nuevo Insumo',
+        'UnidadMedidaForm': UnidadMedidaForm() # <--- PASAMOS EL FORMULARIO
+    })
 
 
 @login_required
@@ -216,7 +220,36 @@ def editar_insumo(request, insumo_id):
         messages.success(request, f"📝 Insumo '{insumo.nombre}' actualizado.")
         return redirect('inventario:listar_insumos')
 
-    return render(request, 'inventario/editar_insumo.html', {'form': form, 'titulo': f'Editar {insumo.nombre}'})
+    return render(request, 'inventario/editar_insumo.html', {
+        'form': form, 
+        'titulo': f'Editar {insumo.nombre}',
+        'UnidadMedidaForm': UnidadMedidaForm() # <--- PASAMOS EL FORMULARIO
+    })
+
+# --- AJAX VIEWS (NUEVA VISTA) --- #UNIDAD DE MEDIDA
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+@require_POST
+def crear_unidad_medida_ajax(request):
+    """Crea una nueva unidad de medida y devuelve sus datos en JSON."""
+    form = UnidadMedidaForm(request.POST)
+    import json
+    
+    if form.is_valid():
+        nueva_unidad = form.save()
+        return JsonResponse({
+            'success': True,
+            'id': nueva_unidad.id,
+            'text': str(nueva_unidad) # Retorna "Kilogramos (KG)"
+        }, status=201)
+    
+    # Si hay errores de validación, retornamos JSON con los errores
+    errors = json.loads(form.errors.as_json())
+    return JsonResponse({
+        'success': False,
+        'errors': errors
+    }, status=400)
 
 
 @login_required
