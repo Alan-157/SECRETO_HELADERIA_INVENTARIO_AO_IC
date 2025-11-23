@@ -127,17 +127,33 @@ def list_with_filters(
 # --- DASHBOARD ---
 @login_required
 def dashboard_view(request):
+    # Cuentas totales (no cambian)
     total_insumos = Insumo.objects.filter(is_active=True).count()
     total_bodegas = Bodega.objects.filter(is_active=True).count()
-    ordenes_pendientes = OrdenInsumo.objects.filter(estado='PENDIENTE').count()
+    ordenes_pendientes_count = OrdenInsumo.objects.filter(estado='PENDIENTE').count()
     visitas = request.session.get('visitas', 0)
     request.session['visitas'] = visitas + 1
-    categorias = Categoria.objects.filter(is_active=True).order_by('-created_at')[:5]
+
+    # --- Listas para el Dashboard (Top 5) ---
+    # Top 5 Insumos activos más recientes
+    top_insumos = Insumo.objects.filter(is_active=True).order_by('-created_at')[:5] 
+    
+    # Top 5 Bodegas más recientes
+    top_bodegas = Bodega.objects.filter(is_active=True).order_by('-created_at')[:5]
+    
+    # Top 5 Órdenes Pendientes más recientes
+    top_ordenes = OrdenInsumo.objects.filter(estado='PENDIENTE').order_by('-fecha')[:5] 
+
+    # Las categorías que ya estaban
+    categorias = Categoria.objects.filter(is_active=True).order_by('-created_at')[:5] 
 
     context = {
         'total_insumos': total_insumos,
         'total_bodegas': total_bodegas,
-        'ordenes_pendientes': ordenes_pendientes,
+        'ordenes_pendientes_count': ordenes_pendientes_count,
+        'top_insumos': top_insumos,          # Nuevo
+        'top_bodegas': top_bodegas,          # Nuevo
+        'top_ordenes': top_ordenes,          # Nuevo
         'categorias': categorias,
         'visitas': visitas,
     }
