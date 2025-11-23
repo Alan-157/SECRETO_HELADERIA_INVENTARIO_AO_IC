@@ -147,13 +147,14 @@ def dashboard_view(request):
 @login_required
 @perfil_required(
     allow=("administrador", "Encargado"),
-    readonly_for=("Bodeguero",)            # ← bodeguero puede ver listado
+    readonly_for=("Bodeguero",)
 )
 def listar_insumos(request):
     qs = (
         Insumo.objects.filter(is_active=True)
         .annotate(stock_actual=Coalesce(Sum('lotes__cantidad_actual'), 0, output_field=DecimalField()))
-        .select_related('categoria')
+        # Seleccionamos las relaciones para evitar más consultas a la DB
+        .select_related('categoria', 'unidad_medida') 
     )
 
     allowed_sort = {"nombre", "categoria", "stock", "unidad"}
@@ -168,13 +169,15 @@ def listar_insumos(request):
         "nombre": "nombre",
         "categoria": "categoria__nombre",
         "stock": "stock_actual",
-        "unidad": "unidad_medida",
+        "unidad": "unidad_medida__nombre_largo", # <-- CORREGIDO: Ordena por el nombre de la unidad
     }
     read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Admin", "Encargado"))
+    
+    # CORRECCIÓN APLICADA AQUÍ: Se utiliza la doble barra baja para buscar en el campo del modelo relacionado
     return list_with_filters(
         request,
         qs,
-        search_fields=["nombre", "categoria__nombre", "unidad_medida"],
+        search_fields=["nombre", "categoria__nombre", "unidad_medida__nombre_largo"], # <-- CORREGIDO: Búsqueda en el campo de texto relacionado
         order_field=sort_map[sort],
         session_prefix="insumos",
         context_key="insumos",
