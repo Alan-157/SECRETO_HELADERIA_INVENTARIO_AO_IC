@@ -1,4 +1,7 @@
 from django.http import JsonResponse
+from rest_framework import viewsets
+from inventario.models import Insumo, Categoria
+from .serializers import InsumoSerializer, CategoriaSerializer
 
 def health(request):
     """
@@ -16,3 +19,13 @@ def info(request):
         "autor": "Alonzo Oviedo e Isaac Catalan",
     }
     return JsonResponse(data)
+
+
+class InsumoViewSet(viewsets.ModelViewSet):
+    queryset = Insumo.objects.all()
+    serializer_class = InsumoSerializer
+    
+class CategoriaViewSet(viewsets.ModelViewSet):
+    queryset = Categoria.objects.all()
+    serializer_class = CategoriaSerializer
+    

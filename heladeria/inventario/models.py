@@ -31,7 +31,7 @@ UNIDAD_MEDIDA_CHOICES = [
 # --- MODELOS DE CATÁLOGO Y ESTRUCTURA ---
 
 class Categoria(BaseModel):
-    nombre = models.CharField(max_length=20)
+    nombre = models.CharField(max_length=30)
     descripcion = models.TextField(blank=True, null=True)
     def __str__(self):
         return self.nombre
@@ -55,7 +55,7 @@ class Ubicacion(BaseModel):
 
 class Insumo(BaseModel):
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT, related_name="insumos")
-    nombre = models.CharField(max_length=20)
+    nombre = models.CharField(max_length=40)
     stock_minimo = models.DecimalField(max_digits=10, decimal_places=2)
     stock_maximo = models.DecimalField(max_digits=10, decimal_places=2)
     # CAMBIO AQUÍ: Ahora usa CHOICES
