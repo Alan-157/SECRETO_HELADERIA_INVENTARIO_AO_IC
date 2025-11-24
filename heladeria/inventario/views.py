@@ -1,16 +1,16 @@
 # inventario/views.py
 from datetime import date, timedelta
 from decimal import Decimal
-from django.db.models import Q, F, DecimalField, Sum
+
+from django.db import transaction
+from django.db.models import Q, F, Sum, DecimalField
 from django.db.models.functions import Coalesce
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.contrib import messages
-from django.db import transaction
-from django.db.models import Q, F, DecimalField
-from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
+from django.forms import formset_factory
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.contrib.auth.decorators import login_required
 
@@ -24,9 +24,11 @@ from .models import (
 )
 from .forms import (
     CategoriaForm, InsumoForm, BodegaForm,
-    UnidadMedidaForm, MovimientoLineaFormSet,
+    UnidadMedidaForm,
     OrdenInsumoDetalleCreateFormSet,
-    OrdenInsumoDetalleEditFormSet,UbicacionForm, OrdenInsumoForm
+    OrdenInsumoDetalleEditFormSet,
+    UbicacionForm, OrdenInsumoForm,
+    MovimientoLineaForm,  # <--- IMPORTANTE (se usa con formset_factory)
 )
 
 # CRUD genérico
@@ -149,7 +151,7 @@ class InsumoList(BaseListView):
         "nombre": "nombre",
         "categoria": "categoria__nombre",
         "stock": "stock_actual",
-        "": "nombre",  # "Por defecto"
+        "": "nombre",
     }
 
     def get_queryset(self):
@@ -230,6 +232,7 @@ class BodegaList(BaseListView):
             .select_related("ubicacion")
         )
 
+
 class BodegaCreate(BaseCreateView):
     model = Bodega
     form_class = BodegaForm
@@ -268,7 +271,6 @@ def _qs_lotes_filtrado(request):
         )
     )
 
-    # búsqueda
     q = (request.GET.get("q") or "").strip()
     if q:
         qs = qs.filter(
@@ -276,7 +278,6 @@ def _qs_lotes_filtrado(request):
             Q(bodega__nombre__icontains=q)
         )
 
-    # filtro vencimiento
     filtro_vencimiento = request.GET.get("vencimiento", "todos")
     dias_proximos = request.GET.get("dias", 30)
     try:
@@ -290,7 +291,6 @@ def _qs_lotes_filtrado(request):
         limite = hoy + timedelta(days=dias_proximos)
         qs = qs.filter(fecha_expiracion__lte=limite)
 
-    # orden
     sort = request.GET.get("sort", "insumo")
     order = request.GET.get("order", "asc")
 
@@ -305,6 +305,7 @@ def _qs_lotes_filtrado(request):
     sort_field = sort_map.get(sort, "insumo__nombre")
     if order == "desc":
         sort_field = f"-{sort_field}"
+
     qs = qs.order_by(sort_field)
 
     meta = {
@@ -384,7 +385,7 @@ def exportar_lotes(request):
 #            ORDENES
 # ===========================================================
 @login_required
-@perfil_required(allow=("Administrador", "Encargado"," Bodeguero"))
+@perfil_required(allow=("Administrador", "Encargado", "Bodeguero"))
 def crear_orden(request):
     orden = OrdenInsumo(usuario=request.user)
 
@@ -392,7 +393,7 @@ def crear_orden(request):
     formset = OrdenInsumoDetalleCreateFormSet(request.POST or None, instance=orden)
 
     if request.method == "POST" and form_orden.is_valid() and formset.is_valid():
-        form_orden.save()   # guarda tipo
+        form_orden.save()
         formset.save()
         messages.success(request, "Orden creada correctamente.")
         return redirect("inventario:listar_ordenes")
@@ -441,6 +442,7 @@ def eliminar_orden(request, pk):
         "obj": orden,
     })
 
+
 # ===========================================================
 #            LISTAR ÓRDENES (AJAX)
 # ===========================================================
@@ -467,7 +469,6 @@ def listar_ordenes(request):
     if estado:
         qs = qs.filter(estado=estado)
 
-    # sort / order (opcional)
     sort = request.GET.get("sort", "fecha")
     order = request.GET.get("order", "desc")
 
@@ -547,17 +548,19 @@ def orden_cambiar_estado(request, pk):
     messages.success(request, "Estado actualizado.")
     return redirect("inventario:listar_ordenes")
 
+
 @login_required
 @perfil_required(allow=("Administrador", "Encargado"))
 def atender_orden(request, pk):
     orden = get_object_or_404(OrdenInsumo, pk=pk, is_active=True)
-    # solo atiendes si no está cancelada/cerrada
+
     if orden.estado in ("CERRADA", "CANCELADA"):
         messages.warning(request, "Esta orden no puede atenderse.")
         return redirect("inventario:listar_ordenes")
 
-    # redirige a registrar movimiento con orden_id
-    return redirect(f"{reverse_lazy('inventario:registrar_movimiento')}?orden_id={orden.id}")
+    # ✅ usar la misma key que registrar_movimiento
+    return redirect(f"{reverse_lazy('inventario:registrar_movimiento')}?orden={orden.id}")
+
 
 # ===========================================================
 #            REGISTRO DE MOVIMIENTOS
@@ -569,41 +572,26 @@ def registrar_movimiento(request):
     orden_id = request.GET.get("orden")
     orden = None
     detalles = None
+
     if orden_id:
-        orden = get_object_or_404(OrdenInsumo, pk=orden_id)
+        orden = get_object_or_404(OrdenInsumo, pk=orden_id, is_active=True)
+        detalles = orden.detalles.all()
 
-        # construir datos iniciales para el formset
-        initial = []
-        for d in orden.detalles.all():
-            initial.append({
-                "tipo": "SALIDA" if orden.tipo == "SALIDA" else "ENTRADA",
-                "insumo": d.insumo.id,
-                "cantidad": d.cantidad_solicitada,
-            })
-
-        formset = MovimientoLineaFormSet(queryset=Movimiento.objects.none(), initial=initial)
-    else:
-        formset = MovimientoLineaFormSet(queryset=Movimiento.objects.none())
-    # ----------------------------------------
-    #  FORMSET MANUAL (sin inlineformset)
-    # ----------------------------------------
     MovimientoFormSet = formset_factory(MovimientoLineaForm, extra=0)
 
     if request.method == "GET" and orden:
-        initial = []
-        for d in detalles:
-            initial.append({
-                "tipo": orden.tipo,                         # Entrada/Salida
-                "insumo": d.insumo.id,                     # insumo
-                "cantidad": d.cantidad_solicitada,         # cantidad sugerida
-            })
+        initial = [
+            {
+                "tipo": orden.tipo,
+                "insumo": d.insumo.id,
+                "cantidad": d.cantidad_solicitada,
+            }
+            for d in detalles
+        ]
         formset = MovimientoFormSet(initial=initial)
     else:
         formset = MovimientoFormSet(request.POST or None)
 
-    # ----------------------------------------
-    #   GUARDAR
-    # ----------------------------------------
     if request.method == "POST":
         if formset.is_valid():
             for form in formset:
@@ -614,7 +602,6 @@ def registrar_movimiento(request):
                 tipo = cd["tipo"]
                 insumo = cd["insumo"]
                 bodega = cd.get("bodega")
-                ubicacion = cd.get("ubicacion")
                 lote = cd.get("insumo_lote")
                 crear_nuevo = cd.get("crear_nuevo_lote")
                 fexp = cd.get("fecha_expiracion")
@@ -622,11 +609,8 @@ def registrar_movimiento(request):
                 fecha = date.today()
                 obs = cd.get("observaciones", "")
 
-                # --------------------------------------
-                #   REGISTRAR ENTRADA
-                # --------------------------------------
+                # ------------------ ENTRADA ------------------
                 if tipo == "ENTRADA":
-                    # Crear lote si corresponde
                     if crear_nuevo:
                         lote = InsumoLote.objects.create(
                             insumo=insumo,
@@ -639,6 +623,9 @@ def registrar_movimiento(request):
                             usuario=request.user,
                         )
                     else:
+                        if not lote:
+                            form.add_error("insumo_lote", "Debes seleccionar un lote existente.")
+                            continue
                         lote.cantidad_actual += cantidad
                         lote.save(update_fields=["cantidad_actual"])
 
@@ -655,10 +642,12 @@ def registrar_movimiento(request):
                         observaciones=obs,
                     )
 
-                # --------------------------------------
-                #   REGISTRAR SALIDA
-                # --------------------------------------
+                # ------------------ SALIDA ------------------
                 elif tipo == "SALIDA":
+                    if not lote:
+                        form.add_error("insumo_lote", "Debes seleccionar un lote para la salida.")
+                        continue
+
                     lote.cantidad_actual -= cantidad
                     lote.save(update_fields=["cantidad_actual"])
 
@@ -689,6 +678,7 @@ def registrar_movimiento(request):
             "orden": orden,
         }
     )
+
 
 # ===========================================================
 #            LISTAR MOVIMIENTOS
@@ -730,6 +720,7 @@ def listar_movimientos(request):
         "can_manage": can_manage,
     })
 
+
 # ===========================================================
 #            CRUD: UBICACIONES
 # ===========================================================
@@ -748,6 +739,7 @@ class UbicacionList(BaseListView):
         "direccion": "direccion",
         "": "nombre",
     }
+
 
 class UbicacionCreate(BaseCreateView):
     model = Ubicacion
@@ -775,14 +767,12 @@ class UbicacionDelete(BaseSoftDeleteView):
 # ===========================================================
 #            AJAX HELPERS
 # ===========================================================
-
 @login_required
 def ajax_insumos(request):
     q = (request.GET.get("q") or "").strip()
     page = int(request.GET.get("page") or 1)
     per_page = int(request.GET.get("per_page") or 5)
 
-    # 🔧 FIX: "unidad" NO existe → usar unidad_medida
     qs = (
         Insumo.objects.filter(is_active=True)
         .select_related("categoria", "unidad_medida")
@@ -813,11 +803,13 @@ def ajax_insumos(request):
         "has_prev": p.has_previous(),
     })
 
+
 @login_required
 def ajax_bodega_ubicacion(request):
     bodega_id = request.GET.get("bodega_id")
     if not bodega_id:
         return JsonResponse({"ok": False})
+
     bodega = get_object_or_404(Bodega, pk=bodega_id, is_active=True)
     u = bodega.ubicacion
     return JsonResponse({
@@ -831,6 +823,7 @@ def ajax_bodega_ubicacion(request):
 def ajax_lotes_por_insumo(request):
     insumo_id = request.GET.get("insumo_id")
     bodega_id = request.GET.get("bodega_id")
+
     qs = InsumoLote.objects.filter(is_active=True)
 
     if insumo_id:
@@ -851,14 +844,17 @@ def ajax_lote_detalle(request):
     lote_id = request.GET.get("lote_id")
     if not lote_id:
         return JsonResponse({"ok": False})
+
     lote = get_object_or_404(InsumoLote, pk=lote_id, is_active=True)
+
     return JsonResponse({
         "ok": True,
         "bodega_id": lote.bodega_id,
         "bodega_text": lote.bodega.nombre,
         "ubicacion_id": lote.bodega.ubicacion_id,
         "ubicacion_text": str(lote.bodega.ubicacion),
-        "fecha_expiracion": lote.fecha_expiracion.strftime("%Y-%m-%d"),
+        # ✅ tolerante a None
+        "fecha_expiracion": lote.fecha_expiracion.strftime("%Y-%m-%d") if lote.fecha_expiracion else "",
         "cantidad_actual": str(lote.cantidad_actual),
         "insumo_id": lote.insumo_id,
     })

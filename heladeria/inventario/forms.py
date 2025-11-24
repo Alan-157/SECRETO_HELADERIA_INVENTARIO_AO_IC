@@ -1,6 +1,7 @@
 from datetime import date
 import re
 from decimal import Decimal
+import json
 from django import forms
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.forms import inlineformset_factory, BaseInlineFormSet, formset_factory
@@ -187,14 +188,14 @@ class OrdenInsumoDetalleForm(BaseModelForm):
 
         # Añadir data-unidad a cada option del select
         qs = self.fields["insumo"].queryset.select_related("unidad_medida")
-        self.fields["insumo"].choices = [
-            (
-                i.pk,
-                f"{i.nombre}",
-                {"data-unidad": i.unidad_medida.codigo}
-            )
-            for i in qs
-        ]
+        # choices deben ser pares (value, label). Construimos además un mapa
+        # pk -> unidad para usar en frontend y agregar data-* a las <option>.
+        choices = [(i.pk, f"{i.nombre}") for i in qs]
+        unidad_map = {str(i.pk): i.unidad_medida.codigo for i in qs}
+
+        self.fields["insumo"].choices = choices
+        # se inyecta el mapa como JSON en un atributo del widget para usar con JS
+        self.fields["insumo"].widget.attrs["data-unidad-map"] = json.dumps(unidad_map)
 
 
 class BaseOrdenDetalleFormSet(BaseInlineFormSet):
@@ -272,12 +273,18 @@ class BodegaForm(BaseModelForm, BaseCleanNameMixin):
 # ============================================================
 #   UBICACIONES
 # ============================================================
-
+TIPO_UBICACION_CHOICES = [
+    ("Sucursal", "Sucursal"),
+    ("Almacén", "Almacén"),
+    ("Otro", "Otro"),
+]
 class UbicacionForm(BaseModelForm, BaseCleanNameMixin):
     class Meta:
         model = Ubicacion
-        fields = ["nombre", "direccion", "tipo", "is_active"]
-        
+        fields = ["nombre", "direccion", "tipo"]
+        widgets = {
+            "tipo": forms.Select(choices=TIPO_UBICACION_CHOICES, attrs={"class": "form-select"}),
+        }
 # ============================================================
 #   UNIDAD DE MEDIDA
 # ===========================================================

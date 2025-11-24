@@ -4,6 +4,7 @@ from django.db.models import Sum
 from accounts.models import BaseModel, UsuarioApp
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
+from django.shortcuts import render, redirect, get_object_or_404
 
 # --- CONSTANTES DE OPCIÓN ---
 TIPO_MOVIMIENTO_CHOICES = [
@@ -40,7 +41,7 @@ class Categoria(BaseModel):
 class Ubicacion(BaseModel):
     nombre = models.CharField(max_length=100)
     direccion = models.CharField(max_length=255)  # ✅ dirección real
-    tipo = models.CharField(max_length=50, blank=True, null=True)
+    tipo = models.CharField(max_length=50, blank=True, null=True)  # Ej: "Sucursal", "Almacén", etc.
 
     class Meta:
         verbose_name = "Ubicación"
