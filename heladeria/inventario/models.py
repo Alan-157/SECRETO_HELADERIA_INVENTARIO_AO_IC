@@ -3,6 +3,7 @@ from django.db import models
 from django.db.models import Sum
 from accounts.models import BaseModel, UsuarioApp
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 
 # --- CONSTANTES DE OPCIÓN ---
 TIPO_MOVIMIENTO_CHOICES = [
@@ -18,73 +19,202 @@ ESTADO_ORDEN_CHOICES = [
     ("CANCELADA", "Cancelada"),
 ]
 
-# --- NUEVAS OPCIONES DE UNIDAD DE MEDIDA ---
-UNIDAD_MEDIDA_CHOICES = [ 
-    ("KG", "Kilogramos"),
-    ("GR", "Gramos"),
-    ("LT", "Litros"),
-    ("ML", "Mililitros"),
-    ("UN", "Unidades"),
-    ("OTRO", "Otro"),
+TIPO_ORDEN_CHOICES = [
+    ("ENTRADA", "Entrada"),
+    ("SALIDA", "Salida"),
 ]
 
 # --- MODELOS DE CATÁLOGO Y ESTRUCTURA ---
 
 class Categoria(BaseModel):
-    nombre = models.CharField(max_length=20)
+    nombre = models.CharField(max_length=70)
     descripcion = models.TextField(blank=True, null=True)
-    def __str__(self):
-        return self.nombre
-
-
-class Bodega(BaseModel):
-    nombre = models.CharField(max_length=20)
-    direccion = models.CharField(max_length=255)
-    descripcion = models.TextField(blank=True, verbose_name="Descripción")
+    class Meta:
+        verbose_name = "Categoría"
+        verbose_name_plural = "Categorías"
+        ordering = ["nombre"]
     def __str__(self):
         return self.nombre
 
 
 class Ubicacion(BaseModel):
-    bodega = models.ForeignKey(Bodega, on_delete=models.PROTECT, related_name="ubicaciones")
-    nombre = models.CharField(max_length=20)
+    nombre = models.CharField(max_length=100)
+    direccion = models.CharField(max_length=255)  # ✅ dirección real
     tipo = models.CharField(max_length=50, blank=True, null=True)
-    def __str__(self):
-        return f"{self.nombre} ({self.bodega.nombre})"
 
+    class Meta:
+        verbose_name = "Ubicación"
+        verbose_name_plural = "Ubicaciones"
+        ordering = ["nombre"]
+
+    def __str__(self):
+        return f"{self.nombre} - {self.direccion}"
+
+
+class Bodega(BaseModel):
+    ubicacion = models.ForeignKey(  # ✅ FK a ubicación real
+        Ubicacion,
+        on_delete=models.PROTECT,
+        related_name="bodegas",
+        limit_choices_to={"is_active": True},
+    )
+    nombre = models.CharField(max_length=50)  # ej: “Bodega de frío”
+    descripcion = models.TextField(blank=True, verbose_name="Descripción")
+
+    class Meta:
+        verbose_name = "Bodega"
+        verbose_name_plural = "Bodegas"
+        ordering = ["nombre"]
+
+    def __str__(self):
+        return f"{self.nombre} ({self.ubicacion.nombre})"
+
+
+# --- NUEVO MODELO CRUD: UNIDAD DE MEDIDA ---
+
+class UnidadMedida(BaseModel):
+    """
+    Catálogo CRUD de unidades de medida.
+    Se usa en Insumo (FK).
+    """
+
+    codigo = models.CharField(
+        max_length=10,
+        unique=True,
+        verbose_name="Código",
+        help_text="Ej: KG, GR, LT, ML, UN, OTRO"
+    )
+    nombre = models.CharField(
+        max_length=50,
+        verbose_name="Nombre",
+        help_text="Ej: Kilogramos, Gramos, Litros..."
+    )
+    descripcion = models.TextField(blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Unidad de medida"
+        verbose_name_plural = "Unidades de medida"
+        ordering = ["nombre"]
+
+    def __str__(self):
+        return f"{self.codigo} - {self.nombre}"
+
+
+# --- MODELO: PROVEEDOR ---
+
+class Proveedor(BaseModel):
+    """Tabla maestra de proveedores"""
+
+    ESTADO_CHOICES = [
+        ("ACTIVO", "Activo"),
+        ("INACTIVO", "Inactivo"),
+        ("SUSPENDIDO", "Suspendido"),
+    ]
+
+    nombre_empresa = models.CharField(max_length=100, verbose_name="Nombre Empresa")
+    rut_empresa = models.CharField(max_length=20, unique=True, verbose_name="RUT/NIT")
+    email = models.EmailField(unique=True, verbose_name="Email")
+    telefono = models.CharField(max_length=20, verbose_name="Teléfono")
+    telefono_alternativo = models.CharField(
+        max_length=20, blank=True, null=True, verbose_name="Teléfono Alternativo"
+    )
+    direccion = models.CharField(max_length=200, verbose_name="Dirección")
+    ciudad = models.CharField(max_length=50, verbose_name="Ciudad")
+    region = models.CharField(max_length=50, verbose_name="Región")
+
+    estado = models.CharField(
+        max_length=10,
+        choices=ESTADO_CHOICES,
+        default="ACTIVO",
+        verbose_name="Estado",
+    )
+
+    condiciones_pago = models.CharField(
+        max_length=100, blank=True, null=True, verbose_name="Condiciones de Pago"
+    )
+    dias_credito = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Días de Crédito",
+    )
+    monto_credito = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+        verbose_name="Monto de Crédito",
+    )
+    observaciones = models.TextField(blank=True, null=True, verbose_name="Observaciones")
+
+    class Meta:
+        verbose_name = "Proveedor"
+        verbose_name_plural = "Proveedores"
+        ordering = ["nombre_empresa"]
+
+    def __str__(self):
+        return f"{self.nombre_empresa} ({self.rut_empresa})"
+
+
+# --- MODELOS PRINCIPALES ---
 
 class Insumo(BaseModel):
-    categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT, related_name="insumos")
-    nombre = models.CharField(max_length=20)
+    categoria = models.ForeignKey(
+        Categoria,
+        on_delete=models.PROTECT,
+        related_name="insumos",
+        limit_choices_to={"is_active": True},
+    )
+    nombre = models.CharField(max_length=120)
     stock_minimo = models.DecimalField(max_digits=10, decimal_places=2)
     stock_maximo = models.DecimalField(max_digits=10, decimal_places=2)
-    # CAMBIO AQUÍ: Ahora usa CHOICES
-    unidad_medida = models.CharField(max_length=5, choices=UNIDAD_MEDIDA_CHOICES) 
+    unidad_medida = models.ForeignKey(
+        UnidadMedida,
+        on_delete=models.PROTECT,
+        related_name="insumos",
+        limit_choices_to={"is_active": True},
+    )
     precio_unitario = models.IntegerField()
 
+    class Meta:
+        verbose_name = "Insumo"
+        verbose_name_plural = "Insumos"
+        ordering = ["nombre"]
+        
     def __str__(self):
         return self.nombre
-
-    # Validación de stock (mantenida del paso anterior)
     def clean(self):
-        # Asegurarse de que ambos campos tengan un valor antes de comparar
         if self.stock_minimo is not None and self.stock_maximo is not None:
             if self.stock_minimo > self.stock_maximo:
-                # Se lanza un ValidationError con un mensaje para cada campo
                 raise ValidationError({
-                    'stock_minimo': 'El stock mínimo no puede ser mayor que el stock máximo.',
-                    'stock_maximo': 'El stock máximo debe ser mayor o igual al stock mínimo.'
+                    "stock_minimo": "El stock mínimo no puede ser mayor que el stock máximo.",
+                    "stock_maximo": "El stock máximo debe ser mayor o igual al stock mínimo.",
                 })
-
-        # Llamar al clean() de la clase padre
         super().clean()
 
 
-# --- MODELOS DE INVENTARIO Y TRANSACCIONES ---
-
 class InsumoLote(BaseModel):
-    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, related_name="lotes")
-    bodega = models.ForeignKey(Bodega, on_delete=models.PROTECT, related_name="lotes")
+    insumo = models.ForeignKey(
+        Insumo,
+        on_delete=models.PROTECT,
+        related_name="lotes",
+        limit_choices_to={"is_active": True},
+    )
+    bodega = models.ForeignKey(
+        Bodega,
+        on_delete=models.PROTECT,
+        related_name="lotes",
+        limit_choices_to={"is_active": True},
+    )
+
+    proveedor = models.ForeignKey(
+        Proveedor,
+        on_delete=models.PROTECT,
+        related_name="lotes",
+        null=True,
+        blank=True,
+        limit_choices_to={"is_active": True},
+    )
+
     fecha_ingreso = models.DateField()
     fecha_expiracion = models.DateField()
     cantidad_inicial = models.DecimalField(max_digits=10, decimal_places=2)
@@ -95,17 +225,29 @@ class InsumoLote(BaseModel):
         return f"Lote {self.id} de {self.insumo.nombre}"
 
 
-# --- ÓRDENES DE INSUMOS ---
-
 class OrdenInsumo(BaseModel):
-    usuario = models.ForeignKey(UsuarioApp, on_delete=models.PROTECT, related_name="ordenes_creadas")
+    usuario = models.ForeignKey(
+        UsuarioApp,
+        on_delete=models.PROTECT,
+        related_name="ordenes_creadas"
+    )
+
+    tipo = models.CharField(
+        max_length=20,
+        choices=TIPO_ORDEN_CHOICES,
+        default="SALIDA",
+    )
+
     fecha = models.DateField(auto_now_add=True)
-    estado = models.CharField(max_length=50, choices=ESTADO_ORDEN_CHOICES, default="PENDIENTE")
+    estado = models.CharField(
+        max_length=50,
+        choices=ESTADO_ORDEN_CHOICES,
+        default="PENDIENTE"
+    )
 
     def __str__(self):
-        return f"Orden #{self.id} - {self.estado}"
+        return f"Orden #{self.id} - {self.tipo} - {self.estado}"
 
-    # Cálculo automático del estado
     def recalc_estado(self):
         tot_sol = self.detalles.aggregate(s=Sum("cantidad_solicitada"))["s"] or Decimal("0")
         tot_att = self.detalles.aggregate(a=Sum("cantidad_atendida"))["a"] or Decimal("0")
@@ -120,7 +262,11 @@ class OrdenInsumo(BaseModel):
 
 class OrdenInsumoDetalle(BaseModel):
     orden_insumo = models.ForeignKey(OrdenInsumo, on_delete=models.CASCADE, related_name="detalles")
-    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT)
+    insumo = models.ForeignKey(
+        Insumo,
+        on_delete=models.PROTECT,
+        limit_choices_to={"is_active": True},
+    )
     cantidad_solicitada = models.DecimalField(max_digits=10, decimal_places=2)
     cantidad_atendida = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
 
@@ -128,14 +274,11 @@ class OrdenInsumoDetalle(BaseModel):
         return f"{self.insumo.nombre} - {self.cantidad_solicitada}"
 
 
-# --- MOVIMIENTOS DE INVENTARIO ---
-
 class Entrada(BaseModel):
-    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT)
+    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, limit_choices_to={"is_active": True})
     insumo_lote = models.ForeignKey(InsumoLote, on_delete=models.PROTECT, null=True, blank=True)
-    ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT)
+    ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT, limit_choices_to={"is_active": True})
 
-    # 🔗 Enlace opcional con Orden / Detalle
     orden = models.ForeignKey(OrdenInsumo, null=True, blank=True, on_delete=models.SET_NULL, related_name="entradas")
     detalle = models.ForeignKey(OrdenInsumoDetalle, null=True, blank=True, on_delete=models.SET_NULL, related_name="entradas")
 
@@ -150,11 +293,10 @@ class Entrada(BaseModel):
 
 
 class Salida(BaseModel):
-    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT)
+    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, limit_choices_to={"is_active": True})
     insumo_lote = models.ForeignKey(InsumoLote, on_delete=models.PROTECT, null=True, blank=True)
-    ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT)
+    ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT, limit_choices_to={"is_active": True})
 
-    # 🔗 Enlace opcional con Orden / Detalle
     orden = models.ForeignKey(OrdenInsumo, null=True, blank=True, on_delete=models.SET_NULL, related_name="salidas")
     detalle = models.ForeignKey(OrdenInsumoDetalle, null=True, blank=True, on_delete=models.SET_NULL, related_name="salidas")
 
@@ -168,13 +310,12 @@ class Salida(BaseModel):
         return f"Salida {self.cantidad} de {self.insumo.nombre}"
 
 
-# --- ALERTAS DE STOCK ---
-
 class AlertaInsumo(BaseModel):
-    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, related_name="alertas")
+    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, related_name="alertas", limit_choices_to={"is_active": True})
     tipo = models.CharField(max_length=50, default="STOCK_BAJO")
     mensaje = models.TextField()
     fecha = models.DateField(auto_now_add=True)
 
     def __str__(self):
         return f"Alerta {self.tipo} para {self.insumo.nombre}"
+    

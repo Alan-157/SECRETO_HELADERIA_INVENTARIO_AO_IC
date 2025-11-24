@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from inventario.models import Insumo, Categoria
+from inventario.models import Insumo, Categoria, UnidadMedida
 
 class Command(BaseCommand):
     help = "Crea un catálogo inicial de insumos de prueba para la heladería."
@@ -39,38 +39,49 @@ class Command(BaseCommand):
         ]
 
         insumos_creados = 0
+
         for data in insumos_data:
+            categoria_nombre = data["categoria_nombre"]
+            um_codigo = data["unidad_medida"]
+
+            # --- Validar categoría ---
             try:
-                # Buscamos la categoría por su nombre
-                categoria = Categoria.objects.get(nombre=data["categoria_nombre"])
-                
-                # Preparamos los datos para el insumo, excluyendo el nombre de la categoría
-                defaults = {
-                    "categoria": categoria,
-                    "unidad_medida": data["unidad_medida"], # <-- ¡CORREGIDO! Usando códigos cortos
-                    "stock_minimo": data["stock_minimo"],
-                    "stock_maximo": data["stock_maximo"],
-                    "precio_unitario": data["precio_unitario"],
-                }
-                
-                # Creamos o obtenemos el insumo
-                insumo, creado = Insumo.objects.get_or_create(
-                    nombre=data["nombre"],
-                    defaults=defaults
-                )
-
-                if creado:
-                    self.stdout.write(self.style.SUCCESS(f"Insumo '{insumo.nombre}' creado."))
-                    insumos_creados += 1
-                else:
-                    self.stdout.write(self.style.WARNING(f"Insumo '{insumo.nombre}' ya existe."))
-
+                categoria = Categoria.objects.get(nombre=categoria_nombre)
             except Categoria.DoesNotExist:
-                self.stdout.write(self.style.ERROR(f"ERROR: La categoría '{data['categoria_nombre']}' no existe. Ejecuta 'seed_categorias' primero. Saltando insumo '{data['nombre']}'."))
+                self.stdout.write(self.style.ERROR(
+                    f"ERROR: La categoría '{categoria_nombre}' no existe."))
+                continue
+
+            # --- Validar unidad de medida ---
+            try:
+                unidad = UnidadMedida.objects.get(codigo__iexact=um_codigo)
+            except UnidadMedida.DoesNotExist:
+                self.stdout.write(self.style.ERROR(
+                    f"ERROR: La unidad '{um_codigo}' no existe. Ejecuta seed_unidades primero."))
+                continue
+
+            defaults = {
+                "categoria": categoria,
+                "unidad_medida": unidad,
+                "stock_minimo": data["stock_minimo"],
+                "stock_maximo": data["stock_maximo"],
+                "precio_unitario": data["precio_unitario"],
+            }
+
+            insumo, creado = Insumo.objects.get_or_create(
+                nombre=data["nombre"],
+                defaults=defaults
+            )
+
+            if creado:
+                self.stdout.write(self.style.SUCCESS(f"Insumo '{insumo.nombre}' creado."))
+                insumos_creados += 1
+            else:
+                self.stdout.write(self.style.WARNING(f"Insumo '{insumo.nombre}' ya existe."))
 
         if insumos_creados > 0:
             self.stdout.write(self.style.SUCCESS(f"\n¡Se crearon {insumos_creados} nuevos insumos!"))
         else:
-            self.stdout.write(self.style.WARNING("\nNo se crearon insumos nuevos, todos ya existían."))
+            self.stdout.write(self.style.WARNING("\nNo se crearon insumos nuevos."))
 
         self.stdout.write(self.style.SUCCESS("Carga de insumos finalizada."))

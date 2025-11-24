@@ -1,23 +1,22 @@
 {% extends "base.html" %}
 {% load static %}
-{% block title %}{{ titulo }}{% endblock %}
+{% block title %}{{ titulo|default:"Unidades de medida" }}{% endblock %}
 
 {% block content %}
-<div class="container mt-4" id="bodegas-root">
-  <h3 class="mb-3">{{ titulo }}</h3>
+<div class="container mt-4" id="unidades-root">
+  <h3 class="mb-3">{{ titulo|default:"Unidades de medida" }}</h3>
 
-  <form id="filtros-bodegas" class="row g-2 mb-3" method="get">
-    <div class="col-md-3">
-      <input type="text" class="form-control" name="q" value="{{ q|default:'' }}"
-             placeholder="Buscar por nombre de bodega o dirección…">
+  <form id="filtros-unidades" class="row g-2 mb-3" method="get">
+    <div class="col-md-4">
+      <input type="text" class="form-control" name="q"
+             value="{{ q|default:'' }}"
+             placeholder="Buscar por nombre o código…">
     </div>
 
     <div class="col-md-3">
       <select class="form-select" name="sort">
         <option value="nombre" {% if sort == "nombre" %}selected{% endif %}>Nombre</option>
-        {# OJO: esto solo es el valor que manda al backend #}
-        <option value="direccion" {% if sort == "direccion" %}selected{% endif %}>Dirección</option>
-        <option value="ubicacion" {% if sort == "ubicacion" %}selected{% endif %}>Ubicación</option>
+        <option value="codigo" {% if sort == "codigo" %}selected{% endif %}>Código</option>
       </select>
     </div>
 
@@ -42,20 +41,20 @@
   </form>
 
   {% if not read_only %}
-    <a href="{% url 'inventario:crear_bodega' %}" class="btn btn-success mb-3">
-      ➕ Nueva Bodega
+    <a href="{% url 'inventario:unidad_crear' %}" class="btn btn-success mb-3">
+      ➕ Nueva Unidad
     </a>
   {% endif %}
 
-  <div id="bodegas-results">
-    {% include "inventario/partials/bodegas_results.html" %}
+  <div id="unidades-results">
+    {% include "inventario/partials/unidad_results.html" %}
   </div>
 </div>
 
 <script>
 (function(){
-  const form    = document.getElementById('filtros-bodegas');
-  const results = document.getElementById('bodegas-results');
+  const form    = document.getElementById('filtros-unidades');
+  const results = document.getElementById('unidades-results');
 
   const qInput        = form.querySelector('input[name="q"]');
   const sortSelect    = form.querySelector('select[name="sort"]');

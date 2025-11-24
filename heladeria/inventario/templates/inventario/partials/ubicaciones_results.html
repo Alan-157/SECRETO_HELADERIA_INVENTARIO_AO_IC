@@ -1,33 +1,24 @@
 <table class="table table-striped table-bordered mb-0">
   <thead class="table-dark">
     <tr>
-      <th>Bodega</th>
-      <th>Dirección (Ubicación real)</th>
-      <th>Ubicación</th>
+      <th>Nombre</th>
+      <th>Dirección</th>
       <th class="text-end">Acciones</th>
     </tr>
   </thead>
   <tbody>
-    {% for bodega in bodegas %}
+    {% for u in ubicaciones %}
     <tr>
-      <td class="fw-semibold">{{ bodega.nombre }}</td>
-
-      {# Dirección viene desde Ubicacion #}
-      <td>{{ bodega.ubicacion.direccion|default:"—" }}</td>
-
-      <td>
-        <span class="badge bg-secondary">
-          {{ bodega.ubicacion.nombre }}
-        </span>
-      </td>
+      <td class="fw-semibold">{{ u.nombre }}</td>
+      <td>{{ u.direccion|default:"—" }}</td>
 
       <td class="text-end">
         {% if not read_only %}
-          <a href="{% url 'inventario:editar_bodega' bodega.id %}"
+          <a href="{% url 'inventario:editar_ubicacion' u.id %}"
              class="btn btn-sm btn-warning">Editar</a>
 
           <form method="post"
-                action="{% url 'inventario:eliminar_bodega' bodega.id %}"
+                action="{% url 'inventario:eliminar_ubicacion' u.id %}"
                 class="d-inline">
             {% csrf_token %}
             <button class="btn btn-sm btn-danger" type="submit">Eliminar</button>
@@ -39,19 +30,19 @@
     </tr>
     {% empty %}
     <tr>
-      <td colspan="4" class="text-center text-muted py-3">Sin resultados</td>
+      <td colspan="3" class="text-center text-muted py-3">Sin resultados</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 
-{% if bodegas.has_other_pages %}
+{% if ubicaciones.has_other_pages %}
 <nav aria-label="Paginación" class="mt-2">
   <ul class="pagination justify-content-center">
-    {% if bodegas.has_previous %}
+    {% if ubicaciones.has_previous %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ bodegas.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+           href="?page={{ ubicaciones.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
           « Anterior
         </a>
       </li>
@@ -61,14 +52,14 @@
 
     <li class="page-item disabled">
       <span class="page-link">
-        Página {{ bodegas.number }} de {{ bodegas.paginator.num_pages }}
+        Página {{ ubicaciones.number }} de {{ ubicaciones.paginator.num_pages }}
       </span>
     </li>
 
-    {% if bodegas.has_next %}
+    {% if ubicaciones.has_next %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ bodegas.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+           href="?page={{ ubicaciones.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
           Siguiente »
         </a>
       </li>

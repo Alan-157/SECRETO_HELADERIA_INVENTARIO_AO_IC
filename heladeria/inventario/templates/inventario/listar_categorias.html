@@ -1,26 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Categorías{% endblock %}
+{% block title %}{{ titulo }}{% endblock %}
 {% block content %}
 <div class="container mt-3">
-  <h3>Categorías</h3>
+  <h3>{{ titulo }}</h3>
 
   {% if not read_only %}
-    <a href="{% url 'inventario:crear_categoria' %}" class="btn btn-primary mb-3">➕ Nueva Categoría</a>
+    <a href="{% url 'inventario:crear_categoria' %}" class="btn btn-primary mb-3">
+      ➕ Nueva Categoría
+    </a>
   {% endif %}
 
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <form method="get" id="filterForm" class="d-flex gap-2">
-      <input type="text" name="q" value="{{ q }}" placeholder="Buscar..." class="form-control">
+    <form method="get" id="filterForm" class="d-flex gap-2 flex-wrap">
+      <input type="text" name="q" value="{{ q|default:'' }}" placeholder="Buscar..." class="form-control">
+
+      <select name="sort" class="form-select">
+        <option value="nombre" {% if sort == 'nombre' %}selected{% endif %}>Nombre</option>
+        <option value="descripcion" {% if sort == 'descripcion' %}selected{% endif %}>Descripción</option>
+      </select>
+
       <select name="order" class="form-select">
         <option value="asc" {% if order == 'asc' %}selected{% endif %}>A-Z</option>
         <option value="desc" {% if order == 'desc' %}selected{% endif %}>Z-A</option>
       </select>
+
       <select name="per_page" class="form-select">
         <option value="5" {% if per_page == 5 %}selected{% endif %}>5</option>
         <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
         <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
       </select>
-      <button type="submit" class="btn btn-secondary">Filtrar</button>
     </form>
   </div>
 
@@ -34,9 +42,7 @@
   const form = document.getElementById("filterForm");
   const results = document.getElementById("resultados");
 
-  const qInput      = form.querySelector('input[name="q"]');
-  const orderSelect = form.querySelector('select[name="order"]');
-  const perSelect   = form.querySelector('select[name="per_page"]');
+  const qInput  = form.querySelector('input[name="q"]');
 
   const buildURL = () => {
     const params = new URLSearchParams(new FormData(form));
@@ -44,42 +50,22 @@
   };
 
   async function loadAjax(url){
-    try {
-      const res = await fetch(url, {
-        headers: { "X-Requested-With": "XMLHttpRequest" }
-      });
-      if (!res.ok) return;
-
-      // 🔑 AHORA SÍ: leemos JSON
-      const data = await res.json();
-      results.innerHTML = data.html;
-      history.replaceState({}, "", url);
-    } catch (err) {
-      console.error("Error AJAX categorías:", err);
-    }
+    const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }});
+    if (!res.ok) return;
+    const data = await res.json();
+    results.innerHTML = data.html;
+    history.replaceState({}, "", url);
   }
 
   const debounce = (fn, ms = 350) => {
-    let t;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), ms);
-    };
+    let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
   };
 
-  // Buscar mientras escribes en el input
-  qInput.addEventListener("input", debounce(() => {
-    loadAjax(buildURL());
-  }));
-
-  // Cambios en order / per_page
-  [orderSelect, perSelect].forEach(el => {
-    el.addEventListener("change", () => {
-      loadAjax(buildURL());
-    });
+  qInput.addEventListener("input", debounce(() => loadAjax(buildURL())));
+  form.querySelectorAll("select").forEach(sel => {
+    sel.addEventListener("change", () => loadAjax(buildURL()));
   });
 
-  // Paginación por AJAX (links con data-ajax-link en el partial)
   results.addEventListener("click", (e) => {
     const a = e.target.closest("a[data-ajax-link]");
     if (!a) return;

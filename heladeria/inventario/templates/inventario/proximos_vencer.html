@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <h3 class="mb-0">{{ titulo }}</h3>
+
+    <div class="dropdown">
+      <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+        Exportar
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="?dias={{ dias }}&format=excel">Exportar Excel</a></li>
+        <li><a class="dropdown-item" href="?dias={{ dias }}&format=pdf">Exportar PDF</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <form id="filtro-dias" class="row g-2 align-items-end mb-3" method="get">
+      <div class="col-auto">
+        <label class="form-label small mb-0">Días</label>
+        <input
+          id="dias-input"
+          type="number"
+          min="1"
+          max="365"
+          name="dias"
+          value="{{ dias }}"
+          class="form-control form-control-sm"
+        >
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-sm btn-primary">Aplicar</button>
+      </div>
+    </form>
+
+    <!-- ✅ acá se inyecta el partial -->
+    <div id="proximos-results">
+      {% include "inventario/partials/proximos_vencer_results.html" %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const form    = document.getElementById("filtro-dias");
+  const input   = document.getElementById("dias-input");
+  const results = document.getElementById("proximos-results");
+
+  const buildURL = () => {
+    const params = new URLSearchParams(new FormData(form));
+    return `${location.pathname}?${params.toString()}`;
+  };
+
+  async function loadAjax(url){
+    const resp = await fetch(url, {
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    results.innerHTML = data.html;
+    history.replaceState({}, "", url);
+  }
+
+  const debounce = (fn, ms=350) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  };
+
+  // ✅ auto-actualizar al escribir o cambiar días
+  input.addEventListener("input", debounce(() => {
+    loadAjax(buildURL());
+  }));
+
+  // si aprieta "Aplicar", igual evitar reload total
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    loadAjax(buildURL());
+  });
+})();
+</script>
+{% endblock %}

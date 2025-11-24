@@ -1,0 +1,115 @@
+{# templates/crud/form.html #}
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-9 col-lg-7">
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h3 class="mb-0">{{ titulo }}</h3>
+
+      {% if back_url %}
+        <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm">
+          ← Volver
+        </a>
+      {% endif %}
+    </div>
+
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+
+        <form id="crud-form" method="post" novalidate>
+          {% csrf_token %}
+
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+              {% for e in form.non_field_errors %}
+                <div>{{ e }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% for field in form %}
+            <div class="mb-3">
+              <label for="{{ field.id_for_label }}" class="form-label">
+                {{ field.label }}
+                {% if field.field.required %}<span class="text-danger">*</span>{% endif %}
+              </label>
+
+              {{ field }}
+
+              {% if field.help_text %}
+                <div class="form-text">{{ field.help_text }}</div>
+              {% endif %}
+
+              {% for error in field.errors %}
+                <div class="invalid-feedback d-block">{{ error }}</div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+
+          <div class="d-flex justify-content-end gap-2 mt-4">
+            {% if back_url %}
+              <a href="{{ back_url }}" class="btn btn-secondary">Cancelar</a>
+            {% else %}
+              <a href="javascript:history.back()" class="btn btn-secondary">Cancelar</a>
+            {% endif %}
+
+            {# Detectar edición SIN with #}
+            {% if editar is not None %}
+              {% if editar %}
+                <button id="btn-guardar" type="button" class="btn btn-warning">
+                  Guardar Cambios
+                </button>
+              {% else %}
+                <button type="submit" class="btn btn-success">Guardar</button>
+              {% endif %}
+            {% else %}
+              {% if object %}
+                <button id="btn-guardar" type="button" class="btn btn-warning">
+                  Guardar Cambios
+                </button>
+              {% else %}
+                <button type="submit" class="btn btn-success">Guardar</button>
+              {% endif %}
+            {% endif %}
+          </div>
+
+        </form>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if editar %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+(function(){
+  const btn = document.getElementById("btn-guardar");
+  const form = document.getElementById("crud-form");
+  if(!btn || !form) return;
+
+  btn.addEventListener("click", function(){
+    Swal.fire({
+      title: "¿Confirmar cambios?",
+      text: "Se guardarán los cambios realizados.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Sí, guardar",
+      cancelButtonText: "Cancelar",
+      reverseButtons: true
+    }).then((result)=>{
+      if(result.isConfirmed){
+        form.submit();
+      }
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,9 +1,7 @@
-{# inventario/listar_insumos.html #}
 {% extends "base.html" %}
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
-
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="mb-0">{{ titulo }}</h3>
 
@@ -16,10 +14,7 @@
 
 <form id="filters-form" class="row g-2 mb-3" method="get">
   <div class="col-md-4">
-    <input type="search"
-           name="q"
-           id="q-input"
-           class="form-control"
+    <input type="search" name="q" id="q-input" class="form-control"
            placeholder="Buscar por nombre o categoría..."
            value="{{ q|default:'' }}">
   </div>
@@ -58,19 +53,18 @@
 <div id="results">
   {% include "inventario/partials/insumos_results.html" %}
 </div>
-
 {% endblock %}
 
 {% block extra_js %}
 <script>
 (function(){
-  const form           = document.getElementById('filters-form');
-  const results        = document.getElementById('results');
-  const qInput         = document.getElementById('q-input');
-  const sortSelect     = document.getElementById('sort-select');
-  const orderSelect    = document.getElementById('order-select');
-  const perPageSelect  = document.getElementById('per-page-select');
-  const pageInput      = document.getElementById('page-input');
+  const form          = document.getElementById('filters-form');
+  const results       = document.getElementById('results');
+  const qInput        = document.getElementById('q-input');
+  const sortSelect    = document.getElementById('sort-select');
+  const orderSelect   = document.getElementById('order-select');
+  const perPageSelect = document.getElementById('per-page-select');
+  const pageInput     = document.getElementById('page-input');
 
   const buildURL = () => {
     const params = new URLSearchParams(new FormData(form));
@@ -78,66 +72,23 @@
   };
 
   async function loadAjax(url){
-    try{
-      const resp = await fetch(url, {
-        headers: { "X-Requested-With": "XMLHttpRequest" }
-      });
-      if (!resp.ok) return;
-      const data = await resp.json();
-      results.innerHTML = data.html;
-      history.replaceState({}, "", url);
-    }catch(err){
-      console.error("Error AJAX insumos:", err);
-    }
+    const resp = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }});
+    if (!resp.ok) return;
+    const data = await resp.json();
+    results.innerHTML = data.html;
+    history.replaceState({}, "", url);
   }
 
-  const debounce = (fn, ms = 350) => {
-    let t;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), ms);
-    };
-  };
+  const debounce = (fn, ms=350)=>{ let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms);}};
 
-  // Buscar mientras escribe
-  qInput.addEventListener('input', debounce(() => {
-    pageInput.value = "1";
-    loadAjax(buildURL());
-  }));
-
-  // Cambios en selects
-  sortSelect.addEventListener('change', () => {
-    pageInput.value = "1";
-    loadAjax(buildURL());
+  qInput.addEventListener('input', debounce(()=>{ pageInput.value="1"; loadAjax(buildURL()); }));
+  [sortSelect, orderSelect, perPageSelect].forEach(el=>{
+    el.addEventListener('change', ()=>{ pageInput.value="1"; loadAjax(buildURL()); });
   });
 
-  orderSelect.addEventListener('change', () => {
-    pageInput.value = "1";
-    loadAjax(buildURL());
-  });
-
-  perPageSelect.addEventListener('change', () => {
-    pageInput.value = "1";
-    loadAjax(buildURL());
-  });
-
-  // Paginación y eliminar (delegación)
-  results.addEventListener('click', (e) => {
+  results.addEventListener('click', (e)=>{
     const a = e.target.closest('a[data-ajax-link]');
-    if (a){
-      e.preventDefault();
-      loadAjax(a.href);
-      return;
-    }
-
-    const delBtn = e.target.closest('button[data-delete-insumo]');
-    if (delBtn){
-      const f = delBtn.closest('form');
-      if (f && confirm('¿Eliminar este insumo?')){
-        // submit normal, NO por AJAX (te respeta CSRF y lógica actual)
-        f.submit();
-      }
-    }
+    if (a){ e.preventDefault(); loadAjax(a.href); }
   });
 })();
 </script>

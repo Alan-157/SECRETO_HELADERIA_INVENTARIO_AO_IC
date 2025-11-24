@@ -1,58 +1,69 @@
-# inventario/management/commands/seed_ubicaciones.py
 from django.core.management.base import BaseCommand
-from inventario.models import Bodega, Ubicacion
+from inventario.models import Ubicacion
 
 class Command(BaseCommand):
-    help = "Crea o actualiza las bodegas y sus ubicaciones de prueba."
+    """
+    Seed de Ubicaciones reales (dirección física).
+    Primero se ejecuta este seed, luego seed_bodegas.
+    """
+    help = "Crea/actualiza ubicaciones reales."
 
     def handle(self, *args, **kwargs):
-        self.stdout.write(self.style.NOTICE("Iniciando la carga de bodegas y ubicaciones..."))
+        self.stdout.write(self.style.NOTICE("Iniciando seed de ubicaciones..."))
 
-        data = {
-            "Bodega Principal": {
-                "direccion": "Gabriel González Videla 2777, La Serena",
-                "ubicaciones": ["Área General", "Cámara Fría"],
+        ubicaciones_data = [
+            {
+                "nombre": "Sucursal La Serena Centro",
+                "direccion": "Gabriel Gonzalez Videla 2777, La Serena",
+                "tipo": "SUCURSAL",
             },
-            "Bodega Secundaria": {
+            {
+                "nombre": "Sucursal Coquimbo",
                 "direccion": "Pasaje Falso 1234, Coquimbo",
-                "ubicaciones": ["Área General"],
+                "tipo": "SUCURSAL",
             },
-            "Bodega Frutas": {
+            {
+                "nombre": "Sucursal La Serena Playa",
                 "direccion": "Avenida del Mar 5000, La Serena",
-                "ubicaciones": ["Área General", "Frutas Congeladas"],
+                "tipo": "SUCURSAL",
             },
-        }
+        ]
 
-        bodegas_creadas = 0
-        ubicaciones_creadas = 0
+        creadas = 0
+        actualizadas = 0
 
-        for nombre_bodega, info in data.items():
-            bodega, creada = Bodega.objects.get_or_create(
-                nombre=nombre_bodega,
-                defaults={"direccion": info["direccion"]},
+        for info in ubicaciones_data:
+            ubic, created = Ubicacion.objects.get_or_create(
+                nombre=info["nombre"],
+                defaults={
+                    "direccion": info["direccion"],
+                    "tipo": info.get("tipo"),
+                    "is_active": True,
+                }
             )
 
-            if creada:
-                bodegas_creadas += 1
-                self.stdout.write(self.style.SUCCESS(f"Bodega creada: {bodega.nombre}"))
+            if created:
+                creadas += 1
+                self.stdout.write(self.style.SUCCESS(f"Ubicación creada: {ubic.nombre}"))
             else:
-                if bodega.direccion != info["direccion"]:
-                    bodega.direccion = info["direccion"]
-                    bodega.save(update_fields=["direccion"])
-                self.stdout.write(self.style.WARNING(f"Bodega '{bodega.nombre}' ya existía."))
+                changed = False
+                if ubic.direccion != info["direccion"]:
+                    ubic.direccion = info["direccion"]
+                    changed = True
+                if ubic.tipo != info.get("tipo"):
+                    ubic.tipo = info.get("tipo")
+                    changed = True
+                if not ubic.is_active:
+                    ubic.is_active = True
+                    changed = True
 
-            for nombre_ubic in info["ubicaciones"]:
-                ubic, ubi_creada = Ubicacion.objects.get_or_create(
-                    bodega=bodega,
-                    nombre=nombre_ubic,
-                    defaults={"tipo": "Almacenamiento"},
-                )
-                if ubi_creada:
-                    ubicaciones_creadas += 1
-                    self.stdout.write(self.style.SUCCESS(
-                        f"  → Ubicación '{nombre_ubic}' creada en '{bodega.nombre}'"
-                    ))
+                if changed:
+                    ubic.save(update_fields=["direccion", "tipo", "is_active"])
+                    actualizadas += 1
+                    self.stdout.write(self.style.WARNING(f"Ubicación actualizada: {ubic.nombre}"))
+                else:
+                    self.stdout.write(self.style.WARNING(f"Ubicación ya existía: {ubic.nombre}"))
 
         self.stdout.write(self.style.SUCCESS(
-            f"\nCarga finalizada. {bodegas_creadas} bodegas y {ubicaciones_creadas} ubicaciones creadas."
+            f"\nSeed ubicaciones listo: {creadas} creadas, {actualizadas} actualizadas."
         ))

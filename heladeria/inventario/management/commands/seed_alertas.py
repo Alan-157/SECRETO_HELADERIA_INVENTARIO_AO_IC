@@ -1,4 +1,4 @@
-# En el archivo: inventario/management/commands/seed_alertas.py
+# inventario/management/commands/seed_alertas.py
 
 from django.core.management.base import BaseCommand
 from inventario.models import AlertaInsumo, Insumo
@@ -9,35 +9,42 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.stdout.write(self.style.NOTICE("Iniciando la carga de alertas de prueba..."))
 
-        # Lista de alertas que queremos crear
+        # Lista de alertas de prueba
         alertas_data = [
             {"insumo_nombre": "Leche Entera", "mensaje": "¡Atención! Stock bajo detectado en leche."},
             {"insumo_nombre": "Pulpa de Frutilla", "mensaje": "¡Urgente! Frutilla en nivel crítico."},
-        ]
             # Puedes agregar más alertas aquí
+        ]
 
-        # Contador para el resumen final
         alertas_creadas = 0
 
         for data in alertas_data:
-            try:
-                # 1. Buscamos el insumo por su nombre
-                insumo = Insumo.objects.get(nombre=data["insumo_nombre"])
+            nombre = data["insumo_nombre"]
+            mensaje = data["mensaje"]
 
-                # 2. Usamos get_or_create para la alerta
+            try:
+                insumo = Insumo.objects.get(nombre=nombre)
+
                 alerta, creada = AlertaInsumo.objects.get_or_create(
                     insumo=insumo,
-                    defaults={'mensaje': data["mensaje"]}
+                    defaults={"mensaje": mensaje}
                 )
 
                 if creada:
-                    self.stdout.write(self.style.SUCCESS(f"Alerta creada para '{insumo.nombre}'."))
+                    self.stdout.write(self.style.SUCCESS(
+                        f"Alerta creada para '{insumo.nombre}'."
+                    ))
                     alertas_creadas += 1
                 else:
-                    self.stdout.write(self.style.WARNING(f"Alerta para '{insumo.nombre}' ya existía."))
+                    self.stdout.write(self.style.WARNING(
+                        f"Alerta para '{insumo.nombre}' ya existía."
+                    ))
 
             except Insumo.DoesNotExist:
-                # Si el insumo no existe, lo informamos y continuamos
-                self.stdout.write(self.style.ERROR(f"ERROR: El insumo '{data['insumo_nombre']}' no fue encontrado. Saltando..."))
-        
-        self.stdout.write(self.style.SUCCESS(f"\nCarga de alertas finalizada. Se crearon {alertas_creadas} nuevas alertas."))
+                self.stdout.write(self.style.ERROR(
+                    f"ERROR: Insumo '{nombre}' no existe. Ejecuta seed_insumos primero."
+                ))
+
+        self.stdout.write(self.style.SUCCESS(
+            f"\nCarga de alertas finalizada. {alertas_creadas} nuevas alertas creadas."
+        ))

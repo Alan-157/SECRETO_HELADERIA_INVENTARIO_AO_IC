@@ -3,215 +3,408 @@
 
 {% block content %}
 <div class="card shadow-sm">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-        <h3 class="mb-0">{{ titulo }}</h3>
-        <button id="add-line" type="button" class="btn btn-sm btn-outline-primary">+ Agregar ítem</button>
-    </div>
+  <div class="card-header bg-white d-flex align-items-center justify-content-between">
+    <h3 class="mb-0">{{ titulo }}</h3>
+    <button id="add-line" type="button" class="btn btn-sm btn-outline-primary">+ Agregar ítem</button>
+  </div>
 
-    <div class="card-body">
-        
-        {% if orden %}
-            <div class="alert alert-info">
-                Registrando movimientos para la **Orden #{{ orden.id }}** (Estado: {{ orden.estado }}).
+  <div class="card-body">
+    <form method="post" novalidate id="mov-form">
+      {% csrf_token %}
+      {{ formset.management_form }}
+
+      {% if formset.non_form_errors %}
+        <div class="alert alert-danger">{{ formset.non_form_errors }}</div>
+      {% endif %}
+
+      <div id="lines" class="d-flex flex-column gap-3">
+        {% for f in formset.forms %}
+        <div class="border rounded-3 p-3 movimiento-line bg-light-subtle" data-prefix="{{ f.prefix }}">
+
+          {# DELETE hidden (NO mostrar checkbox) #}
+          {% if f.DELETE %}
+            <div style="display:none">{{ f.DELETE }}</div>
+          {% endif %}
+          {% if orden %}
+          <div class="alert alert-info">
+              Atendiendo Orden #{{ orden.id }} creada por {{ orden.usuario.name }}.
+          </div>
+          {% endif %}
+          <!-- FILA 1: Tipo / Insumo Buscador / Bodega / Ubicación / Lote / X -->
+          <div class="row g-3 align-items-end">
+
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label fw-semibold">Tipo</label>
+              {{ f.tipo }}
+              {% for e in f.tipo.errors %}<div class="invalid-feedback d-block">{{e}}</div>{% endfor %}
             </div>
-        {% endif %}
 
-        <form method="post" novalidate>
-            {% if orden %}
-                <input type="hidden" name="orden_id" value="{{ orden.id }}">
-            {% endif %}
-            {% csrf_token %}
-            {{ formset.management_form }}
-            
-            {% if formset.non_form_errors %}
-                <div class="alert alert-danger">
-                    <strong>Errores Generales:</strong>
-                    <ul>
-                        {% for error in formset.non_form_errors %}
-                            <li>{{ error }}</li>
-                        {% endfor %}
-                    </ul>
+            <div class="col-lg-4 col-md-6 position-relative">
+              <label class="form-label fw-semibold">Insumo</label>
+
+              {# select real oculto #}
+              <div class="d-none">
+                {{ f.insumo }}
+              </div>
+
+              {# input buscador visible #}
+              <input type="text"
+                     class="form-control js-insumo-search"
+                     placeholder="Escribe para buscar insumo..."
+                     autocomplete="off"
+                     disabled>
+
+              <input type="hidden" class="js-insumo-id">
+
+              {# dropdown resultados #}
+              <div class="dropdown-menu w-100 p-2 shadow js-insumo-dd" style="max-height:260px; overflow:auto;">
+                <div class="js-insumo-results small"></div>
+                <div class="d-flex justify-content-between align-items-center pt-2 border-top mt-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-insumo-prev">«</button>
+                  <span class="small text-muted js-insumo-page">1/1</span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-insumo-next">»</button>
                 </div>
-            {% endif %}
+              </div>
 
-            <div class="table-responsive">
-                <table class="table align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="min-width:120px;">Tipo</th>
-                            <th>Insumo</th>
-                            <th style="min-width:160px;">Lote existente</th>
-                            <th style="min-width:120px;">Nuevo lote</th>
-                            <th class="col-exp" style="min-width:160px;">Expiración</th>
-                            <th>Ubicación</th>
-                            <th style="min-width:120px;">Cantidad</th>
-                            <th style="min-width:140px;">Fecha</th>
-                            <th>Obs.</th>
-                            <th style="width:40px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="formset-body">
-                        {% for f in formset %}
-                        <tr class="fs-row {% if f.errors %}table-danger{% endif %}">
-                            <td>{{ f.tipo }}{% for e in f.tipo.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.insumo }}{% for e in f.insumo.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.insumo_lote }}{% for e in f.insumo_lote.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>
-                                <div class="form-check">
-                                    {{ f.crear_nuevo_lote }}
-                                    <label class="form-check-label">{{ f.crear_nuevo_lote.label }}</label>
-                                </div>
-                                {% for e in f.crear_nuevo_lote.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
-                            </td>
-
-                            <!-- COLUMNA EXPIRACIÓN -->
-                            <td class="col-exp">
-                                {{ f.fecha_expiracion }}
-                                {% for e in f.fecha_expiracion.errors %}
-                                <div class="text-danger small">{{ e }}</div>
-                                {% endfor %}
-                            </td>
-
-                            <td>{{ f.ubicacion }}{% for e in f.ubicacion.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.cantidad }}{% for e in f.cantidad.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.fecha }}{% for e in f.fecha.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.observaciones }}{% for e in f.observaciones.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-
-                            <td>
-                                {{ f.id }}
-                                {% if formset.can_delete %}
-                                    {{ f.DELETE }} 
-                                    <button type="button" class="btn btn-sm btn-outline-danger del-line">×</button>
-                                {% endif %}
-                            </td>
-                        </tr>
-
-                        {% if f.non_field_errors %}
-                        <tr class="table-danger"><td colspan="10">
-                            <div class="text-danger small">
-                                <strong>Error en la línea:</strong> {{ f.non_field_errors|join:", " }}
-                            </div>
-                        </td></tr>
-                        {% endif %}
-                        {% endfor %}
-                    </tbody>
-                </table>
+              {% for e in f.insumo.errors %}<div class="invalid-feedback d-block">{{e}}</div>{% endfor %}
             </div>
 
-            <div class="d-flex justify-content-end gap-2">
-                <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
-                <button type="submit" class="btn btn-primary">Guardar</button>
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label fw-semibold">Bodega</label>
+              {{ f.bodega }}
+              {% for e in f.bodega.errors %}<div class="invalid-feedback d-block">{{e}}</div>{% endfor %}
             </div>
-        </form>
-    </div>
+
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label fw-semibold">Ubicación</label>
+              {{ f.ubicacion }}
+            </div>
+
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label fw-semibold">Lote existente</label>
+              {{ f.insumo_lote }}
+              {% for e in f.insumo_lote.errors %}<div class="invalid-feedback d-block">{{e}}</div>{% endfor %}
+            </div>
+
+            <!-- Botón X SIEMPRE a la derecha -->
+            <div class="col-lg-0 col-md-0 ms-auto text-end">
+              <button type="button"
+                      class="btn btn-outline-danger btn-sm js-remove"
+                      title="Eliminar línea">✕</button>
+            </div>
+          </div>
+
+          <!-- FILA 2: Nuevo lote / Expiración / Cantidad / Fecha / Obs -->
+          <div class="row g-3 align-items-end mt-1">
+
+            <div class="col-lg-2 col-md-3 d-flex align-items-center gap-2">
+              <div class="form-check mt-4">
+                {{ f.crear_nuevo_lote }}
+                <label class="form-check-label">Nuevo lote</label>
+              </div>
+              {% for e in f.crear_nuevo_lote.errors %}<div class="invalid-feedback d-block">{{e}}</div>{% endfor %}
+            </div>
+
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label fw-semibold">Expiración</label>
+              {{ f.fecha_expiracion }}
+              {% for e in f.fecha_expiracion.errors %}<div class="invalid-feedback d-block">{{e}}</div>{% endfor %}
+            </div>
+
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label fw-semibold">Cantidad</label>
+              {{ f.cantidad }}
+              <small class="text-muted d-block js-maxhint"></small>
+              {% for e in f.cantidad.errors %}<div class="invalid-feedback d-block">{{e}}</div>{% endfor %}
+            </div>
+
+            <div class="col-lg-2 col-md-3">
+              <label class="form-label fw-semibold">Fecha ingreso</label>
+              {{ f.fecha }}
+            </div>
+
+            <div class="col-lg-4 col-md-12">
+              <label class="form-label fw-semibold">Observaciones</label>
+              {{ f.observaciones }}
+            </div>
+
+          </div>
+
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
+        <button class="btn btn-primary" type="submit">Guardar</button>
+      </div>
+    </form>
+  </div>
 </div>
+{% endblock %}
 
-<!-- TEMPLATE PARA NUEVA FILA -->
-<script type="text/template" id="empty-form-row">
-    <tr class="fs-row">
-        <td>{{ formset.empty_form.tipo }}</td>
-        <td>{{ formset.empty_form.insumo }}</td>
-        <td>{{ formset.empty_form.insumo_lote }}</td>
-        <td>
-            <div class="form-check">
-                {{ formset.empty_form.crear_nuevo_lote }}
-                <label class="form-check-label">{{ formset.empty_form.crear_nuevo_lote.label }}</label>
-            </div>
-        </td>
-        <td class="col-exp">{{ formset.empty_form.fecha_expiracion }}</td>
-        <td>{{ formset.empty_form.ubicacion }}</td>
-        <td>{{ formset.empty_form.cantidad }}</td>
-        <td>{{ formset.empty_form.fecha }}</td>
-        <td>{{ formset.empty_form.observaciones }}</td>
-        <td>
-            {{ formset.empty_form.id }}
-            {{ formset.empty_form.DELETE }}
-            <button type="button" class="btn btn-sm btn-outline-danger del-line">×</button>
-        </td>
-    </tr>
+{% block extra_js %}
+{% if orden %}
+<script>
+document.addEventListener("DOMContentLoaded", function(){
+    document.querySelectorAll(".movimiento-line select[name$='-tipo']").forEach(s=>{
+        s.value = "SALIDA";
+        s.setAttribute("disabled","disabled");
+    });
+});
 </script>
+{% endif %}
 
 <script>
-// ---------------------------
-// AGREGAR Y ELIMINAR LÍNEAS
-// ---------------------------
 (function(){
-    const tbody = document.getElementById("formset-body");
-    const addBtn = document.getElementById("add-line");
-    const total = document.getElementById("id_form-TOTAL_FORMS");
-    const rawTpl = document.getElementById("empty-form-row").textContent;
+  const lines = document.getElementById("lines");
 
-    addBtn.addEventListener("click", function(){
-        const index = parseInt(total.value, 10);
-        const html = rawTpl.replace(/__prefix__/g, index);
+  function qs(prefix, name){
+    return document.querySelector(`[name="${prefix}-${name}"]`);
+  }
+  function enable(el){ if(el){ el.removeAttribute("disabled"); } }
+  function disable(el){ if(el){ el.setAttribute("disabled","disabled"); } }
 
-        const range = document.createRange();
-        range.selectNode(document.body);
-        const fragment = range.createContextualFragment(html.trim());
-        const tr = fragment.querySelector('tr');
+  async function fetchJSON(url){
+    const r = await fetch(url, {headers: {"X-Requested-With":"XMLHttpRequest"}});
+    return await r.json();
+  }
 
-        tbody.appendChild(tr);
-        total.value = index + 1;
+  // =====================================================
+  //        🔵  FILTRAR LOTES POR INSUMO / BODEGA
+  // =====================================================
+  async function updateLotes(prefix){
+    const insumo = qs(prefix,"insumo");
+    const bodega = qs(prefix,"bodega");
+    const loteSel = qs(prefix,"insumo_lote");
+    if(!loteSel) return;
 
-        ocultarColumnaExpiracion();
-    });
+    const insumoId = insumo?.value || "";
+    const bodegaId = bodega?.value || "";
 
-    tbody.addEventListener("click", function(e){
-        if (e.target.classList.contains("del-line")){
-            const tr = e.target.closest("tr");
-            const del = tr.querySelector('input[name$="-DELETE"]');
-            if (del) del.checked = true;
-            tr.style.display = "none";
-            ocultarColumnaExpiracion();
-        }
-    });
+    let url = `{% url 'inventario:ajax_lotes_por_insumo' %}?`;
+    if(insumoId) url += `insumo_id=${insumoId}&`;
+    if(bodegaId) url += `bodega_id=${bodegaId}`;
+
+    const data = await fetchJSON(url);
+
+    loteSel.innerHTML = `<option value="">---------</option>`;
+
+    if(data.ok){
+      data.lotes.forEach(l=>{
+        const opt = document.createElement("option");
+        opt.value = l.id;
+        opt.textContent = l.text;
+        loteSel.appendChild(opt);
+      });
+    }
+  }
+
+  // =====================================================
+  //                🔵 BUSCADOR INSUMOS AJAX
+  // =====================================================
+  async function loadInsumos(line, qText="", page=1){
+    const dd = line.querySelector(".js-insumo-dd");
+    const resultsBox = line.querySelector(".js-insumo-results");
+    const pageLbl = line.querySelector(".js-insumo-page");
+    const prevBtn = line.querySelector(".js-insumo-prev");
+    const nextBtn = line.querySelector(".js-insumo-next");
+
+    line.dataset.insPage = page;
+    line.dataset.insQuery = qText;
+
+    const url = `{% url 'inventario:ajax_insumos' %}?q=${encodeURIComponent(qText)}&page=${page}&per_page=5`;
+    const data = await fetchJSON(url);
+
+    resultsBox.innerHTML = "";
+    if(!data.ok || data.results.length===0){
+      resultsBox.innerHTML = `<div class="text-muted px-2 py-1">Sin resultados…</div>`;
+    }else{
+      data.results.forEach(it=>{
+        const btn = document.createElement("button");
+        btn.type="button";
+        btn.className="dropdown-item";
+        btn.textContent=it.text;
+        btn.dataset.id=it.id;
+        btn.dataset.text=it.text;
+        resultsBox.appendChild(btn);
+      });
+    }
+
+    pageLbl.textContent = `${data.page}/${data.num_pages}`;
+    prevBtn.disabled = !data.has_prev;
+    nextBtn.disabled = !data.has_next;
+
+    dd.classList.add("show");
+  }
+
+  function closeAllDropdowns(){
+    document.querySelectorAll(".js-insumo-dd.show").forEach(d=>d.classList.remove("show"));
+  }
+
+  // =====================================================
+  //              🔵 CLICK HANDLER GENERAL
+  // =====================================================
+  lines.addEventListener("click", async (e)=>{
+    const line = e.target.closest(".movimiento-line");
+    if(!line) return;
+
+    // abrir lista al click
+    if(e.target.classList.contains("js-insumo-search")){
+      const value = e.target.value.trim();
+      await loadInsumos(line, value, 1);
+      return;
+    }
+
+    // -----------------------------------------------------
+    // 🔵 SELECCIONAR INSUMO (AQUÍ SE AGREGA updateLotes())
+    // -----------------------------------------------------
+    if(e.target.classList.contains("dropdown-item")){
+      const prefix = line.dataset.prefix;
+      const realSelect = qs(prefix,"insumo");
+      const searchInput = line.querySelector(".js-insumo-search");
+
+      realSelect.value = e.target.dataset.id;
+      realSelect.dispatchEvent(new Event("change"));
+      searchInput.value = e.target.dataset.text;
+
+      // 🔓 desbloquear siguientes campos
+      enable(qs(prefix,"bodega"));
+      enable(qs(prefix,"insumo_lote"));
+      enable(qs(prefix,"cantidad"));
+
+      // 🟦 FILTRAR LOTES TRAS ELEGIR INSUMO
+      await updateLotes(prefix);
+
+      closeAllDropdowns();
+      return;
+    }
+
+    // paginar en dropdown
+    if(e.target.classList.contains("js-insumo-prev") || e.target.classList.contains("js-insumo-next")){
+      const qText = line.dataset.insQuery || "";
+      let page = parseInt(line.dataset.insPage || "1");
+      page += e.target.classList.contains("js-insumo-next") ? 1 : -1;
+      await loadInsumos(line, qText, page);
+      return;
+    }
+
+    // eliminar línea
+    if(e.target.classList.contains("js-remove")){
+      const del = line.querySelector(`input[type="checkbox"][name$="-DELETE"]`);
+      if(del){
+        del.checked = true;
+        line.style.display = "none";
+      }else{
+        line.remove();
+      }
+      return;
+    }
+  });
+
+  // =====================================================
+  //            🔵 INPUT: filtrar mientras escribe
+  // =====================================================
+  lines.addEventListener("input", async (e)=>{
+    const line = e.target.closest(".movimiento-line");
+    if(!line) return;
+
+    if(e.target.classList.contains("js-insumo-search")){
+      await loadInsumos(line, e.target.value.trim(), 1);
+    }
+  });
+
+  // =====================================================
+  //            🔵 focus: abrir dropdown vacío
+  // =====================================================
+  lines.addEventListener("focusin", async (e)=>{
+    const line = e.target.closest(".movimiento-line");
+    if(!line) return;
+
+    if(e.target.classList.contains("js-insumo-search")){
+      await loadInsumos(line, e.target.value.trim(), 1);
+    }
+  });
+
+  // cerrar dropdowns
+  document.addEventListener("click",(e)=>{
+    if(!e.target.closest(".js-insumo-search") && !e.target.closest(".js-insumo-dd")){
+      closeAllDropdowns();
+    }
+  });
+
+  // =====================================================
+  //              🔵 BLOQUEOS POR TIPO
+  // =====================================================
+  function lockByTipo(prefix){
+    const tipo = qs(prefix,"tipo").value;
+    const insumo = qs(prefix,"insumo");
+    const bodega = qs(prefix,"bodega");
+    const lote = qs(prefix,"insumo_lote");
+    const nuevo = qs(prefix,"crear_nuevo_lote");
+    const exp = qs(prefix,"fecha_expiracion");
+    const cantidad = qs(prefix,"cantidad");
+    const fecha = qs(prefix,"fecha");
+    const obs = qs(prefix,"observaciones");
+
+    const searchInput = document.querySelector(`.movimiento-line[data-prefix="${prefix}"] .js-insumo-search`);
+
+    disable(insumo); disable(bodega); disable(lote); disable(nuevo);
+    disable(exp); disable(cantidad); disable(fecha); disable(obs);
+    disable(searchInput);
+
+    if(fecha){ fecha.valueAsDate = new Date(); }
+
+    if(tipo){
+      enable(searchInput);
+      enable(fecha);
+      enable(obs);
+
+      if(insumo.value){
+        enable(insumo);
+        enable(bodega);
+        enable(lote);
+        enable(cantidad);
+      } else {
+        enable(insumo);
+      }
+    }
+
+    if(tipo==="SALIDA"){
+      enable(lote);
+      disable(nuevo);
+      disable(exp);
+      disable(bodega);
+      disable(insumo);
+      disable(searchInput);
+      enable(cantidad);
+    }
+  }
+
+  // =====================================================
+  //        🔵 Cuando cambia tipo o bodega
+  // =====================================================
+  lines.addEventListener("change", async (e)=>{
+    const line = e.target.closest(".movimiento-line");
+    if(!line) return;
+    const prefix = line.dataset.prefix;
+
+    if(e.target.classList.contains("js-tipo")){
+      lockByTipo(prefix);
+    }
+
+    // 🔵 si cambia bodega, volver a filtrar lotes
+    if(e.target.classList.contains("js-bodega")){
+      await updateLotes(prefix);
+    }
+  });
+
+  // init bloqueos
+  document.querySelectorAll(".movimiento-line").forEach(line=>{
+    lockByTipo(line.dataset.prefix);
+  });
+
 })();
-
-// ------------------------------------------------------
-// SCRIPT PARA OCULTAR COLUMNA "FECHA DE EXPIRACIÓN"
-// ------------------------------------------------------
-function ocultarColumnaExpiracion() {
-    const indice = 4; // COLUMNA FECHA EXPIRACIÓN
-    const ths = document.querySelectorAll("thead th");
-    const filas = document.querySelectorAll("#formset-body tr.fs-row");
-
-    let todasSalida = true;
-
-    filas.forEach((fila) => {
-        const tipo = fila.querySelector("select[name*='tipo']");
-        const celdas = fila.querySelectorAll("td");
-
-        if (!tipo || celdas.length <= indice) return;
-
-        if (tipo.value === "SALIDA") {
-            celdas[indice].style.display = "none";
-
-            const input = celdas[indice].querySelector("input");
-            if (input) input.value = "";
-        } else {
-            todasSalida = false;
-            celdas[indice].style.display = "table-cell";
-        }
-    });
-
-    // Ocultar TH solo si todas las filas son SALIDA
-    ths[indice].style.display = todasSalida ? "none" : "table-cell";
-}
-
-document.addEventListener("change", (e) => {
-    if (e.target.matches("select[name*='tipo']")) {
-        ocultarColumnaExpiracion();
-    }
-});
-
-document.addEventListener("DOMContentLoaded", ocultarColumnaExpiracion);
-
 </script>
-
-<style>
-    input[name$="-DELETE"] {
-        display: none;
-    }
-</style>
 
 {% endblock %}

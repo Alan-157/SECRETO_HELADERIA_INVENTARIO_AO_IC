@@ -30,6 +30,13 @@ DEBUG = os.getenv("DJANGO_DEBUG","False") == "True"
 
 ALLOWED_HOSTS =  os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost',
+    'http://localhost:8000',
+    'http://127.0.0.1',
+    'http://127.0.0.1:8000',
+]
+
 
 # Application definition
 

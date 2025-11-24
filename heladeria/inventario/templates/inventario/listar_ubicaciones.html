@@ -3,21 +3,19 @@
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
-<div class="container mt-4" id="bodegas-root">
+<div class="container mt-4" id="ubicaciones-root">
   <h3 class="mb-3">{{ titulo }}</h3>
 
-  <form id="filtros-bodegas" class="row g-2 mb-3" method="get">
-    <div class="col-md-3">
+  <form id="filtros-ubicaciones" class="row g-2 mb-3" method="get">
+    <div class="col-md-4">
       <input type="text" class="form-control" name="q" value="{{ q|default:'' }}"
-             placeholder="Buscar por nombre de bodega o dirección…">
+             placeholder="Buscar por nombre o dirección…">
     </div>
 
     <div class="col-md-3">
       <select class="form-select" name="sort">
-        <option value="nombre" {% if sort == "nombre" %}selected{% endif %}>Nombre</option>
-        {# OJO: esto solo es el valor que manda al backend #}
+        <option value="nombre"    {% if sort == "nombre" %}selected{% endif %}>Nombre</option>
         <option value="direccion" {% if sort == "direccion" %}selected{% endif %}>Dirección</option>
-        <option value="ubicacion" {% if sort == "ubicacion" %}selected{% endif %}>Ubicación</option>
       </select>
     </div>
 
@@ -42,20 +40,22 @@
   </form>
 
   {% if not read_only %}
-    <a href="{% url 'inventario:crear_bodega' %}" class="btn btn-success mb-3">
-      ➕ Nueva Bodega
+    <a href="{% url 'inventario:crear_ubicacion' %}" class="btn btn-success mb-3">
+      ➕ Nueva Ubicación
     </a>
   {% endif %}
 
-  <div id="bodegas-results">
-    {% include "inventario/partials/bodegas_results.html" %}
+  <div id="ubicaciones-results">
+    {% include "inventario/partials/ubicaciones_results.html" %}
   </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
 (function(){
-  const form    = document.getElementById('filtros-bodegas');
-  const results = document.getElementById('bodegas-results');
+  const form    = document.getElementById('filtros-ubicaciones');
+  const results = document.getElementById('ubicaciones-results');
 
   const qInput        = form.querySelector('input[name="q"]');
   const sortSelect    = form.querySelector('select[name="sort"]');
@@ -68,24 +68,21 @@
   };
 
   async function loadAjax(url){
-    const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }});
+    const resp = await fetch(url, { headers: { 'X-Requested-With':'XMLHttpRequest' }});
     if (!resp.ok) return;
     const data = await resp.json();
     results.innerHTML = data.html;
     history.replaceState({}, '', url);
   }
 
-  const debounce = (fn, ms = 350) => {
-    let t;
-    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-  };
+  const debounce = (fn, ms=350)=>{ let t; return (...a)=>{clearTimeout(t); t=setTimeout(()=>fn(...a),ms);} };
 
-  qInput.addEventListener('input', debounce(() => loadAjax(buildURL())));
-  [sortSelect, orderSelect, perPageSelect].forEach(el => {
-    el.addEventListener('change', () => loadAjax(buildURL()));
+  qInput.addEventListener('input', debounce(()=> loadAjax(buildURL())));
+  [sortSelect, orderSelect, perPageSelect].forEach(el=>{
+    el.addEventListener('change', ()=> loadAjax(buildURL()));
   });
 
-  results.addEventListener('click', (e) => {
+  results.addEventListener('click', (e)=>{
     const a = e.target.closest('a[data-ajax-link]');
     if (a){ e.preventDefault(); loadAjax(a.href); }
   });

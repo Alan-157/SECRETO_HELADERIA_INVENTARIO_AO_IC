@@ -17,6 +17,7 @@
                class="btn btn-sm btn-warning">
               Editar
             </a>
+
             <form method="post"
                   action="{% url 'inventario:eliminar_categoria' c.id %}"
                   class="d-inline">
@@ -48,7 +49,7 @@
     {% if categorias.has_previous %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ categorias.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}">
+           href="?page={{ categorias.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
           «
         </a>
       </li>
@@ -67,7 +68,7 @@
     {% if categorias.has_next %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ categorias.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}">
+           href="?page={{ categorias.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
           »
         </a>
       </li>

@@ -1,88 +1,92 @@
-
+from datetime import date
 from django.contrib import admin, messages
 from django import forms
-from datetime import date
-from django.core.validators import MinValueValidator
 from django.contrib.auth import get_user_model
+from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
+
 from .models import (
-    Categoria, Insumo, Ubicacion, Bodega,
-    InsumoLote, Entrada, Salida, AlertaInsumo,
-    OrdenInsumo, OrdenInsumoDetalle
+    Categoria, Insumo, UnidadMedida,
+    Ubicacion, Bodega,
+    Proveedor,
+    InsumoLote, Entrada, Salida,
+    AlertaInsumo,
+    OrdenInsumo, OrdenInsumoDetalle,
 )
 
-# 👇 --- IMPORTACIONES ADICIONALES PARA VALIDACIONES ---
-from django import forms
-from datetime import date
-from django.core.validators import MinValueValidator
-
 User = get_user_model()
-# --- FORMULARIOS DE ADMIN PERSONALIZADOS CON VALIDACIONES ---
+
+# =====================================================
+# FORMULARIOS ADMIN CON VALIDACIONES
+# =====================================================
 
 class EntradaAdminForm(forms.ModelForm):
-    """Formulario para el modelo Entrada en el admin con validaciones."""
-    # 1. Validación de cantidad positiva (no puede ser 0 o negativo)
+    """Validaciones adicionales para Entrada en admin."""
     cantidad = forms.DecimalField(
-        validators=[MinValueValidator(0.01, message="La cantidad a ingresar debe ser un número positivo.")],
+        validators=[
+            MinValueValidator(0.01, message="La cantidad a ingresar debe ser mayor que cero.")
+        ],
         label="Cantidad"
     )
 
     class Meta:
         model = Entrada
-        fields = '__all__' # Incluye todos los campos del modelo en el form
+        fields = "__all__"
 
-    # 2. Validación de fecha (no puede ser una fecha pasada)
     def clean_fecha(self):
-        fecha_entrada = self.cleaned_data.get('fecha')
-        if fecha_entrada and fecha_entrada < date.today():
-            raise forms.ValidationError("La fecha de la entrada no puede ser anterior al día de hoy.")
-        return fecha_entrada
+        f = self.cleaned_data.get("fecha")
+        if f and f < date.today():
+            raise forms.ValidationError("La fecha de la entrada no puede ser anterior a hoy.")
+        return f
 
 
 class SalidaAdminForm(forms.ModelForm):
-    """Formulario para el modelo Salida en el admin con validaciones."""
+    """Validaciones adicionales para Salida en admin."""
     cantidad = forms.DecimalField(
-        validators=[MinValueValidator(0.01, message="La cantidad de salida debe ser un número positivo.")],
+        validators=[
+            MinValueValidator(0.01, message="La cantidad de salida debe ser mayor que cero.")
+        ],
         label="Cantidad"
     )
 
     class Meta:
         model = Salida
-        fields = '__all__'
+        fields = "__all__"
 
-    # Validación de fecha (no puede ser una fecha pasada)
     def clean_fecha_generada(self):
-        fecha_salida = self.cleaned_data.get('fecha_generada')
-        if fecha_salida and fecha_salida < date.today():
-            raise forms.ValidationError("La fecha de la salida no puede ser anterior al día de hoy.")
-        return fecha_salida
-    
-    # Validación para no permitir stock negativo
+        f = self.cleaned_data.get("fecha_generada")
+        if f and f < date.today():
+            raise forms.ValidationError("La fecha de la salida no puede ser anterior a hoy.")
+        return f
+
     def clean(self):
-        cleaned_data = super().clean()
-        lote = cleaned_data.get('insumo_lote')
-        cantidad_salida = cleaned_data.get('cantidad')
+        cd = super().clean()
+        lote = cd.get("insumo_lote")
+        cant = cd.get("cantidad")
 
-        if lote and cantidad_salida and cantidad_salida > lote.cantidad_actual:
-            # Lanza un error asociado al campo 'cantidad'
-            raise forms.ValidationError({
-                'cantidad': f'Error: Stock insuficiente. El stock actual del lote es {lote.cantidad_actual}.'
+        if lote and cant and cant > (lote.cantidad_actual or 0):
+            raise ValidationError({
+                "cantidad": f"Stock insuficiente. Stock actual del lote: {lote.cantidad_actual}."
             })
-        return cleaned_data
+        return cd
 
 
 # =====================================================
-# MIXIN DE PERMISOS POR ROL (Sin cambios)
+# MIXIN PERMISOS POR ROL + SOFT DELETE EN ADMIN
 # =====================================================
-# ... (tu mixin RoleScopedInventarioAdminMixin y la acción marcar_cerrada no cambian) ...
+
 def rol_name(user):
     try:
         return (user.rol.nombre or "").lower()
     except Exception:
         return ""
 
-class RoleScopedInventarioAdminMixin:
-    """Controla permisos de acuerdo al rol del usuario logueado."""
 
+class RoleScopedInventarioAdminMixin:
+    """
+    Controla permisos por rol y evita hard delete:
+    - delete() => soft delete (is_active=False)
+    """
     def has_module_permission(self, request):
         return request.user.is_authenticated and request.user.is_staff
 
@@ -91,22 +95,19 @@ class RoleScopedInventarioAdminMixin:
 
     def has_add_permission(self, request):
         r = rol_name(request.user)
-        if request.user.is_superuser: return True
-        if r == "encargado": return True
-        if r == "bodeguero": return False
-        return False
+        if request.user.is_superuser:
+            return True
+        return r == "encargado"
 
     def has_change_permission(self, request, obj=None):
         r = rol_name(request.user)
-        if request.user.is_superuser: return True
-        if r == "encargado": return True
-        if r == "bodeguero": return False
-        return False
+        if request.user.is_superuser:
+            return True
+        return r == "encargado"
 
     def has_delete_permission(self, request, obj=None):
-        r = rol_name(request.user)
-        if request.user.is_superuser: return True
-        if r in ["encargado", "bodeguero"]: return False
+        if request.user.is_superuser:
+            return True
         return False
 
     def get_queryset(self, request):
@@ -118,17 +119,23 @@ class RoleScopedInventarioAdminMixin:
             return qs.filter(usuario=request.user)
         return qs
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        field = super().formfield_for_foreignkey(db_field, request, **kwargs)
-        r = rol_name(request.user)
-        if db_field.name in ("usuario", "responsable"):
-            if request.user.is_superuser:
-                return field
-            if r == "encargado":
-                field.queryset = User.objects.filter(is_active=True)
-            elif r == "bodeguero":
-                field.queryset = User.objects.filter(pk=request.user.pk)
-        return field
+    def delete_model(self, request, obj):
+        """Admin delete => soft delete."""
+        if hasattr(obj, "is_active"):
+            obj.is_active = False
+            obj.save(update_fields=["is_active"])
+        else:
+            super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        """Admin bulk delete => soft delete."""
+        for obj in queryset:
+            if hasattr(obj, "is_active"):
+                obj.is_active = False
+                obj.save(update_fields=["is_active"])
+            else:
+                obj.delete()
+
 
 @admin.action(description="Marcar órdenes de insumo como CERRADAS")
 def marcar_cerrada(modeladmin, request, queryset):
@@ -139,65 +146,127 @@ def marcar_cerrada(modeladmin, request, queryset):
 
 
 # =====================================================
-# REGISTROS ADMIN (MODIFICADOS)
+# ADMIN REGISTERS
 # =====================================================
 
 @admin.register(Categoria)
-class CategoriaAdmin(admin.ModelAdmin):
-    list_display = ("id", "nombre", "is_active", "created_at")
+class CategoriaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    list_display  = ("id", "nombre", "is_active", "created_at")
     search_fields = ("nombre",)
-    list_filter = ("is_active",)
-    ordering = ("nombre",)
+    list_filter   = ("is_active",)
+    ordering      = ("nombre",)
+
+
+@admin.register(UnidadMedida)
+class UnidadMedidaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    list_display  = ("id", "codigo", "nombre", "is_active")
+    search_fields = ("codigo", "nombre")
+    list_filter   = ("is_active",)
+    ordering      = ("codigo",)
+
+
+@admin.register(Proveedor)
+class ProveedorAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    list_display  = ("id", "nombre_empresa", "is_active")
+    search_fields = ("nombre_empresa",)
+    list_filter   = ("is_active",)
+    ordering      = ("nombre_empresa",)
+
 
 @admin.register(Bodega)
 class BodegaAdmin(admin.ModelAdmin):
-    list_display = ("id", "nombre", "direccion", "is_active")
-    search_fields = ("nombre", "direccion")
-    list_filter = ("is_active",)
+    # Bodega tiene: nombre, ubicacion, is_active, created_at
+    list_display = ("id", "nombre", "ubicacion", "is_active", "created_at")
+    list_filter = ("is_active", "ubicacion")
+    search_fields = ("nombre", "ubicacion__nombre", "ubicacion__direccion")
+    autocomplete_fields = ("ubicacion",)
+
 
 @admin.register(Ubicacion)
 class UbicacionAdmin(admin.ModelAdmin):
-    list_display = ("id", "nombre", "bodega", "tipo", "is_active")
-    list_filter = ("bodega", "tipo", "is_active")
-    search_fields = ("nombre",)
+    # Ubicacion tiene: nombre, direccion, tipo, is_active
+    list_display = ("id", "nombre", "direccion", "tipo", "is_active")
+    list_filter = ("tipo", "is_active")
+    search_fields = ("nombre", "direccion")
+
+
+@admin.register(Insumo)
+class InsumoAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    list_display  = ("id", "nombre", "categoria", "unidad_medida", "precio_unitario", "is_active")
+    search_fields = ("nombre", "categoria__nombre")
+    list_filter   = ("categoria", "unidad_medida", "is_active")
+    ordering      = ("nombre",)
+    autocomplete_fields = ("categoria", "unidad_medida")
+
+
+@admin.register(InsumoLote)
+class InsumoLoteAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "id", "insumo", "bodega", "proveedor",
+        "fecha_ingreso", "fecha_expiracion",
+        "cantidad_inicial", "cantidad_actual",
+        "usuario", "is_active"
+    )
+    list_filter   = ("bodega", "insumo", "proveedor", "fecha_expiracion", "is_active")
+    search_fields = ("insumo__nombre", "bodega__nombre", "proveedor__nombre_empresa", "usuario__email")
+    ordering      = ("-fecha_ingreso",)
+    autocomplete_fields = ("insumo", "bodega", "proveedor", "usuario")
+
 
 class OrdenInsumoDetalleInline(admin.TabularInline):
     model = OrdenInsumoDetalle
     extra = 0
+    autocomplete_fields = ("insumo",)
+
 
 @admin.register(OrdenInsumo)
-class OrdenInsumoAdmin(admin.ModelAdmin):
-    list_display = ("id", "usuario", "fecha", "estado")
-    list_filter = ("estado", "fecha")
-    search_fields = ("usuario__name", "usuario__email")
-    date_hierarchy = "fecha"
-    inlines = [OrdenInsumoDetalleInline]
+class OrdenInsumoAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    list_display    = ("id", "usuario", "fecha", "estado", "is_active")
+    list_filter     = ("estado", "fecha", "is_active")
+    search_fields   = ("usuario__name", "usuario__email")
+    date_hierarchy  = "fecha"
+    ordering        = ("-fecha",)
+    actions         = [marcar_cerrada]
+    inlines         = [OrdenInsumoDetalleInline]
+    autocomplete_fields = ("usuario",)
 
-@admin.register(Insumo)
-class InsumoAdmin(admin.ModelAdmin):
-    list_display = ("id", "nombre", "categoria", "unidad_medida", "precio_unitario", "is_active")
-    search_fields = ("nombre",)
-    list_filter = ("categoria", "is_active")
 
-@admin.register(InsumoLote)
-class InsumoLoteAdmin(admin.ModelAdmin):
-    list_display = ("id", "insumo", "bodega", "fecha_ingreso", "fecha_expiracion",
-                    "cantidad_inicial", "cantidad_actual", "usuario", "is_active")
-    list_filter = ("bodega", "insumo", "fecha_expiracion", "is_active")
-    search_fields = ("insumo__nombre",)
+@admin.register(OrdenInsumoDetalle)
+class OrdenInsumoDetalleAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    # El FK real es orden_insumo
+    list_display = ("id", "orden_insumo", "insumo", "cantidad_solicitada", "is_active")
+    list_filter  = ("orden_insumo", "insumo", "is_active")
+    search_fields = ("orden_insumo__id", "insumo__nombre")
+    autocomplete_fields = ("orden_insumo", "insumo")
+    ordering = ("-id",)
+
 
 @admin.register(Entrada)
-class EntradaAdmin(admin.ModelAdmin):
-    list_display = ("id", "insumo", "insumo_lote", "ubicacion", "cantidad",
-                    "fecha", "usuario", "orden", "detalle")
-    list_filter = ("fecha", "usuario", "ubicacion__bodega", "insumo")
-    search_fields = ("insumo__nombre", "usuario__email")
+class EntradaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    form = EntradaAdminForm
+    list_display = ("id", "insumo", "cantidad", "fecha", "ubicacion", "usuario")
+    list_filter = ("fecha", "ubicacion", "insumo_lote__bodega")
+    search_fields = ("insumo__nombre", "ubicacion__nombre", "ubicacion__direccion")
+    autocomplete_fields = ("insumo", "insumo_lote", "ubicacion", "usuario")
     date_hierarchy = "fecha"
+    ordering      = ("-fecha",)
+
 
 @admin.register(Salida)
-class SalidaAdmin(admin.ModelAdmin):
-    list_display = ("id", "insumo", "insumo_lote", "ubicacion", "cantidad",
-                    "fecha_generada", "usuario", "orden", "detalle")
-    list_filter = ("fecha_generada", "usuario", "ubicacion__bodega", "insumo")
-    search_fields = ("insumo__nombre", "usuario__email")
+class SalidaAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    form = SalidaAdminForm
+    list_display = ("id", "insumo", "cantidad", "fecha_generada", "ubicacion", "usuario")
+    list_filter = ("fecha_generada", "ubicacion", "insumo_lote__bodega")
+    search_fields = ("insumo__nombre", "ubicacion__nombre", "ubicacion__direccion")
+    autocomplete_fields = ("insumo", "insumo_lote", "ubicacion", "usuario")
     date_hierarchy = "fecha_generada"
+    ordering      = ("-fecha_generada",)
+
+
+@admin.register(AlertaInsumo)
+class AlertaInsumoAdmin(RoleScopedInventarioAdminMixin, admin.ModelAdmin):
+    list_display  = ("id", "insumo", "tipo", "fecha", "is_active")
+    list_filter   = ("tipo", "fecha", "is_active")
+    search_fields = ("insumo__nombre", "mensaje")
+    ordering      = ("-fecha",)
+    autocomplete_fields = ("insumo",)

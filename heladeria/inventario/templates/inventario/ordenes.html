@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <h3 class="mb-0">{{ titulo }}</h3>
+
+    <div class="dropdown">
+      <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+        Exportar
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="?estado={{ estado }}&format=excel">Exportar Excel</a></li>
+        <li><a class="dropdown-item" href="?estado={{ estado }}&format=pdf">Exportar PDF</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <form class="row g-2 align-items-end mb-3" method="get">
+      <div class="col-12 col-md-4">
+        <label class="form-label small mb-0">Estado</label>
+        <select class="form-select form-select-sm" name="estado">
+          <option value="">Todos</option>
+          <option value="PENDIENTE" {% if estado == "PENDIENTE" %}selected{% endif %}>Pendiente</option>
+          <option value="APROBADA" {% if estado == "APROBADA" %}selected{% endif %}>Aprobada</option>
+          <option value="RECHAZADA" {% if estado == "RECHAZADA" %}selected{% endif %}>Rechazada</option>
+          <option value="COMPLETADA" {% if estado == "COMPLETADA" %}selected{% endif %}>Completada</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-sm btn-primary">Aplicar</button>
+      </div>
+    </form>
+
+    <div class="table-responsive">
+      <table class="table table-striped table-bordered align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>#</th>
+            <th>Fecha</th>
+            <th>Solicitante</th>
+            <th>Estado</th>
+            <th class="text-end">Total Ítems</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in items %}
+          <tr>
+            <td class="fw-semibold">#{{ o.id }}</td>
+            <td>{{ o.fecha }}</td>
+            <td>{{ o.usuario.username }}</td>
+            <td>
+              <span class="badge 
+                {% if o.estado == 'PENDIENTE' %}bg-warning text-dark
+                {% elif o.estado == 'APROBADA' %}bg-primary
+                {% elif o.estado == 'RECHAZADA' %}bg-danger
+                {% elif o.estado == 'COMPLETADA' %}bg-success
+                {% else %}bg-secondary{% endif %}">
+                {{ o.estado }}
+              </span>
+            </td>
+            <td class="text-end">{{ o.detalles.count }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="text-center text-muted py-4">No hay órdenes.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

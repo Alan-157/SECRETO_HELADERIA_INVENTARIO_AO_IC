@@ -1,31 +1,42 @@
 {% extends "base.html" %}
 
+{% block title %}Eliminar {{ titulo }}{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card shadow">
-            <div class="card-header bg-danger text-white">
-                <h5 class="mb-0">Confirmar Eliminación</h5>
-            </div>
-            <div class="card-body">
-                
-                <h4 class="card-title mb-3">{{ titulo }}</h4>
+    <div class="col-md-7 col-lg-5">
 
-                <p class="text-danger fw-bold">
-                    ⚠️ Esta acción no se puede deshacer. ¿Estás seguro de que deseas eliminar este elemento?
+        <div class="card shadow-sm border-danger">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0">Eliminar {{ titulo }}</h4>
+            </div>
+
+            <div class="card-body">
+
+                <p class="fw-bold text-danger mb-2">
+                    ⚠️ Esta acción no se puede deshacer.
                 </p>
 
-                {# ⚠️ ALERTA ESPECIAL SOLO PARA INSUMOS #}
-                {% if insumo and insumo.stock_total is not None %}
-                    {% if insumo.stock_total > 0 %}
-                        <div class="alert alert-warning">
-                            <strong>¡Atención!</strong> Este insumo tiene un stock actual de 
-                            <strong>{{ insumo.stock_total|floatformat:2 }}</strong>. 
-                            La eliminación está bloqueada por esta razón.
+                <p class="text-muted">
+                    ¿Estás seguro que deseas eliminar este registro?
+                </p>
+
+                {# --------------------------------------------------- #}
+                {#   🔥 LÓGICA ESPECIAL SOLO PARA INSUMOS               #}
+                {# --------------------------------------------------- #}
+                {% if obj.__class__.__name__ == "Insumo" %}
+                    {% if obj.stock_total > 0 %}
+                        <div class="alert alert-danger mt-3">
+                            <strong>🚫 No se puede eliminar.</strong><br>
+                            Este insumo tiene stock actual:
+                            <strong>{{ obj.stock_total|floatformat:2 }}</strong>
+                            <br>
+                            Solo los insumos con stock 0 pueden ser eliminados.
                         </div>
                     {% else %}
-                        <div class="alert alert-info">
-                            El stock actual de este insumo es <strong>0.00</strong>. La eliminación procederá.
+                        <div class="alert alert-info mt-3">
+                            Stock actual: <strong>{{ obj.stock_total|floatformat:2 }}</strong>.<br>
+                            La eliminación está permitida.
                         </div>
                     {% endif %}
                 {% endif %}
@@ -34,34 +45,37 @@
 
                 <form method="post">
                     {% csrf_token %}
-                    <input type="hidden" name="confirm" value="true">
 
-                    {# 🔥 BOTÓN CANCELAR UNIVERSAL - FUNCIONA SIEMPRE #}
-                    <a 
-                        {% if cancel_url %}
-                            href="{{ cancel_url }}"
+                    <div class="d-flex justify-content-end">
+
+                        {# Botón Cancelar dinámico #}
+                        <a
+                            {% if back_url %}
+                                href="{{ back_url }}"
+                            {% else %}
+                                href="javascript:history.back()"
+                            {% endif %}
+                            class="btn btn-secondary me-2"
+                        >
+                            Cancelar
+                        </a>
+
+                        {# Botón Eliminar #}
+                        {% if obj.__class__.__name__ == "Insumo" and obj.stock_total > 0 %}
+                            <button type="button" class="btn btn-danger" disabled>
+                                Eliminar
+                            </button>
                         {% else %}
-                            href="javascript:history.back()"
+                            <button type="submit" class="btn btn-danger">
+                                Confirmar Eliminación
+                            </button>
                         {% endif %}
-                        class="btn btn-secondary me-2"
-                    >
-                        Cancelar
-                    </a>
-
-                    {# ✔ Botón eliminar (bloqueado si stock > 0) #}
-                    {% if insumo and insumo.stock_total > 0 %}
-                        <button type="button" class="btn btn-danger" disabled>
-                            Eliminar (Stock > 0)
-                        </button>
-                    {% else %}
-                        <button type="submit" class="btn btn-danger">
-                            Confirmar Eliminación
-                        </button>
-                    {% endif %}
+                    </div>
                 </form>
 
             </div>
         </div>
+
     </div>
 </div>
-{% endblock content %}
+{% endblock %}

@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 import random
 
+
 class Command(BaseCommand):
     help = "Crea órdenes de insumos de prueba con estados coherentes y avance real."
 
@@ -16,7 +17,9 @@ class Command(BaseCommand):
 
         usuario = UsuarioApp.objects.filter(is_superuser=True).first()
         if not usuario:
-            self.stdout.write(self.style.ERROR("No se encontró un superusuario. Ejecuta 'createsuperuser' primero."))
+            self.stdout.write(self.style.ERROR(
+                "No se encontró un superusuario. Ejecuta 'python manage.py createsuperuser' primero."
+            ))
             return
 
         ordenes_data = [
@@ -55,41 +58,76 @@ class Command(BaseCommand):
         ]
 
         creadas = 0
+
         for data in ordenes_data:
             fecha_orden = date.today() - timedelta(days=data["fecha_offset"])
+
             orden, creada = OrdenInsumo.objects.get_or_create(
                 usuario=usuario,
                 fecha=fecha_orden,
-                estado=data["estado"],
+                defaults={"estado": data["estado"]},
             )
+
             if creada:
                 creadas += 1
-                self.stdout.write(self.style.SUCCESS(f"Orden creada ({orden.estado}) {fecha_orden}."))
+                self.stdout.write(self.style.SUCCESS(
+                    f"Orden creada ({data['estado']}) fecha {fecha_orden}."
+                ))
+            else:
+                # Si ya existía, opcionalmente le ajustamos el estado al esperado:
+                if orden.estado != data["estado"]:
+                    orden.estado = data["estado"]
+                    orden.save(update_fields=["estado"])
+                self.stdout.write(self.style.WARNING(
+                    f"Orden del {fecha_orden} ya existía (estado actual: {orden.estado})."
+                ))
 
-                for det in data["detalles"]:
-                    try:
-                        insumo = Insumo.objects.get(nombre=det["insumo"])
-                        d = OrdenInsumoDetalle.objects.create(
-                            orden_insumo=orden,
-                            insumo=insumo,
-                            cantidad_solicitada=det["cantidad"],
-                        )
-                        # Ajuste de avance según el estado objetivo
+                # Si quieres volver a poblar detalles en re-ejecución, descomenta:
+                # orden.detalles.all().delete()
+
+            # --- Crear detalles SOLO si no existían ---
+            for det in data["detalles"]:
+                try:
+                    insumo = Insumo.objects.get(nombre=det["insumo"])
+
+                    detalle, det_creado = OrdenInsumoDetalle.objects.get_or_create(
+                        orden_insumo=orden,
+                        insumo=insumo,
+                        defaults={"cantidad_solicitada": det["cantidad"]},
+                    )
+
+                    if det_creado:
+                        # Ajuste de avance según estado objetivo
                         if data["avance"] == "full":
-                            d.cantidad_atendida = d.cantidad_solicitada
+                            detalle.cantidad_atendida = detalle.cantidad_solicitada
+
                         elif data["avance"] == "partial":
                             # 30–60% aleatorio como ejemplo
                             factor = Decimal(random.randint(30, 60)) / Decimal(100)
-                            d.cantidad_atendida = (d.cantidad_solicitada * factor).quantize(Decimal("0.01"))
-                        # PENDIENTE => atendida 0 por defecto
-                        d.save(update_fields=["cantidad_atendida"])
-                        self.stdout.write(f"  └─ {d.cantidad_solicitada} × {insumo.nombre} (atendida: {d.cantidad_atendida})")
-                    except Insumo.DoesNotExist:
-                        self.stdout.write(self.style.ERROR(f"  └─ Insumo '{det['insumo']}' no existe."))
+                            detalle.cantidad_atendida = (
+                                detalle.cantidad_solicitada * factor
+                            ).quantize(Decimal("0.01"))
 
-                # Recalcula para dejar el estado coherente con los datos de avance
+                        # PENDIENTE => atendida 0 ya viene por defecto
+                        detalle.save(update_fields=["cantidad_atendida"])
+
+                        self.stdout.write(
+                            f"  └─ {detalle.cantidad_solicitada} × {insumo.nombre}"
+                            f" (atendida: {detalle.cantidad_atendida})"
+                        )
+
+                except Insumo.DoesNotExist:
+                    self.stdout.write(self.style.ERROR(
+                        f"  └─ Insumo '{det['insumo']}' no existe. Ejecuta seed_insumos."
+                    ))
+
+            # --- Recalcular estado si tu modelo tiene esa función ---
+            if hasattr(orden, "recalc_estado") and callable(getattr(orden, "recalc_estado")):
                 orden.recalc_estado()
-            else:
-                self.stdout.write(self.style.WARNING(f"Orden del {fecha_orden} ({data['estado']}) ya existía."))
+            elif hasattr(orden, "recalcular_estado") and callable(getattr(orden, "recalcular_estado")):
+                orden.recalcular_estado()
+            # si no existe, no hacemos nada, pero no rompemos el seed
 
-        self.stdout.write(self.style.SUCCESS(f"\nCarga finalizada. {creadas} órdenes nuevas creadas."))
+        self.stdout.write(self.style.SUCCESS(
+            f"\nCarga finalizada. {creadas} órdenes nuevas creadas."
+        ))

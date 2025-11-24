@@ -8,40 +8,55 @@
       <th class="text-end">Cant. Inicial</th>
       <th class="text-end">Cant. Actual</th>
       <th class="text-center">Estado</th>
-      <th class="text-end">Proveedores</th>
+      <th class="text-end">Proveedor</th>
     </tr>
   </thead>
+
   <tbody>
     {% for lote in lotes %}
     <tr>
-      <td class="fw-semibold">{{ lote.insumo.nombre }}</td>
-      <td><span class="badge bg-secondary">{{ lote.bodega.nombre }}</span></td>
+      {# ========================= INSUMO ========================= #}
+      <td class="fw-semibold">
+        {{ lote.insumo.nombre }}
+      </td>
 
+      {# ========================= BODEGA ========================= #}
+      <td>
+        <span class="badge bg-secondary">{{ lote.bodega.nombre }}</span>
+      </td>
+
+      {# ========================= FECHA INGRESO ========================= #}
       <td class="text-center">
         {{ lote.fecha_ingreso|date:"Y-m-d" }}
       </td>
 
+      {# ========================= FECHA EXPIRACIÓN ========================= #}
       <td class="text-center">
         {% if not lote.fecha_expiracion %}
           <span class="text-muted">—</span>
+
         {% else %}
           {% if lote.fecha_expiracion < today %}
             <span class="badge bg-danger">Vencido</span>
             {{ lote.fecha_expiracion|date:"Y-m-d" }}
+
           {% elif lote.fecha_expiracion|date:"U" < today|date:"U"|add:"1209600" %}
-            {# por vencer en < 14 días #}
+            {# < 14 días #}
             <span class="badge bg-warning text-dark">Por vencer</span>
             {{ lote.fecha_expiracion|date:"Y-m-d" }}
+
           {% else %}
             {{ lote.fecha_expiracion|date:"Y-m-d" }}
           {% endif %}
         {% endif %}
       </td>
 
+      {# ========================= CANTIDAD INICIAL ========================= #}
       <td class="text-end">
         {{ lote.cant_ini|default:lote.cantidad_inicial|floatformat:2 }}
       </td>
 
+      {# ========================= CANTIDAD ACTUAL ========================= #}
       <td class="text-end">
         {% with ca=lote.cant_act|default:lote.cantidad_actual|default:0 %}
           {% if ca <= 0 %}
@@ -52,6 +67,7 @@
         {% endwith %}
       </td>
 
+      {# ========================= ESTADO ========================= #}
       <td class="text-center">
         {% with ca=lote.cant_act|default:lote.cantidad_actual|default:0 %}
           {% if ca <= 0 %}
@@ -62,52 +78,82 @@
         {% endwith %}
       </td>
 
+      {# ========================= PROVEEDOR ========================= #}
       <td class="text-end">
-        {% if not read_only %}
-          <span class="text-muted">—</span>
+        {% if lote.proveedor %}
+          {{ lote.proveedor.nombre_empresa }}
+          {# O si prefieres lo que entrega el __str__ completo: {{ lote.proveedor }} #}
         {% else %}
           <span class="text-muted">—</span>
         {% endif %}
       </td>
+
     </tr>
+
     {% empty %}
     <tr>
-      <td colspan="8" class="text-center text-muted py-3">Sin resultados</td>
+      <td colspan="8" class="text-center text-muted py-3">
+        Sin resultados
+      </td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 
+
+
+{# ========================= PAGINACIÓN ========================= #}
 {% if lotes.has_other_pages %}
 <nav aria-label="Paginación" class="mt-2">
   <ul class="pagination justify-content-center">
+
+    {# <<< Anterior #}
     {% if lotes.has_previous %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ lotes.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if filtro_vencimiento == 'proximos' %}&vencimiento=proximos&dias={{ dias_proximos }}{% endif %}">
+           href="?page={{ lotes.previous_page_number }}&per_page={{ per_page }}
+           {% if q %}&q={{ q|urlencode }}{% endif %}
+           {% if order %}&order={{ order }}{% endif %}
+           {% if sort %}&sort={{ sort }}{% endif %}
+           {% if filtro_vencimiento == 'proximos' %}
+             &vencimiento=proximos&dias={{ dias_proximos }}
+           {% endif %}">
           « Anterior
         </a>
       </li>
     {% else %}
-      <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
+      <li class="page-item disabled">
+        <span class="page-link">« Anterior</span>
+      </li>
     {% endif %}
 
+    {# Página actual #}
     <li class="page-item disabled">
       <span class="page-link">
         Página {{ lotes.number }} de {{ lotes.paginator.num_pages }}
       </span>
     </li>
 
+    {# Siguiente >>> #}
     {% if lotes.has_next %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ lotes.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if filtro_vencimiento == 'proximos' %}&vencimiento=proximos&dias={{ dias_proximos }}{% endif %}">
+           href="?page={{ lotes.next_page_number }}&per_page={{ per_page }}
+           {% if q %}&q={{ q|urlencode }}{% endif %}
+           {% if order %}&order={{ order }}{% endif %}
+           {% if sort %}&sort={{ sort }}{% endif %}
+           {% if filtro_vencimiento == 'proximos' %}
+             &vencimiento=proximos&dias={{ dias_proximos }}
+           {% endif %}">
           Siguiente »
         </a>
       </li>
     {% else %}
-      <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
+      <li class="page-item disabled">
+        <span class="page-link">Siguiente »</span>
+      </li>
     {% endif %}
+
   </ul>
 </nav>
 {% endif %}
