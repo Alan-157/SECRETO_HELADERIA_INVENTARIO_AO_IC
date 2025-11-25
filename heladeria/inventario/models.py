@@ -18,20 +18,10 @@ ESTADO_ORDEN_CHOICES = [
     ("CANCELADA", "Cancelada"),
 ]
 
-# --- NUEVAS OPCIONES DE UNIDAD DE MEDIDA ---
-UNIDAD_MEDIDA_CHOICES = [ 
-    ("KG", "Kilogramos"),
-    ("GR", "Gramos"),
-    ("LT", "Litros"),
-    ("ML", "Mililitros"),
-    ("UN", "Unidades"),
-    ("OTRO", "Otro"),
-]
-
 # --- MODELOS DE CATÁLOGO Y ESTRUCTURA ---
 
 class Categoria(BaseModel):
-    nombre = models.CharField(max_length=20)
+    nombre = models.CharField(max_length=40)
     descripcion = models.TextField(blank=True, null=True)
     def __str__(self):
         return self.nombre
@@ -52,14 +42,20 @@ class Ubicacion(BaseModel):
     def __str__(self):
         return f"{self.nombre} ({self.bodega.nombre})"
 
+class UnidadMedida(BaseModel):
+    nombre_corto = models.CharField(max_length=5, unique=True, verbose_name="Código (KG, LT)")
+    nombre_largo = models.CharField(max_length=50, unique=True, verbose_name="Nombre Completo (Kilogramos, Litros)")
+    
+    def __str__(self):
+        # Aseguramos que el __str__ devuelva el formato que usará el AJAX
+        return f"{self.nombre_largo} ({self.nombre_corto})"
 
 class Insumo(BaseModel):
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT, related_name="insumos")
-    nombre = models.CharField(max_length=20)
+    nombre = models.CharField(max_length=35)
     stock_minimo = models.DecimalField(max_digits=10, decimal_places=2)
     stock_maximo = models.DecimalField(max_digits=10, decimal_places=2)
-    # CAMBIO AQUÍ: Ahora usa CHOICES
-    unidad_medida = models.CharField(max_length=5, choices=UNIDAD_MEDIDA_CHOICES) 
+    unidad_medida = models.ForeignKey(UnidadMedida, on_delete=models.PROTECT, related_name="insumos_medidos") 
     precio_unitario = models.IntegerField()
 
     def __str__(self):
@@ -75,13 +71,9 @@ class Insumo(BaseModel):
                     'stock_minimo': 'El stock mínimo no puede ser mayor que el stock máximo.',
                     'stock_maximo': 'El stock máximo debe ser mayor o igual al stock mínimo.'
                 })
-
-        # Llamar al clean() de la clase padre
         super().clean()
-
-
+        
 # --- MODELOS DE INVENTARIO Y TRANSACCIONES ---
-
 class InsumoLote(BaseModel):
     insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, related_name="lotes")
     bodega = models.ForeignKey(Bodega, on_delete=models.PROTECT, related_name="lotes")
@@ -93,7 +85,6 @@ class InsumoLote(BaseModel):
 
     def __str__(self):
         return f"Lote {self.id} de {self.insumo.nombre}"
-
 
 # --- ÓRDENES DE INSUMOS ---
 
@@ -127,18 +118,14 @@ class OrdenInsumoDetalle(BaseModel):
     def __str__(self):
         return f"{self.insumo.nombre} - {self.cantidad_solicitada}"
 
-
 # --- MOVIMIENTOS DE INVENTARIO ---
 
 class Entrada(BaseModel):
     insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT)
     insumo_lote = models.ForeignKey(InsumoLote, on_delete=models.PROTECT, null=True, blank=True)
     ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT)
-
-    # 🔗 Enlace opcional con Orden / Detalle
     orden = models.ForeignKey(OrdenInsumo, null=True, blank=True, on_delete=models.SET_NULL, related_name="entradas")
     detalle = models.ForeignKey(OrdenInsumoDetalle, null=True, blank=True, on_delete=models.SET_NULL, related_name="entradas")
-
     cantidad = models.DecimalField(max_digits=10, decimal_places=2)
     fecha = models.DateField()
     usuario = models.ForeignKey(UsuarioApp, on_delete=models.PROTECT)
@@ -153,11 +140,8 @@ class Salida(BaseModel):
     insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT)
     insumo_lote = models.ForeignKey(InsumoLote, on_delete=models.PROTECT, null=True, blank=True)
     ubicacion = models.ForeignKey(Ubicacion, on_delete=models.PROTECT)
-
-    # 🔗 Enlace opcional con Orden / Detalle
     orden = models.ForeignKey(OrdenInsumo, null=True, blank=True, on_delete=models.SET_NULL, related_name="salidas")
     detalle = models.ForeignKey(OrdenInsumoDetalle, null=True, blank=True, on_delete=models.SET_NULL, related_name="salidas")
-
     cantidad = models.DecimalField(max_digits=10, decimal_places=2)
     fecha_generada = models.DateField()
     usuario = models.ForeignKey(UsuarioApp, on_delete=models.PROTECT)

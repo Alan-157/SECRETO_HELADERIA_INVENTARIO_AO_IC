@@ -1,0 +1,26 @@
+{% load static %}
+{% if messages %}
+    <div class="row justify-content-center">
+        <div class="col-12">
+            {% for message in messages %}
+                {% comment %} Mapeo de tags de Django a clases de Bootstrap {% endcomment %}
+                {% if message.tags == 'error' %}
+                    {% with tags='danger' %}{% endwith %}
+                {% elif message.tags == 'success' %}
+                    {% with tags='success' %}{% endwith %}
+                {% elif message.tags == 'warning' %}
+                    {% with tags='warning' %}{% endwith %}
+                {% elif message.tags == 'info' %}
+                    {% with tags='info' %}{% endwith %}
+                {% else %}
+                    {% with tags='primary' %}{% endwith %}
+                {% endif %}
+                
+                <div class="alert alert-{{ tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+{% endif %}

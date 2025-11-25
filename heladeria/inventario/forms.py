@@ -13,6 +13,7 @@ from .models import (
     OrdenInsumoDetalle,
     Salida,
     Ubicacion,
+    UnidadMedida
 )
 
 
@@ -72,61 +73,83 @@ class InsumoForm(forms.ModelForm):
             "stock_minimo": forms.NumberInput(attrs={"class": "form-control"}),
             "stock_maximo": forms.NumberInput(attrs={"class": "form-control"}),
             "unidad_medida": forms.Select(attrs={"class": "form-select"}),
-
             "precio_unitario": forms.NumberInput(attrs={
                 "class": "form-control",
-                "max": "99999",
+                "max": "99999", # Límite de 5 dígitos
                 "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)"
             }),
         }
-
+    
     def clean_nombre(self):
+        """Asegura que no existan insumos con el mismo nombre (case-insensitive)."""
         nombre = self.cleaned_data["nombre"].strip()
-
-        # Validar solo letras
-        if re.search(r"\d", nombre):
-            raise forms.ValidationError("El nombre del insumo no puede contener números.")
-
-        if not re.match(r"^[A-Za-zÁÉÍÓÚñÑáéíóú\s]+$", nombre):
-            raise forms.ValidationError("El nombre solo puede contener letras y espacios.")
-
         qs = Insumo.objects.filter(nombre__iexact=nombre)
+
         if self.instance.pk:
             qs = qs.exclude(pk=self.instance.pk)
 
         if qs.exists():
             raise forms.ValidationError("⚠ Ya existe otro insumo con este nombre.")
-
         return nombre
 
     def clean_stock_minimo(self):
         minimo = self.cleaned_data.get("stock_minimo")
-        if minimo is None or minimo < 0:
-            raise forms.ValidationError("El stock mínimo debe ser un número positivo.")
+        if minimo is not None and minimo < 0:
+            raise forms.ValidationError("El stock mínimo no puede ser negativo.")
         return minimo
 
     def clean_stock_maximo(self):
         maximo = self.cleaned_data.get("stock_maximo")
-        minimo = self.cleaned_data.get("stock_minimo")
-
-        if maximo is None or maximo < 0:
-            raise forms.ValidationError("El stock máximo debe ser un número positivo.")
-
-        if minimo is not None and maximo < minimo:
-            raise forms.ValidationError("El stock máximo no puede ser menor que el stock mínimo.")
-
+        if maximo is not None and maximo < 0:
+            raise forms.ValidationError("El stock máximo no puede ser negativo.")
         return maximo
 
     def clean_precio_unitario(self):
         precio = self.cleaned_data.get("precio_unitario")
-        if precio is None or precio < 0:
-            raise forms.ValidationError("El precio unitario debe ser un número positivo.")
-
-        if precio > 99999:
-            raise forms.ValidationError("El precio unitario no puede exceder 99.999 (5 dígitos).")
-
+        MAX_VALUE = 99999
+        
+        if precio is not None:
+            if precio < 0:
+                raise forms.ValidationError("El precio unitario no puede ser negativo.")
+            
+            if precio > MAX_VALUE:
+                raise forms.ValidationError(f"El precio unitario no puede exceder los {MAX_VALUE:,} (5 dígitos).")
+                
         return precio
 
+    # -----------------------------------------------------
+    # VALIDACIÓN CRUZADA: Stock Mínimo < Stock Máximo
+    # -----------------------------------------------------
+    def clean(self):
+        cleaned_data = super().clean()
+        minimo = cleaned_data.get("stock_minimo")
+        maximo = cleaned_data.get("stock_maximo")
+
+        # Solo validamos si ambos campos pasaron su clean_campo individual
+        if minimo is not None and maximo is not None:
+            if minimo >= maximo:
+                # Usamos add_error para asociar el error a un campo específico
+                self.add_error(
+                    'stock_minimo', 
+                    'El Stock Mínimo debe ser estrictamente menor que el Stock Máximo.'
+                )
+                self.add_error(
+                    'stock_maximo', 
+                    'El Stock Máximo debe ser mayor que el Stock Mínimo.'
+                )
+
+        return cleaned_data
+
+
+#UNIDAD DE MEDIDA
+class UnidadMedidaForm(forms.ModelForm):
+    class Meta:
+        model = UnidadMedida
+        fields = ("nombre_corto", "nombre_largo")
+        widgets = {
+            "nombre_corto": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: KG"}),
+            "nombre_largo": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Kilogramos"}),
+        }
 
 # ==========================================
 #  MOVIMIENTOS (Entradas / Salidas)

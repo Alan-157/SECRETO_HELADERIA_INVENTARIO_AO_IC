@@ -10,7 +10,9 @@ urlpatterns = [
     path('insumos/crear/', views.crear_insumo, name='crear_insumo'),
     path('insumos/editar/<int:insumo_id>/', views.editar_insumo, name='editar_insumo'),
     path('insumos/eliminar/<int:insumo_id>/', views.eliminar_insumo, name='eliminar_insumo'),
-    
+    path('ajax/crear_unidad/', views.crear_unidad_medida_ajax, name='crear_unidad_medida_ajax'),
+    path('ajax/editar_unidad/<int:pk>/', views.editar_unidad_medida_ajax, name='editar_unidad_medida_ajax'),
+    path('ajax/eliminar_unidad/<int:pk>/', views.eliminar_unidad_medida_ajax, name='eliminar_unidad_medida_ajax'),
     # --- Listados Varios ---
     path('movimientos/', views.listar_movimientos, name='listar_movimientos'),
     path('ordenes/', views.listar_ordenes, name='listar_ordenes'),

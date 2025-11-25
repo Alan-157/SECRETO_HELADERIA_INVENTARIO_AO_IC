@@ -15,16 +15,17 @@ from django.contrib.auth.decorators import login_required
 from .models import (
     Insumo, Categoria, Bodega,
     Entrada, Salida, InsumoLote,
-    OrdenInsumo, OrdenInsumoDetalle,
+    OrdenInsumo, OrdenInsumoDetalle, UnidadMedida,
     ESTADO_ORDEN_CHOICES,              
 )
 from django.urls import reverse
 from .forms import (
     InsumoForm, CategoriaForm,
     MovimientoLineaFormSet, BodegaForm,
-    EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, OrdenInsumoDetalleEditFormSet, 
+    EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, OrdenInsumoDetalleEditFormSet,UnidadMedidaForm 
     # =============================================================================
 )
+import json
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, numbers, PatternFill
@@ -50,15 +51,15 @@ def list_with_filters(
     request,
     base_qs,
     *,
-    search_fields=None,          # lista de campos para icontains (p.ej. ["name", "email", "active_asignacion__perfil__nombre"])
-    order_field=None,            # campo base para ordenar asc/desc (p.ej. "name" o "nombre")
-    session_prefix="",           # prefijo para claves de sesión (p.ej. "usuarios" o "perfiles")
-    context_key="",              # nombre del PageObj en contexto (p.ej. "usuarios" o "perfiles")
-    full_template="",            # template completo (p.ej. "accounts/usuarios_list.html")
-    partial_template="",         # template parcial (p.ej. "accounts/partials/usuarios_results.html")
-    default_per_page=20,         # 5/10/20 permitido
-    default_order="asc",         # "asc" o "desc"
-    tie_break="id",              # desempate estable
+    search_fields=None,          # lista de campos para icontains
+    order_field=None,            # campo base para ordenar
+    session_prefix="",           # prefijo para claves de sesión
+    context_key="",              # nombre del PageObj en contexto
+    full_template="",            # template completo
+    partial_template="",         # template parcial
+    default_per_page=20,         
+    default_order="asc",         
+    tie_break="id",              
     extra_context=None,          # dict extra opcional
 ):
     extra_context = extra_context or {}
@@ -78,7 +79,7 @@ def list_with_filters(
         for f in search_fields:
             try:
                 # Probar acceso vía values() evita fallar por campo inexistente
-                base_qs.model._meta.get_field(f.split("__")[0])  # validación simple de primer tramo
+                base_qs.model._meta.get_field(f.split("__")[0])
                 q_objs.append(Q(**{f"{f}__icontains": q}))
             except Exception:
                 # Si el primer tramo no es field directo (FK anidada), igual intentamos usarlo
@@ -123,48 +124,51 @@ def list_with_filters(
     # --- respuesta normal (página completa) ---
     return render(request, full_template, context)
 
-# --- DASHBOARD ---
+# --- DASHBOARD (ACTUALIZADO: Interactivo) ---
 @login_required
 def dashboard_view(request):
+    # Cuentas totales
     total_insumos = Insumo.objects.filter(is_active=True).count()
     total_bodegas = Bodega.objects.filter(is_active=True).count()
-    ordenes_pendientes = OrdenInsumo.objects.filter(estado='PENDIENTE').count()
+    ordenes_pendientes_count = OrdenInsumo.objects.filter(estado='PENDIENTE').count()
     visitas = request.session.get('visitas', 0)
     request.session['visitas'] = visitas + 1
-    categorias = Categoria.objects.filter(is_active=True).order_by('-created_at')[:5]
+
+    # --- Listas para el Dashboard (Top 5) ---
+    top_insumos = Insumo.objects.filter(is_active=True).select_related('categoria', 'unidad_medida').order_by('-created_at')[:5] 
+    top_bodegas = Bodega.objects.filter(is_active=True).order_by('-created_at')[:5]
+    top_ordenes = OrdenInsumo.objects.filter(estado='PENDIENTE').select_related('usuario').order_by('-fecha')[:5] 
+    categorias = Categoria.objects.filter(is_active=True).order_by('-created_at')[:5] 
 
     context = {
         'total_insumos': total_insumos,
         'total_bodegas': total_bodegas,
-        'ordenes_pendientes': ordenes_pendientes,
+        'ordenes_pendientes_count': ordenes_pendientes_count,
+        'top_insumos': top_insumos,         
+        'top_bodegas': top_bodegas,         
+        'top_ordenes': top_ordenes,         
         'categorias': categorias,
         'visitas': visitas,
     }
-    return render(request, 'dashboard.html', context)
+    return render(request, 'dashboard.html', context) # Asume dashboard.html está en inventario/
 
 # --- CRUD INSUMOS ---
 @login_required
 @perfil_required(
     allow=("administrador", "Encargado"),
-    readonly_for=("Bodeguero",)            # ← bodeguero puede ver listado
+    readonly_for=("Bodeguero",)             
 )
 def listar_insumos(request):
-    # Base queryset con stock_actual calculado
     qs = (
         Insumo.objects.filter(is_active=True)
-        .annotate(
-            stock_actual=Coalesce(
-                Sum("lotes__cantidad_actual"),
-                0,
-                output_field=DecimalField()
-            )
-        )
-        .select_related("categoria")
+        .annotate(stock_actual=Coalesce(Sum('lotes__cantidad_actual'), 0, output_field=DecimalField()))
+        .select_related('categoria', 'unidad_medida') # Optimizada
     )
 
-    # --- SORT (lo guardamos en sesión) ---
     allowed_sort = {"nombre", "categoria", "stock", "unidad"}
-    sort = request.GET.get("sort") or request.session.get("sort_insumos") or "nombre"
+    sort = request.GET.get("sort")
+    if sort not in allowed_sort:
+        sort = request.session.get("sort_insumos", "nombre")
     if sort not in allowed_sort:
         sort = "nombre"
     request.session["sort_insumos"] = sort
@@ -173,35 +177,27 @@ def listar_insumos(request):
         "nombre": "nombre",
         "categoria": "categoria__nombre",
         "stock": "stock_actual",
-        "unidad": "unidad_medida",
+        "unidad": "unidad_medida__nombre_largo", # Ordena por nombre de la unidad
     }
-
-    # --- Permisos para mostrar botones de edición / eliminar ---
-    read_only = not (
-        request.user.is_superuser
-        or user_has_role(request.user, "Administrador", "Admin", "Encargado")
-    )
-
-    # --- Delega todo (búsqueda, orden, paginación y AJAX) al helper ---
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Admin", "Encargado"))
+    
     return list_with_filters(
         request,
         qs,
-        search_fields=["nombre", "categoria__nombre", "unidad_medida"],
+        # Búsqueda: ahora en el campo de texto de la unidad
+        search_fields=["nombre", "categoria__nombre", "unidad_medida__nombre_largo"], 
         order_field=sort_map[sort],
         session_prefix="insumos",
         context_key="insumos",
         full_template="inventario/listar_insumos.html",
         partial_template="inventario/partials/insumos_results.html",
-        default_per_page=10,
+        default_per_page=10, # Este es solo el fallback inicial. list_with_filters usa la sesión o el valor GET.
         default_order="asc",
         tie_break="id",
-        extra_context={
-            "read_only": read_only,
-            "titulo": "Listado de Insumos",
-            "sort": sort,
-        },
+        extra_context={"read_only": read_only,"titulo": "Listado de Insumos", "sort": sort},
     )
 
+# --- CREAR INSUMO (Actualizado: Pasa UnidadMedidaForm) ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 def crear_insumo(request):
@@ -215,9 +211,14 @@ def crear_insumo(request):
         messages.success(request, "✅ Insumo creado correctamente.")
         return redirect('inventario:listar_insumos')
 
-    return render(request, 'inventario/crear_insumo.html', {'form': form, 'titulo': 'Nuevo Insumo'})
+    return render(request, 'inventario/crear_insumo.html', {
+        'form': form, 
+        'titulo': 'Nuevo Insumo',
+        'UnidadMedidaForm': UnidadMedidaForm() # <--- PASAMOS EL FORMULARIO PARA EL MODAL
+    })
 
 
+# --- EDITAR INSUMO (Actualizado: Pasa UnidadMedidaForm) ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 def editar_insumo(request, insumo_id):
@@ -229,17 +230,21 @@ def editar_insumo(request, insumo_id):
     form = InsumoForm(request.POST or None, instance=insumo)
     if request.method == 'POST' and form.is_valid():
         form.save()
-        messages.success(request, f"El Insumo '{insumo.nombre}' fue actualizado.")
+        messages.success(request, f"📝 Insumo '{insumo.nombre}' actualizado.")
         return redirect('inventario:listar_insumos')
 
-    return render(request, 'inventario/editar_insumo.html', {'form': form, 'titulo': f'Editar {insumo.nombre}'})
+    return render(request, 'inventario/editar_insumo.html', {
+        'form': form, 
+        'titulo': f'Editar {insumo.nombre}',
+        'UnidadMedidaForm': UnidadMedidaForm() # <--- PASAMOS EL FORMULARIO PARA EL MODAL
+    })
 
 
+# --- ELIMINAR INSUMO (Actualizado: Stock Cero) ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 def eliminar_insumo(request, insumo_id):
     # 1. Obtener el Insumo y calcular el stock total de sus lotes activos
-    from decimal import Decimal # Re-importación local por si acaso, aunque está global
     insumo = get_object_or_404(
         Insumo.objects.annotate(
             stock_total=Coalesce(
@@ -270,9 +275,95 @@ def eliminar_insumo(request, insumo_id):
 
     return render(
         request,
-        "inventario/confirmar_eliminar.html",
-        {"titulo": f"Eliminar Insumo «{insumo.nombre}»", "cancel_url": reverse("inventario:listar_insumos")}
+        "inventario/confirmar_eliminar.html", # Ruta corregida previamente
+        {"titulo": f"Eliminar Insumo «{insumo.nombre}»", "cancel_url": reverse("inventario:listar_insumos"), "insumo": insumo}
     )
+
+# --- VISTA AJAX (NUEVA: Creación de Unidad de Medida) ---
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+@require_POST
+def crear_unidad_medida_ajax(request):
+    """Crea una nueva unidad de medida y devuelve sus datos en JSON."""
+    form = UnidadMedidaForm(request.POST)
+    
+    if form.is_valid():
+        nueva_unidad = form.save()
+        return JsonResponse({
+            'success': True,
+            'id': nueva_unidad.id,
+            'text': str(nueva_unidad) # Retorna "Kilogramos (KG)"
+        }, status=201)
+    
+    # Si hay errores de validación, retornamos JSON con los errores
+    errors = json.loads(form.errors.as_json())
+    return JsonResponse({
+        'success': False,
+        'errors': errors
+    }, status=400)
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+@require_POST
+def editar_unidad_medida_ajax(request, pk):
+    """Edita una unidad de medida existente y devuelve sus datos en JSON."""
+    
+    # 1. Obtener la instancia existente
+    try:
+        unidad = UnidadMedida.objects.get(pk=pk)
+    except UnidadMedida.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Unidad no encontrada.'}, status=404)
+
+    # 2. Inicializar el formulario con la data POST y la instancia existente
+    form = UnidadMedidaForm(request.POST, instance=unidad)
+
+    if form.is_valid():
+        unidad_actualizada = form.save()
+        return JsonResponse({
+            'success': True,
+            'id': unidad_actualizada.id,
+            'text': str(unidad_actualizada), 
+            'message': f'Unidad "{str(unidad_actualizada)}" actualizada con éxito.'
+        }, status=200)
+    
+    # Si hay errores de validación, retornamos JSON con los errores
+    import json
+    errors = json.loads(form.errors.as_json())
+    return JsonResponse({
+        'success': False,
+        'errors': errors,
+        'message': 'Error de validación al actualizar la unidad.'
+    }, status=400)
+    
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+@require_POST
+def eliminar_unidad_medida_ajax(request, pk):
+    """Elimina una unidad de medida por PK tras verificar que no esté en uso."""
+    try:
+        unidad = UnidadMedida.objects.get(pk=pk)
+    except UnidadMedida.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Unidad no encontrada.'}, status=404)
+
+    # 1. Validación de dependencia: ¿Está la unidad en uso por algún Insumo?
+    # Importante: El modelo Insumo ahora tiene un ForeignKey a UnidadMedida
+    if unidad.insumos_medidos.exists():
+        return JsonResponse({
+            'success': False,
+            'message': f'La unidad "{str(unidad)}" está en uso y no puede eliminarse.'
+        }, status=400)
+
+    # 2. Eliminación (Desactivación)
+    unidad.is_active = False # Asumo que usas desactivación suave (soft delete)
+    unidad.save(update_fields=['is_active'])
+    
+    # Si quieres eliminarla permanentemente:
+    # unidad.delete() 
+
+    return JsonResponse({'success': True, 'message': f'Unidad "{str(unidad)}" eliminada.'}, status=200)
 
 # --- exportar LOTES DE INSUMO ---
 @login_required
