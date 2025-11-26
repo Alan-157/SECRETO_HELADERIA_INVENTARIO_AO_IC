@@ -2,6 +2,7 @@ from django.http import JsonResponse
 from rest_framework import viewsets
 from inventario.models import Insumo, Categoria
 from .serializers import InsumoSerializer, CategoriaSerializer
+from rest_framework.permissions import IsAuthenticated
 
 def health(request):
     """
@@ -28,4 +29,6 @@ class InsumoViewSet(viewsets.ModelViewSet):
 class CategoriaViewSet(viewsets.ModelViewSet):
     queryset = Categoria.objects.all()
     serializer_class = CategoriaSerializer
+    permission_classes = [IsAuthenticated]
+
     

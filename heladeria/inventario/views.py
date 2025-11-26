@@ -42,6 +42,8 @@ import operator
 from django.db.models import Q
 from django.template.loader import render_to_string
 from inventario import models
+from rest_framework.permissions import IsAuthenticated
+
 
 # --- Función genérica para listas con filtros, orden y paginación ---
 def list_with_filters(

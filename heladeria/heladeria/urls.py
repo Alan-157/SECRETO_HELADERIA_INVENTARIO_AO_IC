@@ -19,7 +19,8 @@ from django.urls import path, include
 # Importa la vista principal (asumida en inventario/views.py)
 from inventario.views import dashboard_view 
 from django.conf.urls.static import static
-from django.conf import settings # 🔑 Necesario para acceder a DEBUG, MEDIA_URL, etc.
+from django.conf import settings# 🔑 Necesario para acceder a DEBUG, MEDIA_URL, etc.
+from rest_framework.authtoken.views import obtain_auth_token
 
 
 urlpatterns = [
@@ -38,6 +39,9 @@ urlpatterns = [
 
     # 4. Rutas de la API
     path("api/", include("api.urls")),
+    path('api/login/', obtain_auth_token, name='api_login'),
+
+    
     
     
 ]
