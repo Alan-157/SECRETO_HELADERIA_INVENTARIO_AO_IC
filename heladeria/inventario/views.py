@@ -138,19 +138,58 @@ def dashboard_view(request):
     top_insumos = Insumo.objects.filter(is_active=True).select_related('categoria', 'unidad_medida').order_by('-created_at')[:5] 
     top_bodegas = Bodega.objects.filter(is_active=True).order_by('-created_at')[:5]
     top_ordenes = OrdenInsumo.objects.filter(estado='PENDIENTE').select_related('usuario').order_by('-fecha')[:5] 
-    categorias = Categoria.objects.filter(is_active=True).order_by('-created_at')[:5] 
+    
+    # NUEVO: Alertas (Top 5 más recientes)
+    top_alertas = models.AlertaInsumo.objects.all().select_related('insumo').order_by('-fecha')[:5]
+    total_alertas = models.AlertaInsumo.objects.all().count() # Conteo total de alertas
 
     context = {
         'total_insumos': total_insumos,
         'total_bodegas': total_bodegas,
-        'ordenes_pendientes_count': ordenes_pendientes_count,
-        'top_insumos': top_insumos,         
-        'top_bodegas': top_bodegas,         
-        'top_ordenes': top_ordenes,         
-        'categorias': categorias,
+        'ordenes_pendientes_count': ordenes_pendientes_count, # Usar el conteo correcto
+        'top_insumos': top_insumos,          
+        'top_bodegas': top_bodegas,          
+        'top_ordenes': top_ordenes,
+        'top_alertas': top_alertas,          # NUEVO
+        'total_alertas': total_alertas,      # NUEVO
         'visitas': visitas,
     }
-    return render(request, 'dashboard.html', context) # Asume dashboard.html está en inventario/
+    return render(request, 'dashboard.html', context)
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+def listar_alertas(request):
+    """
+    Listado de alertas con filtros y paginación.
+    """
+    qs = (
+        models.AlertaInsumo.objects.all()
+        .select_related("insumo")
+        .order_by("-fecha", "-created_at")
+    )
+
+    read_only = not (
+        request.user.is_superuser
+        or user_has_role(request.user, "Administrador", "Encargado")
+    )
+
+    return list_with_filters(
+        request,
+        qs,
+        search_fields=["insumo__nombre", "tipo", "mensaje"],
+        order_field="-fecha",
+        session_prefix="alertas",
+        context_key="alertas",
+        full_template="inventario/listar_alertas.html", # <-- Necesitarás crear este template
+        partial_template="inventario/partials/alertas_results.html", # <-- Necesitarás crear este partial
+        default_per_page=20,
+        default_order="desc",
+        tie_break="id",
+        extra_context={
+            "titulo": "Alertas de Inventario",
+            "read_only": read_only,
+        },
+    )
 
 # --- CRUD INSUMOS ---
 @login_required

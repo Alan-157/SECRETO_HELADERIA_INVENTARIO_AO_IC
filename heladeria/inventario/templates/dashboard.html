@@ -10,7 +10,7 @@
     {% include 'inventario/partials/messages.html' %}
 
     <div class="row">
-
+        
         <div class="col-xl-4 col-md-6 mb-4">
             <div class="card border-left-success shadow h-100 py-2">
                 <div class="card-body">
@@ -79,55 +79,41 @@
 
     <div class="row">
         
-        {# LISTA DE INSUMOS #}
+        {# LISTA DE ALERTAS (NUEVA POSICIÓN 1) #}
         <div class="col-lg-6 mb-4">
             <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-success">Últimos Insumos Agregados</h6>
+                <div class="card-header py-3 d-flex justify-content-between align-items-center"
+                     style="cursor: pointer;"
+                     data-bs-toggle="collapse"
+                     data-bs-target="#alerta-list-collapse"
+                     aria-expanded="true"
+                     aria-controls="alerta-list-collapse">
+                    <h6 class="m-0 font-weight-bold text-danger">
+                        Alertas de Inventario (Top 5)
+                    </h6>
+                    <span class="badge bg-danger rounded-pill">{{ total_alertas }}</span>
                 </div>
-                <div class="card-body p-0 collapse show" id="insumo-list-collapse">
+                <div class="card-body p-0 collapse show" id="alerta-list-collapse">
                     <ul class="list-group list-group-flush">
-                        {% for insumo in top_insumos %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <span>{{ insumo.nombre|default:"[Sin Nombre]" }} (ID: {{ insumo.id }})</span>
-                                <span class="badge bg-secondary rounded-pill">{{ insumo.categoria.nombre }}</span>
+                        {% for alerta in top_alertas %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center list-group-item-danger">
+                                <span class="text-xs">
+                                    <strong class="text-danger">{{ alerta.tipo|default:"Alerta"|truncatechars:15 }}:</strong> {{ alerta.mensaje|truncatechars:40 }}
+                                </span>
+                                <span class="badge bg-dark">{{ alerta.fecha|date:"d M y" }}</span>
                             </li>
                         {% empty %}
-                            <li class="list-group-item text-muted">No hay insumos recientes.</li>
+                            <li class="list-group-item text-muted">No hay alertas activas.</li>
                         {% endfor %}
                     </ul>
                     <div class="card-footer text-end">
-                        <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-sm btn-outline-success">Ver Todos los Insumos ({{ total_insumos }})</a>
+                        <a href="{% url 'inventario:listar_alertas' %}" class="btn btn-sm btn-outline-danger">Ver Todas las Alertas ({{ total_alertas }})</a>
                     </div>
                 </div>
             </div>
         </div>
-
-        {# LISTA DE BODEGAS #}
-        <div class="col-lg-6 mb-4">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-info">Últimas Bodegas Creadas</h6>
-                </div>
-                <div class="card-body p-0 collapse show" id="bodega-list-collapse">
-                    <ul class="list-group list-group-flush">
-                        {% for bodega in top_bodegas %}
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <span>{{ bodega.nombre }}</span>
-                                <span class="text-muted small">{{ bodega.direccion|truncatechars:30 }}</span>
-                            </li>
-                        {% empty %}
-                            <li class="list-group-item text-muted">No hay bodegas recientes.</li>
-                        {% endfor %}
-                    </ul>
-                    <div class="card-footer text-end">
-                        <a href="{% url 'inventario:listar_bodegas' %}" class="btn btn-sm btn-outline-info">Ver Todas las Bodegas ({{ total_bodegas }})</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {# LISTA DE ÓRDENES PENDIENTES #}
+        
+        {# LISTA DE ÓRDENES PENDIENTES (POSICIÓN 2 - Mantenida) #}
         <div class="col-lg-6 mb-4">
             <div class="card shadow mb-4">
                 <div class="card-header py-3">
@@ -151,30 +137,54 @@
             </div>
         </div>
 
-        {# LISTA DE CATEGORÍAS (Mantenida) #}
+        {# LISTA DE INSUMOS (NUEVA POSICIÓN 3) #}
         <div class="col-lg-6 mb-4">
             <div class="card shadow mb-4">
                 <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Categorías (Top 5)</h6>
+                    <h6 class="m-0 font-weight-bold text-success">Últimos Insumos Agregados</h6>
                 </div>
-                <div class="card-body p-0">
+                <div class="card-body p-0 collapse show" id="insumo-list-collapse">
                     <ul class="list-group list-group-flush">
-                        {% for cat in categorias %}
+                        {% for insumo in top_insumos %}
                             <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <span>{{ cat.nombre }}</span>
-                                <span class="text-muted small">{{ cat.created_at|date:"d M y" }}</span>
+                                <span>{{ insumo.nombre|default:"[Sin Nombre]" }} (ID: {{ insumo.id }})</span>
+                                <span class="badge bg-secondary rounded-pill">{{ insumo.categoria.nombre }}</span>
                             </li>
                         {% empty %}
-                            <li class="list-group-item text-muted">No hay categorías.</li>
+                            <li class="list-group-item text-muted">No hay insumos recientes.</li>
                         {% endfor %}
                     </ul>
                     <div class="card-footer text-end">
-                        <a href="{% url 'inventario:listar_categorias' %}" class="btn btn-sm btn-outline-primary">Ver Todas las Categorías</a>
+                        <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-sm btn-outline-success">Ver Todos los Insumos ({{ total_insumos }})</a>
                     </div>
                 </div>
             </div>
         </div>
-
+        
+        {# LISTA DE BODEGAS (POSICIÓN 4 - Mantenida) #}
+        <div class="col-lg-6 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-info">Últimas Bodegas Creadas</h6>
+                </div>
+                <div class="card-body p-0 collapse show" id="bodega-list-collapse">
+                    <ul class="list-group list-group-flush">
+                        {% for bodega in top_bodegas %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span>{{ bodega.nombre }}</span>
+                                <span class="text-muted small">{{ bodega.direccion|truncatechars:30 }}</span>
+                            </li>
+                        {% empty %}
+                            <li class="list-group-item text-muted">No hay bodegas recientes.</li>
+                        {% endfor %}
+                    </ul>
+                    <div class="card-footer text-end">
+                        <a href="{% url 'inventario:listar_bodegas' %}" class="btn btn-sm btn-outline-info">Ver Todas las Bodegas ({{ total_bodegas }})</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
     </div>
 </div>
 {% endblock content %}
