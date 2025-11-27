@@ -38,13 +38,14 @@
               {% if perfil == 'administrador' or user.is_superuser %}
                 <li class="nav-item dropdown">
                   <a class="nav-link dropdown-toggle text-white" href="#" id="navbarAdminDropdown" role="button"
-                     data-bs-toggle="dropdown" aria-expanded="false">
+                    data-bs-toggle="dropdown" aria-expanded="false">
                     Administración
                   </a>
                   <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="{% url 'accounts:usuarios_list' %}">Usuarios</a></li>
                     <li><a class="dropdown-item" href="{% url 'accounts:perfiles_list' %}">Perfiles</a></li>
-                    
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="{% url 'inventario:listar_proveedores' %}">Proveedores</a></li> {# <-- NUEVO LINK #}
                   </ul>
                 </li>
               {% endif %}

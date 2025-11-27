@@ -15,14 +15,16 @@ from django.contrib.auth.decorators import login_required
 from .models import (
     Insumo, Categoria, Bodega,
     Entrada, Salida, InsumoLote,
-    OrdenInsumo, OrdenInsumoDetalle, UnidadMedida, AlertaInsumo,
+    OrdenInsumo, OrdenInsumoDetalle, UnidadMedida, AlertaInsumo, Proveedor,
     ESTADO_ORDEN_CHOICES,              
 )
 from django.urls import reverse
 from .forms import (
-    InsumoForm, CategoriaForm,
-    MovimientoLineaFormSet, BodegaForm,
-    EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, 
+    InsumoForm, CategoriaForm, SalidaLineaForm,EntradaLineaForm,EntradaLineaFormSet,SalidaLineaFormSet,
+    #MovimientoLineaFormSet, 
+    BodegaForm, ProveedorForm,
+    EntradaForm, SalidaForm, 
+    OrdenInsumoDetalleCreateFormSet, 
     OrdenInsumoDetalleEditFormSet,UnidadMedidaForm, AlertaForm
 )
 import json
@@ -887,6 +889,7 @@ def eliminar_categoria(request, categoria_id):
         {"titulo": f"Eliminar Categoría «{categoria.nombre}»", "cancel_url": reverse("inventario:listar_categorias")}
     )
 
+'''
 # --- MOVIMIENTOS UNIFICADOS ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
@@ -1027,25 +1030,226 @@ def registrar_movimiento(request):
         "formset": formset,
         "titulo": "Registrar movimiento",
         "orden": orden_obj,
+    })'''
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+def registrar_entrada(request):
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para registrar entradas.")
+        return redirect('inventario:listar_movimientos')
+
+    initial_data = []
+
+    # --- LÓGICA DE PRE-CARGA (Insumo ID) ---
+    insumo_id = request.GET.get("insumo_id")
+    if insumo_id:
+        try:
+            insumo_obj = models.Insumo.objects.get(id=insumo_id)
+            initial_data.append({
+                'insumo': insumo_obj.id,
+                'cantidad': 1, # Cantidad por defecto
+            })
+        except models.Insumo.DoesNotExist:
+            messages.warning(request, "El insumo solicitado no es válido.")
+
+
+    if request.method == "POST":
+        formset = EntradaLineaFormSet(request.POST)
+        if formset.is_valid():
+            lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            
+            for cd in lineas:
+                # Datos de Insumo
+                insumo = cd["insumo"]
+                ubicacion = cd["ubicacion"]
+                cantidad = cd["cantidad"]
+                fecha = cd["fecha"]
+                
+                # Datos de Lote
+                proveedor = cd.get("proveedor")
+                fecha_exp = cd["fecha_expiracion"]
+                
+                # CREACIÓN DEL LOTE
+                lote = models.InsumoLote.objects.create(
+                    insumo=insumo,
+                    bodega=ubicacion.bodega,
+                    proveedor=proveedor,
+                    fecha_ingreso=fecha,
+                    fecha_expiracion=fecha_exp,
+                    cantidad_inicial=cantidad,
+                    cantidad_actual=Decimal("0.00"), # Corregido para evitar doble conteo
+                    usuario=request.user,
+                )
+
+                # CREACIÓN DE LA ENTRADA
+                models.Entrada.objects.create(
+                    insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
+                    cantidad=cantidad, fecha=fecha, usuario=request.user,
+                    observaciones=cd.get("observaciones", ""),
+                )
+                
+                # ACTUALIZACIÓN DEL LOTE
+                lote.cantidad_actual += cantidad
+                lote.save(update_fields=["cantidad_actual"])
+                
+            messages.success(request, "✅ Entrada(s) registrada(s) correctamente.")
+            return redirect('inventario:listar_movimientos')
+
+        messages.error(request, "Revisa los errores en el formulario antes de continuar.")
+
+    # Inicializa el FormSet con datos pre-cargados si existen
+    formset = EntradaLineaFormSet(initial=initial_data if initial_data else None)
+
+    return render(request, "inventario/registrar_entrada.html", {
+        "formset": formset,
+        "titulo": "Registrar Entrada de Inventario",
     })
 
+
+# --- REGISTRAR MOVIMIENTO (SALIDA DEDICADA) ---
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+def registrar_salida(request):
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para registrar salidas.")
+        return redirect('inventario:listar_movimientos')
+
+    orden_obj = None
+    initial_data = []
+
+    # --- 1. LÓGICA DE PRE-CARGA (Orden ID) ---
+    orden_id = request.GET.get("orden")
+    if orden_id:
+        orden_obj = get_object_or_404(models.OrdenInsumo, id=orden_id)
+        # Pre-cargar con los detalles de la orden
+        for detalle in orden_obj.detalles.all():
+            initial_data.append({
+                'insumo': detalle.insumo.id,
+                'cantidad': detalle.cantidad_solicitada,
+            })
+    
+    # --- 2. LÓGICA DE PRE-CARGA (Insumo ID - Si NO HAY Orden) ---
+    elif request.GET.get("insumo_id"):
+        insumo_id = request.GET.get("insumo_id")
+        try:
+            insumo_obj = models.Insumo.objects.get(id=insumo_id)
+            initial_data.append({
+                'insumo': insumo_obj.id,
+                'cantidad': 1, 
+            })
+        except models.Insumo.DoesNotExist:
+            messages.warning(request, "El insumo solicitado no es válido.")
+
+
+    if request.method == "POST":
+        formset = SalidaLineaFormSet(request.POST)
+        if formset.is_valid():
+            lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            
+            for cd in lineas:
+                # Datos de Salida
+                insumo = cd["insumo"]
+                ubicacion = cd["ubicacion"]
+                cantidad = cd["cantidad"]
+                fecha = cd["fecha"]
+                lote = cd["insumo_lote"] 
+                
+                # Búsqueda del detalle si venimos de una orden
+                detalle_obj = None
+                if orden_obj:
+                    try:
+                        detalle_obj = orden_obj.detalles.get(insumo=cd["insumo"])
+                    except models.OrdenInsumoDetalle.DoesNotExist:
+                        pass 
+
+                cant = min(cantidad, lote.cantidad_actual or Decimal("0")) 
+                
+                # CREACIÓN DE LA SALIDA
+                models.Salida.objects.create(
+                    insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
+                    cantidad=cant, fecha_generada=fecha, usuario=request.user,
+                    tipo="USO_PRODUCCION", observaciones=cd.get("observaciones", ""),
+                    orden=orden_obj,          # Enlaza la orden
+                    detalle=detalle_obj,      # Enlaza el detalle
+                )
+                
+                # ACTUALIZACIÓN DEL LOTE (RESTA DE STOCK)
+                lote.cantidad_actual -= cant
+                lote.save(update_fields=["cantidad_actual"])
+                
+                # Actualizar cantidad atendida en el detalle
+                if detalle_obj:
+                    detalle_obj.cantidad_atendida += cant
+                    detalle_obj.save(update_fields=["cantidad_atendida"])
+
+
+            # Recalcular el estado de la orden al finalizar
+            if orden_obj:
+                orden_obj.recalc_estado() 
+                
+            messages.success(request, "✅ Salida(s) registrada(s) correctamente.")
+            return redirect('inventario:listar_movimientos')
+
+        messages.error(request, "Revisa los errores en el formulario antes de continuar.")
+
+    # Inicializa el FormSet con datos pre-cargados si existen
+    formset = SalidaLineaFormSet(initial=initial_data if initial_data else None)
+
+    return render(request, "inventario/registrar_salida.html", {
+        "formset": formset,
+        "titulo": "Registrar Salida de Inventario",
+        "orden": orden_obj,
+    })
 
 # --- EDITAR / ELIMINAR ENTRADAS Y SALIDAS ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def editar_entrada(request, pk):
-    entrada = get_object_or_404(Entrada, pk=pk)
+    # 1. Recuperar la entrada
+    entrada = get_object_or_404(models.Entrada, pk=pk)
+
+    # --- 2. INICIALIZACIÓN DE OBJETOS HISTÓRICOS Y MANEJO DE ERROR ---
+    
+    try:
+        # Intentamos obtener el Insumo y el Lote directamente por PK
+        historic_insumo = models.Insumo.objects.get(pk=entrada.insumo_id)
+        historic_lote = models.InsumoLote.objects.get(pk=entrada.insumo_lote_id)
+    except (models.Insumo.DoesNotExist, models.InsumoLote.DoesNotExist):
+        # Si el objeto maestro no existe, lo notificamos y terminamos la edición.
+        messages.error(request, f"No se puede editar el movimiento #{pk}: El insumo o lote asociado ya no existe en el sistema.")
+        return redirect("inventario:listar_movimientos")
+
+    # 3. Inicializar el formulario
+    form = EntradaForm(request.POST or None, instance=entrada)
+    
+    # 4. Inyectar dinámicamente los objetos históricos al QuerySet del Formulario
+    # Esto evita el error "Insumo matching query does not exist." durante la inicialización.
+    
+    # A) Ajustar el queryset del campo 'insumo'
+    insumo_field = form.fields['insumo']
+    # Si el insumo histórico no está en el queryset actual (ej. por filtro is_active), lo añadimos usando OR.
+    if not insumo_field.queryset.filter(pk=historic_insumo.pk).exists():
+        insumo_field.queryset = insumo_field.queryset | models.Insumo.objects.filter(pk=historic_insumo.pk)
+
+    # B) Ajustar el queryset del campo 'insumo_lote'
+    lote_field = form.fields['insumo_lote']
+    if not lote_field.queryset.filter(pk=historic_lote.pk).exists():
+        lote_field.queryset = lote_field.queryset | models.InsumoLote.objects.filter(pk=historic_lote.pk)
+
+
+    # --- 5. RESTO DE LA LÓGICA DE POST ---
     old_qty = Decimal(entrada.cantidad)
     lote = entrada.insumo_lote
 
-    # REMOVIDA: from .forms import EntradaForm (ahora importada globalmente)
-    form = EntradaForm(request.POST or None, instance=entrada)
     if request.method == "POST" and form.is_valid():
         nueva = Decimal(form.cleaned_data["cantidad"])
         delta = nueva - old_qty
         
-        # Validación de stock futuro: Si la edición reduce la cantidad de stock por debajo de cero, falla.
+        # Validación de stock futuro
         if lote.cantidad_actual + delta < 0:
             messages.error(request, f"Error al editar: La nueva cantidad excedería el stock del lote, resultando en stock negativo ({lote.cantidad_actual + delta:.2f}).")
             return render(request, "inventario/editar_movimiento.html", {"form": form, "titulo": "Editar Entrada"})
@@ -1072,8 +1276,8 @@ def editar_entrada(request, pk):
         "form": form,
         "titulo": "Editar Entrada",
         "cancel_url": reverse("inventario:listar_movimientos"),
-        "campo_fecha": form["fecha"],                 # ✅ BoundField seguro
-        "errores_fecha": form["fecha"].errors,       # ✅ errores del campo
+        "campo_fecha": form["fecha"],                 
+        "errores_fecha": form["fecha"].errors,       
     },
 )
 
@@ -2123,3 +2327,96 @@ def reporte_disponibilidad(request):
     }
 
     return render(request, "inventario/reporte_disponibilidad.html", context)
+
+# --- CRUD PROVEEDORES ---
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"), readonly_for=("Bodeguero",))
+def listar_proveedores(request):
+    qs = models.Proveedor.objects.all().order_by("nombre_empresa")
+    
+    # Sort map simplified for default view
+    sort_map = {
+        "nombre": "nombre_empresa",
+        "rut": "rut_empresa",
+        "estado": "estado",
+        "ciudad": "ciudad",
+    }
+    
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador"))
+
+    return list_with_filters(
+        request,
+        qs,
+        search_fields=["nombre_empresa", "rut_empresa", "email", "ciudad"],
+        order_field="nombre_empresa", # Default order field
+        session_prefix="proveedores",
+        context_key="proveedores",
+        full_template="inventario/listar_proveedores.html", # Plantilla de lista principal
+        partial_template="inventario/partials/proveedores_results.html", # Tabla AJAX
+        default_per_page=10,
+        tie_break="id",
+        extra_context={
+            "titulo": "Listado de Proveedores",
+            "read_only": read_only,
+        },
+    )
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+def crear_proveedor(request):
+    form = ProveedorForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "✅ Proveedor creado correctamente.")
+        return redirect("inventario:listar_proveedores")
+    return render(request, "inventario/proveedor_form.html", {"form": form, "titulo": "Nuevo Proveedor"})
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+def editar_proveedor(request, pk):
+    obj = get_object_or_404(models.Proveedor, pk=pk)
+    form = ProveedorForm(request.POST or None, instance=obj)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, f"📝 Proveedor '{obj.nombre_empresa}' actualizado.")
+        return redirect("inventario:listar_proveedores")
+    return render(request, "inventario/proveedor_form.html", {"form": form, "titulo": f"Editar: {obj.nombre_empresa}"})
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+def eliminar_proveedor(request, pk):
+    proveedor = get_object_or_404(models.Proveedor, pk=pk)
+    
+    # Regla: Verificar si tiene lotes asociados
+    tiene_lotes = models.InsumoLote.objects.filter(proveedor=proveedor).exists()
+
+    if request.method == "POST":
+        
+        # --- LÓGICA DE VALIDACIÓN ---
+        if tiene_lotes:
+            error_msg = "No se puede desactivar/eliminar el proveedor: tiene lotes de insumos asociados."
+            if request.headers.get("x-requested-with") == "XMLHttpRequest":
+                return JsonResponse({'success': False, 'message': error_msg}, status=400)
+            messages.error(request, error_msg)
+            return redirect("inventario:listar_proveedores")
+            
+        # --- LÓGICA DE ÉXITO ---
+        proveedor.is_active = False 
+        proveedor.save(update_fields=["is_active"])
+        success_msg = f"Proveedor '{proveedor.nombre_empresa}' desactivado."
+        
+        # Respuesta AJAX: Devuelve éxito y mensaje
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({'success': True, 'message': success_msg}, status=200)
+
+        # Respuesta de Formulario Normal: Redirecciona con mensaje
+        messages.success(request, success_msg)
+        return redirect("inventario:listar_proveedores")
+
+    return render(
+        request,
+        "inventario/confirmar_eliminar.html",
+        {"titulo": f"Desactivar Proveedor «{proveedor.nombre_empresa}»", "cancel_url": reverse("inventario:listar_proveedores"), "obj": proveedor}
+    )

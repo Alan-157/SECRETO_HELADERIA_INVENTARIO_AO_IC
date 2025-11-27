@@ -2,216 +2,243 @@
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
-<div class="card shadow-sm">
-    <div class="card-header bg-white d-flex align-items-center justify-content-between">
-        <h3 class="mb-0">{{ titulo }}</h3>
-        <button id="add-line" type="button" class="btn btn-sm btn-outline-primary">+ Agregar ítem</button>
-    </div>
-
-    <div class="card-body">
-        
-        {% if orden %}
-            <div class="alert alert-info">
-                Registrando movimientos para la **Orden #{{ orden.id }}** (Estado: {{ orden.estado }}).
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex align-items-center justify-content-between">
+                <h3 class="mb-0">{{ titulo }}</h3>
+                <button id="add-line" type="button" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-plus-circle"></i> Agregar Línea
+                </button>
             </div>
-        {% endif %}
 
-        <form method="post" novalidate>
-            {% if orden %}
-                <input type="hidden" name="orden_id" value="{{ orden.id }}">
-            {% endif %}
-            {% csrf_token %}
-            {{ formset.management_form }}
-            
-            {% if formset.non_form_errors %}
-                <div class="alert alert-danger">
-                    <strong>Errores Generales:</strong>
-                    <ul>
-                        {% for error in formset.non_form_errors %}
-                            <li>{{ error }}</li>
-                        {% endfor %}
-                    </ul>
-                </div>
-            {% endif %}
-
-            <div class="table-responsive">
-                <table class="table align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="min-width:120px;">Tipo</th>
-                            <th>Insumo</th>
-                            <th style="min-width:160px;">Lote existente</th>
-                            <th style="min-width:120px;">Nuevo lote</th>
-                            <th class="col-exp" style="min-width:160px;">Expiración</th>
-                            <th>Ubicación</th>
-                            <th style="min-width:120px;">Cantidad</th>
-                            <th style="min-width:140px;">Fecha</th>
-                            <th>Obs.</th>
-                            <th style="width:40px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="formset-body">
-                        {% for f in formset %}
-                        <tr class="fs-row {% if f.errors %}table-danger{% endif %}">
-                            <td>{{ f.tipo }}{% for e in f.tipo.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.insumo }}{% for e in f.insumo.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.insumo_lote }}{% for e in f.insumo_lote.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>
-                                <div class="form-check">
-                                    {{ f.crear_nuevo_lote }}
-                                    <label class="form-check-label">{{ f.crear_nuevo_lote.label }}</label>
-                                </div>
-                                {% for e in f.crear_nuevo_lote.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
-                            </td>
-
-                            <!-- COLUMNA EXPIRACIÓN -->
-                            <td class="col-exp">
-                                {{ f.fecha_expiracion }}
-                                {% for e in f.fecha_expiracion.errors %}
-                                <div class="text-danger small">{{ e }}</div>
+            <div class="card-body">
+                <form method="post" novalidate>
+                    {% if orden %}
+                        <input type="hidden" name="orden_id" value="{{ orden.id }}">
+                    {% endif %}
+                    {% csrf_token %}
+                    {{ formset.management_form }}
+                    
+                    {# MUESTRA ERRORES GLOBALES DEL FORMSET #}
+                    {% if formset.non_form_errors %}
+                        <div class="alert alert-danger">
+                            <strong>Errores Generales:</strong>
+                            <ul>
+                                {% for error in formset.non_form_errors %}
+                                    <li>{{ error }}</li>
                                 {% endfor %}
-                            </td>
+                            </ul>
+                        </div>
+                    {% endif %}
 
-                            <td>{{ f.ubicacion }}{% for e in f.ubicacion.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.cantidad }}{% for e in f.cantidad.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.fecha }}{% for e in f.fecha.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-                            <td>{{ f.observaciones }}{% for e in f.observaciones.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}</td>
-
-                            <td>
-                                {{ f.id }}
-                                {% if formset.can_delete %}
-                                    {{ f.DELETE }} 
-                                    <button type="button" class="btn btn-sm btn-outline-danger del-line">×</button>
-                                {% endif %}
-                            </td>
-                        </tr>
-
-                        {% if f.non_field_errors %}
-                        <tr class="table-danger"><td colspan="10">
-                            <div class="text-danger small">
-                                <strong>Error en la línea:</strong> {{ f.non_field_errors|join:", " }}
-                            </div>
-                        </td></tr>
-                        {% endif %}
+                    <div id="formset-body">
+                        {% for f in formset %}
+                            {# Incluye la plantilla parcial para cada línea #}
+                            {% include "inventario/partials/movimiento_linea_form.html" with form=f prefix=forloop.counter0 %}
                         {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+                    </div>
 
-            <div class="d-flex justify-content-end gap-2">
-                <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
-                <button type="submit" class="btn btn-primary">Guardar</button>
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Registrar Movimientos
+                        </button>
+                    </div>
+                </form>
             </div>
-        </form>
+        </div>
     </div>
 </div>
+{% endblock content %}
 
-<!-- TEMPLATE PARA NUEVA FILA -->
+
+{# ----------------------------------------------------- #}
+{# TEMPLATE OCULTO PARA NUEVAS LÍNEAS (Necesita el partial en /partials/movimiento_linea_form.html) #}
+{# ----------------------------------------------------- #}
 <script type="text/template" id="empty-form-row">
-    <tr class="fs-row">
-        <td>{{ formset.empty_form.tipo }}</td>
-        <td>{{ formset.empty_form.insumo }}</td>
-        <td>{{ formset.empty_form.insumo_lote }}</td>
-        <td>
-            <div class="form-check">
-                {{ formset.empty_form.crear_nuevo_lote }}
-                <label class="form-check-label">{{ formset.empty_form.crear_nuevo_lote.label }}</label>
-            </div>
-        </td>
-        <td class="col-exp">{{ formset.empty_form.fecha_expiracion }}</td>
-        <td>{{ formset.empty_form.ubicacion }}</td>
-        <td>{{ formset.empty_form.cantidad }}</td>
-        <td>{{ formset.empty_form.fecha }}</td>
-        <td>{{ formset.empty_form.observaciones }}</td>
-        <td>
-            {{ formset.empty_form.id }}
-            {{ formset.empty_form.DELETE }}
-            <button type="button" class="btn btn-sm btn-outline-danger del-line">×</button>
-        </td>
-    </tr>
+    {% include "inventario/partials/movimiento_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
 </script>
 
+
+{% block extra_js %}
 <script>
-// ---------------------------
-// AGREGAR Y ELIMINAR LÍNEAS
-// ---------------------------
-(function(){
-    const tbody = document.getElementById("formset-body");
-    const addBtn = document.getElementById("add-line");
-    const total = document.getElementById("id_form-TOTAL_FORMS");
-    const rawTpl = document.getElementById("empty-form-row").textContent;
+document.addEventListener('DOMContentLoaded', function() {
+    const formsetBody = document.getElementById('formset-body');
+    const addLineBtn = document.getElementById('add-line');
+    const totalForms = document.getElementById('id_form-TOTAL_FORMS');
+    const emptyFormTpl = document.getElementById('empty-form-row').textContent;
 
-    addBtn.addEventListener("click", function(){
-        const index = parseInt(total.value, 10);
-        const html = rawTpl.replace(/__prefix__/g, index);
+    // --- LÓGICA SECUENCIAL Y BLOQUEO ---
 
-        const range = document.createRange();
-        range.selectNode(document.body);
-        const fragment = range.createContextualFragment(html.trim());
-        const tr = fragment.querySelector('tr');
+    function setupSequentialLogic(row) {
+        const rowElement = row.closest('.movimiento-card');
+        if (!rowElement) return;
 
-        tbody.appendChild(tr);
-        total.value = index + 1;
-
-        ocultarColumnaExpiracion();
-    });
-
-    tbody.addEventListener("click", function(e){
-        if (e.target.classList.contains("del-line")){
-            const tr = e.target.closest("tr");
-            const del = tr.querySelector('input[name$="-DELETE"]');
-            if (del) del.checked = true;
-            tr.style.display = "none";
-            ocultarColumnaExpiracion();
+        const tipoSelect = rowElement.querySelector('[id$="-tipo"]');
+        const insumoSelect = rowElement.querySelector('[id$="-insumo"]');
+        const loteExistenteSelect = rowElement.querySelector('[id$="-insumo_lote"]');
+        const crearNuevoLoteCheckbox = rowElement.querySelector('[id$="-crear_nuevo_lote"]');
+        const fechaExpInput = rowElement.querySelector('[id$="-fecha_expiracion"]');
+        
+        // Contenedores de campos
+        const dataContainer = rowElement.querySelector('.data-container');
+        
+        // Bloquea/desbloquea un campo (Incluye control de estado visual)
+        function setDisabled(element, disabled) {
+            if (element) {
+                element.disabled = disabled;
+                element.closest('.form-control, .form-select, .form-check, .input-group')?.classList.toggle('disabled', disabled); 
+            }
         }
-    });
-})();
 
-// ------------------------------------------------------
-// SCRIPT PARA OCULTAR COLUMNA "FECHA DE EXPIRACIÓN"
-// ------------------------------------------------------
-function ocultarColumnaExpiracion() {
-    const indice = 4; // COLUMNA FECHA EXPIRACIÓN
-    const ths = document.querySelectorAll("thead th");
-    const filas = document.querySelectorAll("#formset-body tr.fs-row");
-
-    let todasSalida = true;
-
-    filas.forEach((fila) => {
-        const tipo = fila.querySelector("select[name*='tipo']");
-        const celdas = fila.querySelectorAll("td");
-
-        if (!tipo || celdas.length <= indice) return;
-
-        if (tipo.value === "SALIDA") {
-            celdas[indice].style.display = "none";
-
-            const input = celdas[indice].querySelector("input");
-            if (input) input.value = "";
-        } else {
-            todasSalida = false;
-            celdas[indice].style.display = "table-cell";
+        function lockData() {
+            dataContainer.querySelectorAll('select, input, textarea').forEach(el => setDisabled(el, true));
         }
-    });
 
-    // Ocultar TH solo si todas las filas son SALIDA
-    ths[indice].style.display = todasSalida ? "none" : "table-cell";
-}
+        function lockLoteAndData() {
+            setDisabled(loteExistenteSelect, true);
+            setDisabled(crearNuevoLoteCheckbox, true);
+            setDisabled(fechaExpInput, true);
+            lockData();
+        }
 
-document.addEventListener("change", (e) => {
-    if (e.target.matches("select[name*='tipo']")) {
-        ocultarColumnaExpiracion();
+        function unlockData() {
+            dataContainer.querySelectorAll('select, input, textarea').forEach(el => setDisabled(el, false));
+        }
+
+        // --- HANDLER PRINCIPAL DE ESTADO (Bloqueo Mutuo y Desbloqueo Secuencial) ---
+        
+        const handleLoteOrCrearChange = () => {
+            const isCreating = crearNuevoLoteCheckbox.checked;
+            const hasLoteSelected = !!loteExistenteSelect.value;
+            const isEntrada = tipoSelect.value === 'ENTRADA';
+            
+            if (!insumoSelect.value) {
+                lockLoteAndData();
+                return;
+            }
+
+            if (isCreating) {
+                // 1. MODO CREAR: Bloquea select, desbloquea fecha/datos
+                setDisabled(loteExistenteSelect, true); 
+                setDisabled(fechaExpInput, false);
+                unlockData();
+            } else if (hasLoteSelected) {
+                // 2. MODO LOTE EXISTENTE: Bloquea checkbox y fecha, desbloquea datos
+                setDisabled(crearNuevoLoteCheckbox, true);
+                setDisabled(fechaExpInput, true);
+                unlockData();
+            } else {
+                // 3. MODO NINGUNO SELECCIONADO: Restaura opciones de selección
+                setDisabled(loteExistenteSelect, false);
+                setDisabled(fechaExpInput, true); 
+                
+                setDisabled(crearNuevoLoteCheckbox, isEntrada ? false : true); 
+                
+                lockData();
+            }
+        };
+
+        // --- HANDLERS SECUENCIALES SIMPLES ---
+        
+        const handleTipoChange = () => {
+            const isEntrada = tipoSelect.value === 'ENTRADA';
+            
+            // 1. Ocultar/Mostrar visualmente la sección de fecha de expiración
+            rowElement.querySelector('.fecha-exp-container').closest('.col-md-6').style.display = isEntrada ? '' : 'none';
+
+            lockLoteAndData(); 
+            if (tipoSelect.value) {
+                setDisabled(insumoSelect, false);
+            } else {
+                setDisabled(insumoSelect, true);
+            }
+            insumoSelect.value = ''; 
+        };
+        
+        const handleInsumoChange = () => {
+            lockData(); 
+            if (insumoSelect.value) {
+                setDisabled(loteExistenteSelect, false); 
+                setDisabled(crearNuevoLoteCheckbox, tipoSelect.value === 'ENTRADA' ? false : true); 
+                handleLoteOrCrearChange();
+            } else {
+                lockLoteAndData();
+            }
+        };
+
+        // --- ASIGNACIÓN DE EVENTOS CON EXCLUSIÓN MUTUA ---
+        
+        tipoSelect.addEventListener('change', handleTipoChange);
+        insumoSelect.addEventListener('change', handleInsumoChange);
+
+        // 2. Lógica Mutua del Lote
+        crearNuevoLoteCheckbox.addEventListener('change', () => {
+             // Si checkeo, limpio y bloqueo el select
+             if (crearNuevoLoteCheckbox.checked) {
+                 loteExistenteSelect.value = ''; 
+                 setDisabled(loteExistenteSelect, true); 
+             } else {
+                 setDisabled(loteExistenteSelect, false); 
+             }
+             handleLoteOrCrearChange();
+        });
+        
+        loteExistenteSelect.addEventListener('change', () => {
+             // Si selecciono un lote, limpio y bloqueo el checkbox
+             if (loteExistenteSelect.value) {
+                 crearNuevoLoteCheckbox.checked = false; 
+                 setDisabled(crearNuevoLoteCheckbox, true); 
+             } else {
+                 const isEntrada = tipoSelect.value === 'ENTRADA';
+                 setDisabled(crearNuevoLoteCheckbox, isEntrada ? false : true); 
+             }
+             handleLoteOrCrearChange();
+        });
+
+        // --- ESTADO INICIAL ---
+        handleTipoChange(); 
+        if (insumoSelect.value) {
+            handleInsumoChange(); 
+            if (loteExistenteSelect.value || crearNuevoLoteCheckbox.checked) {
+                handleLoteOrCrearChange();
+            }
+        }
     }
+
+    // --- MANEJO DE FORMSET: Agregar y Eliminar Líneas ---
+    
+    addLineBtn.addEventListener('click', function() {
+        const index = parseInt(totalForms.value, 10);
+        const newFormHtml = emptyFormTpl.replace(/__prefix__/g, index);
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = newFormHtml.trim();
+        const newRow = tempDiv.firstChild;
+        
+        formsetBody.appendChild(newRow);
+        totalForms.value = index + 1;
+        
+        setupSequentialLogic(newRow); // Aplica la lógica secuencial a la nueva línea
+    });
+
+    // Delegación para eliminar líneas
+    formsetBody.addEventListener('click', (e) => {
+        const delBtn = e.target.closest('.del-line');
+        if (delBtn) {
+            const row = delBtn.closest('.movimiento-card');
+            const deleteInput = row.querySelector('[name$="-DELETE"]');
+            
+            if (deleteInput) {
+                deleteInput.checked = true;
+                row.style.display = 'none';
+            }
+        }
+    });
+
+    // Aplicar lógica a todas las líneas existentes
+    document.querySelectorAll('.movimiento-card').forEach(setupSequentialLogic);
 });
-
-document.addEventListener("DOMContentLoaded", ocultarColumnaExpiracion);
-
 </script>
-
-<style>
-    input[name$="-DELETE"] {
-        display: none;
-    }
-</style>
-
-{% endblock %}
+{% endblock extra_js %}

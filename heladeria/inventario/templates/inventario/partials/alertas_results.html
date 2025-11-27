@@ -23,7 +23,7 @@
             <form method="post" action="{% url 'inventario:eliminar_alerta' alerta.id %}" class="d-inline">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Marcar como revisada" data-delete-form>
-                    <i class="bi bi-x-circle"></i>
+                    <i class="bi bi-x-circle"></i> Eliminar
                 </button>
             </form>
         {% else %}

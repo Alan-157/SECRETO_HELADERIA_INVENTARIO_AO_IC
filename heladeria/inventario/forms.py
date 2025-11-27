@@ -11,6 +11,7 @@ from .models import (
     InsumoLote,
     OrdenInsumo,
     OrdenInsumoDetalle,
+    Proveedor,
     Salida,
     Ubicacion,
     UnidadMedida,
@@ -152,60 +153,6 @@ class UnidadMedidaForm(forms.ModelForm):
             "nombre_largo": forms.TextInput(attrs={"class": "form-control", "placeholder": "Ej: Kilogramos"}),
         }
 
-# ==========================================
-#  MOVIMIENTOS (Entradas / Salidas)
-# ==========================================
-class EntradaForm(forms.ModelForm):
-    cantidad = forms.DecimalField(
-        label="Cantidad",
-        validators=[
-            MinValueValidator(0.01, message="La cantidad debe ser mayor que cero."),
-            MaxValueValidator(99999, message="La cantidad no puede exceder 99.999."),
-        ],
-        widget=forms.NumberInput(attrs={
-            "class": "form-control",
-            "max": "99999.99",
-            "oninput": "this.value = this.value.replace(/[^0-9.]/g,'')"
-        }),
-    )
-
-    class Meta:
-        model = Entrada
-        exclude = ["usuario"]
-        widgets = {
-            "insumo": forms.Select(attrs={"class": "form-select"}),
-            "insumo_lote": forms.Select(attrs={"class": "form-select"}),
-            "ubicacion": forms.Select(attrs={"class": "form-select"}),
-            "fecha": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
-            "observaciones": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            "tipo": forms.TextInput(attrs={"class": "form-control"}),
-        }
-
-
-class SalidaForm(forms.ModelForm):
-    cantidad = forms.DecimalField(
-        label="Cantidad",
-        validators=[
-            MinValueValidator(0.01, message="La cantidad debe ser mayor que cero."),
-            MaxValueValidator(99999, message="La cantidad no puede exceder 99.999."),
-        ],
-        widget=forms.NumberInput(attrs={
-            "class": "form-control",
-            "oninput": "this.value = this.value.replace(/[^0-9.]/g,'')"
-        }),
-    )
-
-    class Meta:
-        model = Salida
-        exclude = ["usuario"]
-        widgets = {
-            "insumo": forms.Select(attrs={"class": "form-select"}),
-            "insumo_lote": forms.Select(attrs={"class": "form-select"}),
-            "ubicacion": forms.Select(attrs={"class": "form-select"}),
-            "fecha_generada": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
-            "tipo": forms.TextInput(attrs={"class": "form-control"}),
-        }
-
 
 # ==========================================
 #  ÓRDENES
@@ -287,79 +234,150 @@ OrdenInsumoDetalleEditFormSet = inlineformset_factory(
 # ==========================================
 #  MULTI-LÍNEA MOVIMIENTOS
 # ==========================================
-class MovimientoLineaForm(forms.Form):
-    tipo = forms.ChoiceField(choices=TIPO_CHOICES, initial="ENTRADA", label="Tipo")
-    insumo = forms.ModelChoiceField(queryset=Insumo.objects.filter(is_active=True), label="Insumo")
-    insumo_lote = forms.ModelChoiceField(
-        queryset=InsumoLote.objects.select_related("insumo", "bodega"),
-        required=False,
-        label="Lote existente",
+class EntradaLineaForm(forms.Form):
+    # Campos base
+    insumo = forms.ModelChoiceField(queryset=Insumo.objects.filter(is_active=True), label="Insumo", widget=forms.Select(attrs={"class": "form-select"}))
+    ubicacion = forms.ModelChoiceField(queryset=Ubicacion.objects.select_related("bodega"), label="Ubicación", widget=forms.Select(attrs={"class": "form-select"}))
+    fecha = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), label="Fecha de Entrada")
+    
+    # MODIFICADO: CONVERTIDO A INTEGERFIELD
+    cantidad = forms.IntegerField(
+        min_value=1, label="Cantidad", 
+        validators=[
+            MinValueValidator(1, message="La cantidad debe ser un número entero mayor que cero."),
+            MaxValueValidator(99999, message="La cantidad no puede exceder 99,999 (5 dígitos enteros).")
+        ],
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "1",  # CRÍTICO: Indica al navegador que solo acepte números enteros
+            "max": "99999", # Máximo valor (5 dígitos)
+            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)", # JS para truncar a 5 dígitos
+        }),
     )
-    crear_nuevo_lote = forms.BooleanField(required=False, label="Crear nuevo lote")
-    fecha_expiracion = forms.DateField(
-        required=False,
-        widget=forms.DateInput(attrs={"type": "date"}),
-        label="Fecha de expiración"
-    )
 
-    ubicacion = forms.ModelChoiceField(queryset=Ubicacion.objects.select_related("bodega"), label="Ubicación")
-    cantidad = forms.DecimalField(
-        min_value=0.01,
-        label="Cantidad",
-        validators=[MinValueValidator(0.01, "La cantidad debe ser mayor a cero.")],
-        widget=forms.NumberInput(attrs={"class": "form-control"}),
-    )
-    fecha = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), label="Fecha")
-    observaciones = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Observaciones")
-
-
-    def clean_fecha(self):
-        fecha_mov = self.cleaned_data.get("fecha")
-
-        if fecha_mov and fecha_mov < date.today():
-            fecha_ini = self.initial.get("fecha")
-            if not fecha_ini or fecha_mov != fecha_ini:
-                raise forms.ValidationError("La fecha del movimiento no puede ser pasada.")
-        return fecha_mov
-
+    # Lote y Expiración (Específicos de ENTRADA)
+    proveedor = forms.ModelChoiceField(queryset=Proveedor.objects.filter(estado='ACTIVO'), required=False, label="Proveedor", widget=forms.Select(attrs={"class": "form-select"}))
+    fecha_expiracion = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), label="Fecha de expiración")
+    
+    observaciones = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2, "class": "form-control"}), label="Observaciones")
 
     def clean(self):
         cd = super().clean()
-        tipo = cd.get("tipo")
-        lote = cd.get("insumo_lote")
-        cant = cd.get("cantidad")
-        crear = cd.get("crear_nuevo_lote")
-        fexp = cd.get("fecha_expiracion")
-        fecha = cd.get("fecha")
-
-        if tipo == "ENTRADA":
-            if not lote and not crear:
-                raise forms.ValidationError("Debes seleccionar un lote o crear uno nuevo.")
-
-            if crear and not fexp:
-                self.add_error("fecha_expiracion", "Requerida al crear un lote.")
-
-            if crear and fexp and fecha and fexp < fecha:
-                self.add_error("fecha_expiracion", "La expiración no puede ser antes de la fecha de entrada.")
-
-        else:  # SALIDA
-            if crear:
-                self.add_error("crear_nuevo_lote", "No aplica para SALIDA.")
-
-            if not lote:
-                self.add_error("insumo_lote", "Debes indicar el lote.")
-
-            if lote and cant and cant > lote.cantidad_actual:
-                self.add_error(
-                    "cantidad",
-                    f"Stock insuficiente. Stock actual: {lote.cantidad_actual}."
-                )
+        fexp = cd.get('fecha_expiracion')
+        fecha = cd.get('fecha')
+        
+        # Validación de Fecha de Expiración
+        if not fexp:
+            self.add_error("fecha_expiracion", "La fecha de expiración es requerida para el lote de entrada.")
+        if fexp and fecha and fexp < fecha:
+            self.add_error("fecha_expiracion", "La fecha de expiración no puede ser anterior a la fecha de entrada.")
 
         return cd
 
+# --- FORMULARIO DE LÍNEA PARA SALIDA ---
+class SalidaLineaForm(forms.Form):
+    insumo = forms.ModelChoiceField(queryset=Insumo.objects.filter(is_active=True), label="Insumo", widget=forms.Select(attrs={"class": "form-select"}))
+    ubicacion = forms.ModelChoiceField(queryset=Ubicacion.objects.select_related("bodega"), label="Ubicación", widget=forms.Select(attrs={"class": "form-select"}))
+    fecha = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), label="Fecha de Salida")
+    
+    # MODIFICADO: CONVERTIDO A INTEGERFIELD
+    cantidad = forms.IntegerField(
+        min_value=1, label="Cantidad", 
+        validators=[
+            MinValueValidator(1, message="La cantidad debe ser un número entero mayor que cero."),
+            MaxValueValidator(99999, message="La cantidad no puede exceder 99,999 (5 dígitos enteros).")
+        ],
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "1", # CRÍTICO: Indica al navegador que solo acepte números enteros
+            "max": "99999",
+            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)",
+        }),
+    )
+    
+    # Lote Existente (Específico de SALIDA)
+    insumo_lote = forms.ModelChoiceField(
+        queryset=InsumoLote.objects.select_related("insumo", "bodega"),
+        required=True, # Obligatorio para una salida
+        label="Lote de Origen",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    
+    observaciones = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2, "class": "form-control"}), label="Observaciones")
 
-MovimientoLineaFormSet = formset_factory(MovimientoLineaForm, extra=1, can_delete=True)
+    def clean(self):
+        cd = super().clean()
+        lote = cd.get('insumo_lote')
+        cant = cd.get('cantidad')
 
+        # Validación de Stock Suficiente
+        if lote and cant and cant > lote.cantidad_actual:
+            self.add_error("cantidad", f"Stock insuficiente en el lote. Disponible: {lote.cantidad_actual}")
+        
+        return cd
+
+# --- DEFINICIÓN DE LOS NUEVOS FORMSETS (permanecen igual, solo usan las clases actualizadas) ---
+EntradaLineaFormSet = formset_factory(EntradaLineaForm, extra=1, can_delete=True)
+SalidaLineaFormSet = formset_factory(SalidaLineaForm, extra=1, can_delete=True)
+
+class EntradaForm(forms.ModelForm):
+    # MODIFICADO: De DecimalField a IntegerField (para edición individual)
+    cantidad = forms.IntegerField(
+        label="Cantidad",
+        validators=[
+            MinValueValidator(1, message="La cantidad debe ser un número entero mayor que cero."),
+            MaxValueValidator(99999, message="La cantidad no puede exceder 99,999 (5 dígitos enteros).")
+        ],
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "1",
+            "max": "99999",
+            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)" 
+        }),
+    )
+
+    class Meta:
+        model = Entrada
+        # Incluye insumo_lote para que el usuario sepa qué lote está editando
+        fields = ["insumo", "insumo_lote", "ubicacion", "cantidad", "fecha", "observaciones", "tipo"]
+        exclude = ["usuario", "orden", "detalle"]
+        widgets = {
+            "insumo": forms.Select(attrs={"class": "form-select", "disabled": True}), # Se bloquea
+            "insumo_lote": forms.Select(attrs={"class": "form-select", "disabled": True}), # Se bloquea
+            "ubicacion": forms.Select(attrs={"class": "form-select"}),
+            "fecha": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "observaciones": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "tipo": forms.TextInput(attrs={"class": "form-control", "disabled": True}),
+        }
+
+class SalidaForm(forms.ModelForm):
+    # MODIFICADO: De DecimalField a IntegerField (para edición individual)
+    cantidad = forms.IntegerField(
+        label="Cantidad",
+        validators=[
+            MinValueValidator(1, message="La cantidad debe ser un número entero mayor que cero."),
+            MaxValueValidator(99999, message="La cantidad no puede exceder 99,999 (5 dígitos enteros).")
+        ],
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "step": "1",
+            "max": "99999",
+            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)"
+        }),
+    )
+
+    class Meta:
+        model = Salida
+        fields = ["insumo", "insumo_lote", "ubicacion", "cantidad", "fecha_generada", "observaciones", "tipo"]
+        exclude = ["usuario", "orden", "detalle"]
+        widgets = {
+            "insumo": forms.Select(attrs={"class": "form-select", "disabled": True}),
+            "insumo_lote": forms.Select(attrs={"class": "form-select", "disabled": True}),
+            "ubicacion": forms.Select(attrs={"class": "form-select"}),
+            "fecha_generada": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+            "observaciones": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "tipo": forms.TextInput(attrs={"class": "form-control", "disabled": True}),
+        }
 
 # ==========================================
 #  BODEGAS
@@ -428,3 +446,90 @@ class AlertaForm(forms.ModelForm):
                 cleaned_data['mensaje'] = "Alerta manual generada por el usuario."
         
         return cleaned_data
+    
+class ProveedorForm(forms.ModelForm):
+    class Meta:
+        model = Proveedor
+        # Excluimos solo el campo is_active para que los usuarios puedan modificar el estado
+        exclude = ["is_active", "created_at", "updated_at"] 
+        widgets = {
+            "nombre_empresa": forms.TextInput(attrs={"class": "form-control"}),
+            "rut_empresa": forms.TextInput(attrs={"class": "form-control"}),
+            "email": forms.EmailInput(attrs={"class": "form-control"}),
+            "telefono": forms.TextInput(attrs={"class": "form-control"}),
+            "telefono_alternativo": forms.TextInput(attrs={"class": "form-control"}),
+            "direccion": forms.TextInput(attrs={"class": "form-control"}),
+            "ciudad": forms.TextInput(attrs={"class": "form-control"}),
+            "region": forms.TextInput(attrs={"class": "form-control"}),
+            "estado": forms.Select(attrs={"class": "form-select"}),
+            "condiciones_pago": forms.TextInput(attrs={"class": "form-control"}),
+            "dias_credito": forms.NumberInput(attrs={"class": "form-control", "min": "0"}),
+            "monto_credito": forms.NumberInput(attrs={"class": "form-control", "min": "0", "step": "0.01"}),
+            "observaciones": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+        }
+
+    def clean_rut_empresa(self):
+        rut_input = self.cleaned_data["rut_empresa"].strip()
+        
+        # 1. Limpiar y Normalizar el RUT
+        rut_clean = re.sub(r'[.-]', '', rut_input).upper()
+        if not rut_clean:
+            # Si está vacío, Django debería haberlo marcado como error requerido,
+            # pero lo chequeamos por si acaso
+            raise forms.ValidationError("El RUT no puede estar vacío.")
+
+        # Separar el cuerpo (números) del dígito verificador (DV)
+        if len(rut_clean) < 2:
+            raise forms.ValidationError("El formato del RUT es inválido.")
+            
+        cuerpo = rut_clean[:-1]
+        dv_input = rut_clean[-1]
+        
+        # Verificar que el cuerpo sean solo dígitos
+        if not cuerpo.isdigit():
+            raise forms.ValidationError("El cuerpo del RUT debe contener solo números.")
+
+        # 2. Validación de Unicidad (mantenemos la validación existente)
+        qs = Proveedor.objects.filter(rut_empresa__iexact=rut_input)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError("⚠ Ya existe un proveedor con este RUT/NIT.")
+        
+        # 3. Validación Matemática (Módulo 11)
+        
+        reverso = cuerpo[::-1]
+        multiplicador = 2
+        suma = 0
+        
+        for digito in reverso:
+            suma += int(digito) * multiplicador
+            multiplicador += 1
+            if multiplicador > 7:
+                multiplicador = 2
+        
+        resto = suma % 11
+        dv_calculado_int = 11 - resto
+        
+        if dv_calculado_int == 11:
+            dv_calculado = '0'
+        elif dv_calculado_int == 10:
+            dv_calculado = 'K'
+        else:
+            dv_calculado = str(dv_calculado_int)
+            
+        # 4. Comparación del DV
+        if dv_calculado != dv_input:
+            raise forms.ValidationError(f"El RUT es inválido. El dígito verificador correcto es '{dv_calculado}'.")
+            
+        # 5. Si todo es correcto, retornamos el RUT limpio o el original (original por unicidad)
+        return rut_input
+        
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip()
+        qs = Proveedor.objects.filter(email__iexact=email)
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise forms.ValidationError("⚠ Ya existe un proveedor con este Email.")
+        return email

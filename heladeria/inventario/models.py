@@ -2,6 +2,7 @@ from decimal import Decimal
 from django.db import models
 from django.db.models import Sum
 from accounts.models import BaseModel, UsuarioApp
+from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 
 # --- CONSTANTES DE OPCIÓN ---
@@ -73,10 +74,86 @@ class Insumo(BaseModel):
                 })
         super().clean()
         
+class Proveedor(BaseModel):
+    """Tabla maestra de proveedores"""
+
+    ESTADO_CHOICES = [
+        ("ACTIVO", "Activo"),
+        ("INACTIVO", "Inactivo"),
+        ("SUSPENDIDO", "Suspendido"),
+    ]
+
+    nombre_empresa = models.CharField(max_length=100, verbose_name="Nombre Empresa")
+    rut_empresa = models.CharField(max_length=20, unique=True, verbose_name="RUT/NIT")
+    # CORREGIDO: max_length reducido para evitar el error 1071 de MySQL en el índice UNIQUE
+    email = models.EmailField(max_length=150, unique=True, verbose_name="Email") 
+    telefono = models.CharField(max_length=20, verbose_name="Teléfono")
+    telefono_alternativo = models.CharField(
+        max_length=20, blank=True, null=True, verbose_name="Teléfono Alternativo"
+    )
+    direccion = models.CharField(max_length=200, verbose_name="Dirección")
+    ciudad = models.CharField(max_length=50, verbose_name="Ciudad")
+    region = models.CharField(max_length=50, verbose_name="Región")
+
+    estado = models.CharField(
+        max_length=10,
+        choices=ESTADO_CHOICES,
+        default="ACTIVO",
+        verbose_name="Estado",
+    )
+
+    condiciones_pago = models.CharField(
+        max_length=100, blank=True, null=True, verbose_name="Condiciones de Pago"
+    )
+    dias_credito = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name="Días de Crédito",
+    )
+    monto_credito = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(0)],
+        verbose_name="Monto de Crédito",
+    )
+    observaciones = models.TextField(blank=True, null=True, verbose_name="Observaciones")
+
+    class Meta:
+        verbose_name = "Proveedor"
+        verbose_name_plural = "Proveedores"
+        ordering = ["nombre_empresa"]
+
+    def __str__(self):
+        return f"{self.nombre_empresa} ({self.rut_empresa})"
+
 # --- MODELOS DE INVENTARIO Y TRANSACCIONES ---
 class InsumoLote(BaseModel):
-    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, related_name="lotes")
-    bodega = models.ForeignKey(Bodega, on_delete=models.PROTECT, related_name="lotes")
+    # Clave Foránea a Insumo (Limitada a activos)
+    insumo = models.ForeignKey(
+        Insumo,
+        on_delete=models.PROTECT,
+        related_name="lotes",
+        limit_choices_to={"is_active": True},
+    )
+    # Clave Foránea a Bodega (Limitada a activos)
+    bodega = models.ForeignKey(
+        Bodega,
+        on_delete=models.PROTECT,
+        related_name="lotes",
+        limit_choices_to={"is_active": True},
+    )
+
+    # NUEVA CLAVE FORÁNEA: Proveedor (Opcional y limitada a activos)
+    proveedor = models.ForeignKey(
+        Proveedor,
+        on_delete=models.PROTECT,
+        related_name="lotes",
+        null=True,
+        blank=True,
+        limit_choices_to={"is_active": True},
+    )
+
     fecha_ingreso = models.DateField()
     fecha_expiracion = models.DateField()
     cantidad_inicial = models.DecimalField(max_digits=10, decimal_places=2)

@@ -22,10 +22,10 @@
                   <td>{{ i.nombre }}</td>
                   <td>{{ i.unidad_medida }}</td>
                   {% if show_precio_unitario %}
-                    <td class="text-end">{{ i.precio_unitario|default:0|floatformat:2 }}</td>
+                    <td class="text-end">{{ i.precio_unitario|default:0 }}</td>
                   {% endif %}
                   {% if show_stock_total %}
-                    <td class="text-end">{{ i.stock_total|default:0|floatformat:2 }}</td>
+                    <td class="text-end">{{ i.stock_total|default:0|floatformat:0 }}</td>
                   {% endif %}
                   {% if show_prox_venc %}
                     <td>
@@ -37,7 +37,7 @@
                     </td>
                   {% endif %}
                   {% if show_precio_acum %}
-                    <td class="text-end">{{ i.precio_acumulado|default:0|floatformat:2 }}</td>
+                    <td class="text-end">{{ i.precio_acumulado|default:0|floatformat:0 }}</td>
                   {% endif %}
                 </tr>
 

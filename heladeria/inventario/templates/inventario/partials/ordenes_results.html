@@ -12,10 +12,9 @@
 
     {% if not read_only %}
     <div class="d-flex align-items-center gap-2">
-      <a href="{% url 'inventario:registrar_movimiento' %}?orden={{ orden.id }}"
-         class="btn btn-sm btn-outline-primary">
-        Atender
-      </a>
+      <a href="{% url 'inventario:registrar_salida' %}?orden={{ orden.id }}" class="btn btn-sm btn-warning">
+    <i class="bi bi-box-arrow-up"></i> Atender
+  </a>
 
       <a href="{% url 'inventario:editar_orden' orden.id %}"
          class="btn btn-sm btn-outline-secondary">

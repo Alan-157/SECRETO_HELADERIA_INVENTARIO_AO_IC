@@ -1,0 +1,67 @@
+<div class="card mb-3 movimiento-card border-{{ form.errors|yesno:'danger,success' }}">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 text-danger">Nueva Línea de Salida</h6>
+        <div class="delete-controls">
+            {{ form.id }}
+            {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+            {% if formset.can_delete %}
+                {{ form.DELETE }} 
+                <button type="button" class="btn btn-sm btn-outline-danger del-line" title="Eliminar línea">
+                    <i class="bi bi-trash"></i>
+                </button>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        
+        {# --- SECCIÓN 1: PRODUCTO Y LOTE DE ORIGEN (CRÍTICO) --- #}
+        <div class="row g-3 mb-4 p-3 border rounded bg-light-subtle">
+            <div class="col-md-6">
+                <label class="form-label required small">{{ form.insumo.label }}</label>
+                {{ form.insumo }}
+                {% for error in form.insumo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label required small">{{ form.insumo_lote.label }}</label>
+                {{ form.insumo_lote }}
+                {% for error in form.insumo_lote.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+        </div>
+
+        {# --- SECCIÓN 2: CANTIDAD Y DESTINO --- #}
+        <div class="row g-3 mb-3 p-3 border rounded">
+            <div class="col-md-4">
+                <label class="form-label required small">{{ form.cantidad.label }}</label>
+                {{ form.cantidad }}
+                {% for error in form.cantidad.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label required small">{{ form.ubicacion.label }}</label>
+                {{ form.ubicacion }}
+                {% for error in form.ubicacion.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label required small">{{ form.fecha.label }}</label>
+                {{ form.fecha }}
+                {% for error in form.fecha.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+        </div>
+
+        {# --- SECCIÓN 3: OBSERVACIONES --- #}
+        <div class="row g-3">
+            <div class="col-md-12">
+                <label class="form-label small">{{ form.observaciones.label }}</label>
+                {{ form.observaciones }}
+                {% for error in form.observaciones.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            
+            {% if form.non_field_errors %}
+                <div class="col-12">
+                    <div class="alert alert-danger small">
+                        <strong>Error de Línea:</strong> {{ form.non_field_errors|join:", " }}
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

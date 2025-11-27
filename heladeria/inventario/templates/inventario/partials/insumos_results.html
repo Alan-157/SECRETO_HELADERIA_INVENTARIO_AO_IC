@@ -7,7 +7,7 @@
       <th class="text-center">Stock Mínimo</th>
       <th class="text-center">Stock Máximo</th>
       <th>Unidad</th>
-      <th class="text-center">Acciones Movimiento</th>
+      <th class="text-center">Acciones Movimiento</th> {# <-- Columna AÑADIDA/CORREGIDA #}
       <th class="text-end">Administración</th>
     </tr>
   </thead>
@@ -37,18 +37,16 @@
 
       <td class="text-center">{{ sm|floatformat:2 }}</td>
       <td class="text-center">{{ sx|floatformat:2 }}</td>
-      
-      {# Muestra el objeto UnidadMedida (usará el método __str__ del modelo) #}
       <td>{{ insumo.unidad_medida }}</td>
 
-      {# --- BOTONES DE ACCIÓN DE MOVIMIENTO --- #}
+      {# --- BOTONES DE ACCIÓN DE MOVIMIENTO (CORREGIDO) --- #}
       <td class="text-center">
         {% if not read_only %}
-          <a href="{% url 'inventario:registrar_movimiento' %}?insumo_id={{ insumo.id }}&tipo=ENTRADA" 
+          <a href="{% url 'inventario:registrar_entrada' %}?insumo_id={{ insumo.id }}" 
              class="btn btn-sm btn-success me-1" title="Registrar Entrada">
             <i class="bi bi-plus-circle"></i> Entrada
           </a>
-          <a href="{% url 'inventario:registrar_movimiento' %}?insumo_id={{ insumo.id }}&tipo=SALIDA" 
+          <a href="{% url 'inventario:registrar_salida' %}?insumo_id={{ insumo.id }}" 
              class="btn btn-sm btn-danger" title="Registrar Salida">
             <i class="bi bi-dash-circle"></i> Salida
           </a>
@@ -81,14 +79,9 @@
   </tbody>
 </table>
 
-{# ----------------------------------------------------- #}
-{# LÓGICA DE PAGINACIÓN #}
-{# ----------------------------------------------------- #}
 {% if insumos.has_other_pages %}
 <nav aria-label="Paginación" class="mt-2">
   <ul class="pagination justify-content-center">
-    
-    {# Botón Anterior #}
     {% if insumos.has_previous %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
@@ -100,16 +93,14 @@
       <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
     {% endif %}
 
-    {# Indicador de Página Actual #}
     <li class="page-item disabled">
       <span class="page-link">Página {{ insumos.number }} de {{ insumos.paginator.num_pages }}</span>
     </li>
 
-    {# Botón Siguiente #}
     {% if insumos.has_next %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-          href="?page={{ insumos.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+           href="?page={{ insumos.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
           Siguiente »
         </a>
       </li>
