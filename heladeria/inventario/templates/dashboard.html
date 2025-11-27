@@ -83,11 +83,11 @@
         <div class="col-lg-6 mb-4">
             <div class="card shadow mb-4">
                 <div class="card-header py-3 d-flex justify-content-between align-items-center"
-                     style="cursor: pointer;"
-                     data-bs-toggle="collapse"
-                     data-bs-target="#alerta-list-collapse"
-                     aria-expanded="true"
-                     aria-controls="alerta-list-collapse">
+                    style="cursor: pointer;"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#alerta-list-collapse"
+                    aria-expanded="true"
+                    aria-controls="alerta-list-collapse">
                     <h6 class="m-0 font-weight-bold text-danger">
                         Alertas de Inventario (Top 5)
                     </h6>
@@ -147,7 +147,7 @@
                     <ul class="list-group list-group-flush">
                         {% for insumo in top_insumos %}
                             <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <span>{{ insumo.nombre|default:"[Sin Nombre]" }} (ID: {{ insumo.id }})</span>
+                                <span>{{ insumo.nombre|default:"[Sin Nombre]" }}</span>
                                 <span class="badge bg-secondary rounded-pill">{{ insumo.categoria.nombre }}</span>
                             </li>
                         {% empty %}

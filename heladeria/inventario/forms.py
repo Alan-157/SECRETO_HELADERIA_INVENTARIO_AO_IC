@@ -13,7 +13,8 @@ from .models import (
     OrdenInsumoDetalle,
     Salida,
     Ubicacion,
-    UnidadMedida
+    UnidadMedida,
+    AlertaInsumo
 )
 
 
@@ -386,3 +387,44 @@ class BodegaForm(forms.ModelForm):
             raise forms.ValidationError("⚠ Ya existe una bodega con este nombre.")
 
         return nombre
+
+class AlertaForm(forms.ModelForm):
+    # Definimos opciones de tipo de alerta, aunque ya pueden estar en el modelo
+    TIPO_ALERTA_CHOICES = [
+        ("STOCK_BAJO", "Stock Bajo"),
+        ("PROX_VENCER", "Próximo a Vencer"),
+        ("SIN_STOCK", "Sin Stock"),
+        ("OTRO", "Otro"),
+    ]
+
+    tipo = forms.ChoiceField(
+        choices=TIPO_ALERTA_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+        label="Tipo de Alerta"
+    )
+    
+    class Meta:
+        model = AlertaInsumo
+        fields = ("insumo", "tipo", "mensaje")
+        widgets = {
+            "insumo": forms.Select(attrs={"class": "form-select"}),
+            "mensaje": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        tipo = cleaned_data.get("tipo")
+        mensaje = cleaned_data.get("mensaje")
+
+        # Relleno automático del mensaje si está vacío (para comodidad del usuario)
+        if not mensaje:
+            if tipo == "STOCK_BAJO":
+                cleaned_data['mensaje'] = "El insumo ha alcanzado el nivel de stock mínimo."
+            elif tipo == "PROX_VENCER":
+                cleaned_data['mensaje'] = "Revisar lotes con fechas de expiración cercanas."
+            elif tipo == "SIN_STOCK":
+                cleaned_data['mensaje'] = "El insumo se ha quedado sin stock."
+            elif tipo == "OTRO":
+                cleaned_data['mensaje'] = "Alerta manual generada por el usuario."
+        
+        return cleaned_data

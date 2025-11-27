@@ -13,7 +13,10 @@ urlpatterns = [
     path('ajax/crear_unidad/', views.crear_unidad_medida_ajax, name='crear_unidad_medida_ajax'),
     path('ajax/editar_unidad/<int:pk>/', views.editar_unidad_medida_ajax, name='editar_unidad_medida_ajax'),
     path('ajax/eliminar_unidad/<int:pk>/', views.eliminar_unidad_medida_ajax, name='eliminar_unidad_medida_ajax'),
+    #alertas
     path('alertas/', views.listar_alertas, name='listar_alertas'),
+    path('alertas/crear/', views.crear_alerta, name='crear_alerta'),
+    path('alertas/eliminar/<int:pk>/', views.eliminar_alerta, name='eliminar_alerta'),
     # --- Listados Varios ---
     path('movimientos/', views.listar_movimientos, name='listar_movimientos'),
     path('ordenes/', views.listar_ordenes, name='listar_ordenes'),

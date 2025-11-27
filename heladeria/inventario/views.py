@@ -15,15 +15,15 @@ from django.contrib.auth.decorators import login_required
 from .models import (
     Insumo, Categoria, Bodega,
     Entrada, Salida, InsumoLote,
-    OrdenInsumo, OrdenInsumoDetalle, UnidadMedida,
+    OrdenInsumo, OrdenInsumoDetalle, UnidadMedida, AlertaInsumo,
     ESTADO_ORDEN_CHOICES,              
 )
 from django.urls import reverse
 from .forms import (
     InsumoForm, CategoriaForm,
     MovimientoLineaFormSet, BodegaForm,
-    EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, OrdenInsumoDetalleEditFormSet,UnidadMedidaForm 
-    # =============================================================================
+    EntradaForm, SalidaForm, OrdenInsumoDetalleCreateFormSet, 
+    OrdenInsumoDetalleEditFormSet,UnidadMedidaForm, AlertaForm
 )
 import json
 from io import BytesIO
@@ -158,6 +158,8 @@ def dashboard_view(request):
 
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
 def listar_alertas(request):
     """
     Listado de alertas con filtros y paginación.
@@ -165,7 +167,7 @@ def listar_alertas(request):
     qs = (
         models.AlertaInsumo.objects.all()
         .select_related("insumo")
-        .order_by("-fecha", "-created_at")
+        .order_by("-fecha", "-created_at") # Nota: Este order_by en el QS base es opcional, la paginación lo sobrescribe.
     )
 
     read_only = not (
@@ -177,18 +179,75 @@ def listar_alertas(request):
         request,
         qs,
         search_fields=["insumo__nombre", "tipo", "mensaje"],
-        order_field="-fecha",
+        order_field="fecha", # <-- CORRECCIÓN: Usar solo el nombre del campo
         session_prefix="alertas",
         context_key="alertas",
-        full_template="inventario/listar_alertas.html", # <-- Necesitarás crear este template
-        partial_template="inventario/partials/alertas_results.html", # <-- Necesitarás crear este partial
+        full_template="inventario/listar_alertas.html", 
+        partial_template="inventario/partials/alertas_results.html", 
         default_per_page=20,
-        default_order="desc",
+        default_order="desc", # <-- ESPECIFICAR ORDEN DESCENDENTE AQUÍ
         tie_break="id",
         extra_context={
             "titulo": "Alertas de Inventario",
             "read_only": read_only,
         },
+    )
+    
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+def crear_alerta(request):
+    """Maneja la creación de una nueva alerta de inventario."""
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para crear alertas.")
+        return redirect('inventario:listar_alertas')
+
+    # Asumiendo que existe una clase AlertaForm en forms.py
+    form = AlertaForm(request.POST or None) 
+
+    if request.method == 'POST' and form.is_valid():
+        alerta = form.save(commit=False)
+        # Asumiendo que la alerta no necesita el campo usuario, si lo necesita, ajusta esta línea:
+        # alerta.usuario = request.user 
+        alerta.save()
+        messages.success(request, "✅ Alerta creada correctamente.")
+        return redirect('inventario:listar_alertas')
+
+    # Retorno: Necesitas crear la plantilla inventario/crear_alerta.html
+    return render(request, 'inventario/crear_alerta.html', {
+        'form': form, 
+        'titulo': 'Nueva Alerta de Inventario'
+    })    
+    
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+def eliminar_alerta(request, pk):
+    """
+    Elimina (desactiva) una alerta de inventario específica.
+    """
+    alerta = get_object_or_404(models.AlertaInsumo, pk=pk)
+
+    if request.method == "POST":
+        # Opción 1: Eliminación suave (Soft delete - recomendado para histórico)
+        alerta.is_active = False
+        alerta.save(update_fields=["is_active"])
+        
+        # Opción 2: Eliminación permanente
+        # alerta.delete() 
+
+        messages.success(request, f"🗑️ La alerta para '{alerta.insumo.nombre}' ha sido marcada como revisada/eliminada.")
+        return redirect('inventario:listar_alertas')
+    
+    # Si es una petición GET, se muestra la plantilla de confirmación
+    return render(
+        request,
+        "inventario/confirmar_eliminar.html", # Reutilizamos la plantilla genérica
+        {
+            "titulo": f"Marcar Alerta #{alerta.id} como Revisada",
+            "obj": alerta,
+            "tipo": "alerta",
+            "cancel_url": reverse("inventario:listar_alertas"),
+        }
     )
 
 # --- CRUD INSUMOS ---
