@@ -27,12 +27,12 @@
       </td>
       <td>{{ mov.usuario.name|default:mov.usuario.email }}</td>
       
-      {# CELDA DE ACCIONES (Botón Editar COMENTADO) #}
+      {# CELDA DE ACCIONES #}
       <td class="text-center">
         {% if can_manage %}
           <div class="d-flex justify-content-center gap-1"> 
             
-            {% comment %} DESHABILITADO TEMPORALMENTE POR ERROR DE INCONSISTENCIA DE DATOS HISTÓRICOS {% endcomment %}
+            {% comment %} FUNCIONALIDAD DE EDICIÓN TEMPORALMENTE DESHABILITADA POR ERROR DE INCONSISTENCIA DE DATOS HISTÓRICOS {% endcomment %}
             {# 
             <a href="{% url 'inventario:editar_entrada' mov.pk %}" class="btn btn-sm btn-outline-warning" title="Editar Entrada">
               <i class="bi bi-pencil"></i> Editar
