@@ -1,0 +1,98 @@
+<div class="card mb-3 movimiento-card border-{{ form.errors|yesno:'danger,success' }}">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 text-primary">Línea de Movimiento {% if form.instance.pk %}#{{ form.instance.pk }}{% endif %}</h6>
+        <div class="delete-controls">
+            {# Campos ocultos de gestión #}
+            {{ form.id }}
+            {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+            {# Botón de Eliminar #}
+            {% if formset.can_delete %}
+                {{ form.DELETE }} 
+                <button type="button" class="btn btn-sm btn-outline-danger del-line" title="Eliminar línea">
+                    <i class="bi bi-trash"></i>
+                </button>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        
+        {# --- SECCIÓN 1: TIPO E INSUMO (Paso 1) --- #}
+        <div class="row g-3 mb-4 p-3 border rounded bg-light-subtle">
+            <h6 class="text-secondary small border-bottom pb-2">Paso 1: Tipo y Producto</h6>
+            <div class="col-md-4">
+                <label class="form-label required small">{{ form.tipo.label }}</label>
+                {{ form.tipo }}
+                {% for error in form.tipo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-8">
+                <label class="form-label required small">{{ form.insumo.label }}</label>
+                {{ form.insumo }}
+                {% for error in form.insumo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+        </div>
+
+        {# --- SECCIÓN 2: LOTE Y EXPIRACIÓN (Paso 2 - Lógica Mutua) --- #}
+        <div class="row g-3 mb-4 p-3 border rounded lote-container">
+            <h6 class="text-secondary small border-bottom pb-2">Paso 2: Origen de Lote</h6>
+            
+            <div class="col-md-6 order-1"> 
+                {# PRIMERO: Checkbox Crear Nuevo Lote #}
+                <div class="form-check pt-2 mb-2">
+                    <label class="form-check-label small" for="{{ form.crear_nuevo_lote.id_for_label }}">{{ form.crear_nuevo_lote.label }}</label>
+                    {{ form.crear_nuevo_lote }}
+                    {% for error in form.crear_nuevo_lote.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                {# Campo de Fecha de Expiración, depende del checkbox #}
+                <div class="fecha-exp-container">
+                    <label class="form-label small">{{ form.fecha_expiracion.label }}</label>
+                    {{ form.fecha_expiracion }}
+                    {% for error in form.fecha_expiracion.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <div class="col-md-6 order-0"> 
+                {# SEGUNDO: Select de Lote Existente #}
+                <label class="form-label small">{{ form.insumo_lote.label }}</label>
+                {{ form.insumo_lote }}
+                {% for error in form.insumo_lote.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            
+        </div>
+        
+        {# --- SECCIÓN 3: DATOS PRINCIPALES DEL MOVIMIENTO (Paso 3) --- #}
+        <div class="row g-3 data-container p-3 border rounded">
+            <h6 class="text-secondary small border-bottom pb-2">Paso 3: Cantidad y Registro</h6>
+
+            <div class="col-md-4">
+                <label class="form-label required small">{{ form.cantidad.label }}</label>
+                {{ form.cantidad }}
+                {% for error in form.cantidad.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label required small">{{ form.ubicacion.label }}</label>
+                {{ form.ubicacion }}
+                {% for error in form.ubicacion.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label required small">{{ form.fecha.label }}</label>
+                {{ form.fecha }}
+                {% for error in form.fecha.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-12">
+                <label class="form-label small">{{ form.observaciones.label }}</label>
+                {{ form.observaciones }}
+                {% for error in form.observaciones.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+            </div>
+            
+            {# Errores de formulario no asociados a campos (Cross-validation errors) #}
+            {% if form.non_field_errors %}
+                <div class="col-12">
+                    <div class="alert alert-danger small">
+                        <strong>Error de Línea:</strong> {{ form.non_field_errors|join:", " }}
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>

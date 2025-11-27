@@ -15,6 +15,7 @@
                     ⚠️ Esta acción no se puede deshacer. ¿Estás seguro de que deseas eliminar este elemento?
                 </p>
 
+                {# ⚠️ ALERTA ESPECIAL SOLO PARA INSUMOS #}
                 {% if insumo and insumo.stock_total is not None %}
                     {% if insumo.stock_total > 0 %}
                         <div class="alert alert-warning">
@@ -24,18 +25,30 @@
                         </div>
                     {% else %}
                         <div class="alert alert-info">
-                            El stock actual de este insumo es **0.00**. La eliminación procederá.
+                            El stock actual de este insumo es <strong>0.00</strong>. La eliminación procederá.
                         </div>
                     {% endif %}
                 {% endif %}
+
                 <hr>
 
                 <form method="post">
                     {% csrf_token %}
                     <input type="hidden" name="confirm" value="true">
-                    
-                    <a href="{{ cancel_url }}" class="btn btn-secondary me-2">Cancelar</a>
-                    
+
+                    {# 🔥 BOTÓN CANCELAR UNIVERSAL - FUNCIONA SIEMPRE #}
+                    <a 
+                        {% if cancel_url %}
+                            href="{{ cancel_url }}"
+                        {% else %}
+                            href="javascript:history.back()"
+                        {% endif %}
+                        class="btn btn-secondary me-2"
+                    >
+                        Cancelar
+                    </a>
+
+                    {# ✔ Botón eliminar (bloqueado si stock > 0) #}
                     {% if insumo and insumo.stock_total > 0 %}
                         <button type="button" class="btn btn-danger" disabled>
                             Eliminar (Stock > 0)

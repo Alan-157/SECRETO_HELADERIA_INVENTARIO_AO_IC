@@ -49,60 +49,75 @@
 
 <script>
 (function(){
-  const root = document.getElementById('bodegas-root');
-  const form = document.getElementById('filtros-bodegas');
-  function ajaxifyLinks(scope){
-    scope.querySelectorAll('[data-ajax-link]').forEach(a=>{
-      a.addEventListener('click', function(ev){
-        ev.preventDefault();
-        fetch(this.href, {headers:{'X-Requested-With':'XMLHttpRequest'}})
-          .then(r=>r.json()).then(({html})=>{
-            document.getElementById('bodegas-results').innerHTML = html;
-            ajaxifyLinks(document.getElementById('bodegas-results'));
-            wireDeletes();
-          });
+  const form    = document.getElementById('filtros-bodegas');
+  const results = document.getElementById('bodegas-results');
+
+  const qInput       = form.querySelector('input[name="q"]');
+  const sortSelect   = form.querySelector('select[name="sort"]');
+  const orderSelect  = form.querySelector('select[name="order"]');
+  const perPageSelect= form.querySelector('select[name="per_page"]');
+
+  const buildURL = () => {
+    const params = new URLSearchParams(new FormData(form));
+    return `${location.pathname}?${params.toString()}`;
+  };
+
+  async function loadAjax(url){
+    try {
+      const resp = await fetch(url, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
       });
-    });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      results.innerHTML = data.html;
+      history.replaceState({}, '', url);
+    } catch (err) {
+      console.error('Error AJAX bodegas:', err);
+    }
   }
-  function wireDeletes(){
-    root.querySelectorAll('[data-delete-bodega]').forEach(btn=>{
-      btn.addEventListener('click', function(ev){
-        ev.preventDefault();
-        if(!confirm('¿Eliminar esta bodega?')) return;
-        fetch(this.dataset.url, {method:'POST', headers:{
-          'X-CSRFToken': '{{ csrf_token }}',
-          'X-Requested-With':'XMLHttpRequest'
-        }}).then(r=>r.json()).then(({ok,message})=>{
-          if(ok){
-            // recargar resultados actuales
-            const url = new URL(window.location);
-            url.searchParams.set('page', '{{ bodegas.number|default:1 }}');
-            fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}})
-              .then(r=>r.json()).then(({html})=>{
-                document.getElementById('bodegas-results').innerHTML = html;
-                ajaxifyLinks(document.getElementById('bodegas-results'));
-                wireDeletes();
-                if(message) alert(message);
-              });
-          }
-        });
-      });
-    });
+
+  const debounce = (fn, ms = 350) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  };
+
+  // Buscar mientras escribe
+  if (qInput) {
+    qInput.addEventListener('input', debounce(() => {
+      loadAjax(buildURL());
+    }));
   }
-  // submit con AJAX
-  form.addEventListener('submit', function(ev){
-    ev.preventDefault();
-    const url = new URL(window.location);
-    new FormData(form).forEach((v,k)=>url.searchParams.set(k,v));
-    fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}})
-      .then(r=>r.json()).then(({html})=>{
-        document.getElementById('bodegas-results').innerHTML = html;
-        ajaxifyLinks(document.getElementById('bodegas-results'));
-        wireDeletes();
-      });
+
+  // Cambiar sort / order / per_page
+  [sortSelect, orderSelect, perPageSelect].forEach(el => {
+    if (!el) return;
+    el.addEventListener('change', () => {
+      loadAjax(buildURL());
+    });
   });
-  ajaxifyLinks(document.getElementById('bodegas-results'));
-  wireDeletes();
+
+  // Delegación: paginación + confirmar eliminar
+  results.addEventListener('click', (e) => {
+    // Paginación AJAX
+    const a = e.target.closest('a[data-ajax-link]');
+    if (a){
+      e.preventDefault();
+      loadAjax(a.href);
+      return;
+    }
+
+    // Eliminar bodega (submit normal, solo confirmación)
+    const delBtn = e.target.closest('button[data-delete-bodega]');
+    if (delBtn){
+      const f = delBtn.closest('form');
+      if (f && confirm('¿Eliminar esta bodega?')) {
+        f.submit();
+      }
+    }
+  });
 })();
 </script>
 {% endblock %}

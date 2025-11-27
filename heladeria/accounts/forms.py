@@ -328,4 +328,3 @@ class UserProfileEditForm(forms.ModelForm):
         if domain in DISPOSABLE_DOMAINS:
             raise ValidationError("Este dominio de correo no es permitido.")
             
-        return email

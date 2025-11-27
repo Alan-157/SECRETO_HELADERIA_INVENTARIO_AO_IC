@@ -2,157 +2,67 @@
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
-<div class="card shadow-sm">
+<div class="container-fluid">
+    
+    {# HEADER Y BOTÓN NUEVO MOVIMIENTO (DROPDOWN) #}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">{{ titulo }}</h3>
 
-  <div class="card-header bg-white py-3">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <div class="d-flex align-items-center">
-        <h3 class="mb-0 me-3">{{ titulo }}</h3>
-        <form method="get" class="d-flex">
-          <input type="text" class="form-control form-control-sm" name="q" placeholder="Buscar por insumo..." value="{{ q }}">
-          <button class="btn btn-sm btn-outline-secondary ms-2" type="submit">Buscar</button>
-        </form>
-      </div>
-
-      <div>
         {% if can_manage %}
-          <a href="{% url 'inventario:registrar_movimiento' %}" class="btn btn-primary">
-            Registrar Movimiento
-          </a>
+            <div class="dropdown">
+                <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-plus-lg"></i> Nuevo Movimiento
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item text-success" href="{% url 'inventario:registrar_entrada' %}">
+                            <i class="bi bi-box-arrow-in-down"></i> Registrar Entrada
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="{% url 'inventario:registrar_salida' %}">
+                            <i class="bi bi-box-arrow-up"></i> Registrar Salida
+                        </a>
+                    </li>
+                </ul>
+            </div>
         {% endif %}
-      </div>
     </div>
-  </div>
 
-  <div class="card-body">
-    <div class="row">
-      <div class="col-lg-6 border-end">
-        <h4 class="mb-3">Últimas Entradas</h4>
-
-        {% if entradas.object_list %}
-          <div class="table-responsive">
-            <table class="table table-sm table-striped">
-              <thead>
-                <tr>
-                  <th>Insumo</th>
-                  <th class="text-end">Cantidad</th>
-                  <th>Fecha</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for entrada in entradas %}
-                  <tr>
-                    <td class="fw-bold">{{ entrada.insumo.nombre }}</td>
-                    <td class="text-end text-success fw-bold">+{{ entrada.cantidad|floatformat:2 }}</td>
-                    <td>{{ entrada.fecha }}</td>
-                    <td>
-                      {% if can_manage %}
-                        <a href="{% url 'inventario:editar_entrada' entrada.pk %}" class="btn btn-sm btn-warning">Editar</a>
-                        <form method="post" action="{% url 'inventario:eliminar_entrada' entrada.pk %}" class="d-inline">
-                            {% csrf_token %}
-                            <button type="button" class="btn btn-sm btn-danger" data-delete-form>Eliminar</button>
-                        </form>
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-
-            <nav aria-label="Paginación Entradas">
-              <ul class="pagination pagination-sm justify-content-center">
-                {% if entradas.has_previous %}
-                  <li class="page-item">
-                    <a class="page-link" href="?q={{ q }}&page_e={{ entradas.previous_page_number }}&page_s={{ salidas.number }}">« Anterior</a>
-                  </li>
-                {% else %}
-                  <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
-                {% endif %}
-
-                <li class="page-item disabled">
-                  <span class="page-link">Página {{ entradas.number }} de {{ entradas.paginator.num_pages }}</span>
+    {# INICIO: ESTRUCTURA DE PESTAÑAS (TABS) #}
+    <div class="card shadow-sm">
+        <div class="card-header p-0">
+            <ul class="nav nav-tabs card-header-tabs" id="movimientosTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="entrada-tab" data-bs-toggle="tab" data-bs-target="#entrada-pane" type="button" role="tab" aria-controls="entrada-pane" aria-selected="true">
+                        Entradas ({{ entradas.paginator.count }})
+                    </button>
                 </li>
-
-                {% if entradas.has_next %}
-                  <li class="page-item">
-                    <a class="page-link" href="?q={{ q }}&page_e={{ entradas.next_page_number }}&page_s={{ salidas.number }}">Siguiente »</a>
-                  </li>
-                {% else %}
-                  <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
-                {% endif %}
-              </ul>
-            </nav>
-          </div>
-        {% else %}
-          <p class="text-muted">No hay entradas registradas que coincidan con la búsqueda.</p>
-        {% endif %}
-      </div>
-
-      <div class="col-lg-6">
-        <h4 class="mb-3">Últimas Salidas</h4>
-
-        {% if salidas.object_list %}
-          <div class="table-responsive">
-            <table class="table table-sm table-striped">
-              <thead>
-                <tr>
-                  <th>Insumo</th>
-                  <th class="text-end">Cantidad</th>
-                  <th>Fecha</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for salida in salidas %}
-                  <tr>
-                    <td class="fw-bold">{{ salida.insumo.nombre }}</td>
-                    <td class="text-end text-danger fw-bold">-{{ salida.cantidad|floatformat:2 }}</td>
-                    <td>{{ salida.fecha_generada }}</td>
-                    <td>
-                      {% if can_manage %}
-                        <a href="{% url 'inventario:editar_salida' salida.pk %}" class="btn btn-sm btn-warning">Editar</a>
-                        <form method="post" action="{% url 'inventario:eliminar_salida' salida.pk %}" class="d-inline">
-                            {% csrf_token %}
-                            <button type="button" class="btn btn-sm btn-danger" data-delete-form>Eliminar</button>
-                        </form>
-                      {% endif %}
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-
-            <nav aria-label="Paginación Salidas">
-              <ul class="pagination pagination-sm justify-content-center">
-                {% if salidas.has_previous %}
-                  <li class="page-item">
-                    <a class="page-link" href="?q={{ q }}&page_s={{ salidas.previous_page_number }}&page_e={{ entradas.number }}">« Anterior</a>
-                  </li>
-                {% else %}
-                  <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
-                {% endif %}
-
-                <li class="page-item disabled">
-                  <span class="page-link">Página {{ salidas.number }} de {{ salidas.paginator.num_pages }}</span>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="salida-tab" data-bs-toggle="tab" data-bs-target="#salida-pane" type="button" role="tab" aria-controls="salida-pane" aria-selected="false">
+                        Salidas ({{ salidas.paginator.count }})
+                    </button>
                 </li>
+            </ul>
+        </div>
 
-                {% if salidas.has_next %}
-                  <li class="page-item">
-                    <a class="page-link" href="?q={{ q }}&page_s={{ salidas.next_page_number }}&page_e={{ entradas.number }}">Siguiente »</a>
-                  </li>
-                {% else %}
-                  <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
-                {% endif %}
-              </ul>
-            </nav>
-          </div>
-        {% else %}
-          <p class="text-muted">No hay salidas registradas que coincidan con la búsqueda.</p>
-        {% endif %}
-      </div>
+        <div class="card-body">
+            <div class="tab-content" id="movimientosTabContent">
+                
+                {# PESTAÑA 1: ENTRADAS #}
+                <div class="tab-pane fade show active" id="entrada-pane" role="tabpanel" aria-labelledby="entrada-tab" tabindex="0">
+                    {# El error se debía a la falta de este parcial #}
+                    {% include "inventario/partials/entradas_table.html" with movimientos=entradas %}
+                </div>
+
+                {# PESTAÑA 2: SALIDAS #}
+                <div class="tab-pane fade" id="salida-pane" role="tabpanel" aria-labelledby="salida-tab" tabindex="0">
+                    {% include "inventario/partials/salidas_table.html" with movimientos=salidas %}
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
+    {# FIN: ESTRUCTURA DE PESTAÑAS (TABS) #}
 
 </div>
-{% endblock %}
+{% endblock content %}

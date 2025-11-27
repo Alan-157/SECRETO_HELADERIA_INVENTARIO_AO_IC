@@ -7,7 +7,7 @@
       <th class="text-center">Stock Mínimo</th>
       <th class="text-center">Stock Máximo</th>
       <th>Unidad</th>
-      <th class="text-center">Acciones Movimiento</th>
+      <th class="text-center">Acciones Movimiento</th> {# <-- Columna AÑADIDA/CORREGIDA #}
       <th class="text-end">Administración</th>
     </tr>
   </thead>
@@ -37,18 +37,16 @@
 
       <td class="text-center">{{ sm|floatformat:2 }}</td>
       <td class="text-center">{{ sx|floatformat:2 }}</td>
-      
-      {# CORRECCIÓN APLICADA AQUÍ #}
-      <td>{{ insumo.get_unidad_medida_display }}</td>
+      <td>{{ insumo.unidad_medida }}</td>
 
-      {# --- BOTONES DE ACCIÓN DE MOVIMIENTO --- #}
+      {# --- BOTONES DE ACCIÓN DE MOVIMIENTO (CORREGIDO) --- #}
       <td class="text-center">
         {% if not read_only %}
-          <a href="{% url 'inventario:registrar_movimiento' %}?insumo_id={{ insumo.id }}&tipo=ENTRADA" 
+          <a href="{% url 'inventario:registrar_entrada' %}?insumo_id={{ insumo.id }}" 
              class="btn btn-sm btn-success me-1" title="Registrar Entrada">
             <i class="bi bi-plus-circle"></i> Entrada
           </a>
-          <a href="{% url 'inventario:registrar_movimiento' %}?insumo_id={{ insumo.id }}&tipo=SALIDA" 
+          <a href="{% url 'inventario:registrar_salida' %}?insumo_id={{ insumo.id }}" 
              class="btn btn-sm btn-danger" title="Registrar Salida">
             <i class="bi bi-dash-circle"></i> Salida
           </a>
@@ -60,10 +58,14 @@
       {# --- Columna de Administración Original --- #}
       <td class="text-end">
         {% if not read_only %}
-          <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-warning">Editar</a>
+          <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-warning">
+            <i class="bi bi-pencil"></i> Editar
+          </a>
           <form method="post" action="{% url 'inventario:eliminar_insumo' insumo.id %}" class="d-inline">
             {% csrf_token %}
-            <a class="btn btn-sm btn-danger" href="{% url 'inventario:eliminar_insumo' insumo.id %}">Eliminar</a>
+            <button type="submit" class="btn btn-sm btn-danger" data-delete-form>
+              <i class="bi bi-trash"></i> Eliminar
+            </button>
           </form>
         {% else %}
           <span class="text-muted">—</span>

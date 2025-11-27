@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %} Se elimina {% load inventario_tags %} para evitar el error {% endcomment %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4">{{ titulo }}</h3>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            
+            {# FORMULARIO DE BÚSQUEDA Y FILTROS #}
+            <form method="get" id="filter-form" data-ajax-form>
+                <div class="row align-items-center">
+                    
+                    <div class="col-md-5 mb-2">
+                        <div class="input-group">
+                            <input type="search" 
+                                   name="q" 
+                                   class="form-control" 
+                                   placeholder="Buscar por Empresa, RUT o Email..."
+                                   value="{{ q|default:'' }}">
+                            
+                            <button type="submit" class="btn btn-primary" id="apply-filter-btn">
+                                <i class="bi bi-search"></i> Aplicar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="col-md-7 d-flex justify-content-end align-items-center">
+                        
+                        {# SELECTOR DE ELEMENTOS POR PÁGINA (OPCIONES MANUALES) #}
+                        <small class="text-muted me-2">Mostrar:</small>
+                        
+                        {% for pp in '10' %} 
+                        <a href="?page=1&per_page={{ pp }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}" 
+                           class="btn btn-sm btn-outline-secondary me-2 {% if pp|add:0 == proveedores.paginator.per_page %}active{% endif %}"
+                           data-ajax-link>
+                            {{ pp }}
+                        </a>
+                        {% endfor %}
+                        {% for pp in '25' %} 
+                        <a href="?page=1&per_page={{ pp }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}" 
+                           class="btn btn-sm btn-outline-secondary me-2 
+                           {% if pp|add:0 == proveedores.paginator.per_page %}active{% endif %}"
+                           data-ajax-link>
+                            {{ pp }}
+                        </a>
+                        {% endfor %}
+                        {% for pp in '50' %} 
+                        <a href="?page=1&per_page={{ pp }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}" 
+                           class="btn btn-sm btn-outline-secondary me-2 
+                           {% if pp|add:0 == proveedores.paginator.per_page %}active{% endif %}"
+                           data-ajax-link>
+                            {{ pp }}
+                        </a>
+                        {% endfor %}
+
+
+                        {# Botón para Crear Nuevo Proveedor #}
+                        {% if not read_only %}
+                            <a href="{% url 'inventario:crear_proveedor' %}" class="btn btn-success ms-3">
+                                <i class="bi bi-plus-lg"></i> Nuevo Proveedor
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+                <input type="hidden" name="page" id="page-input" value="{{ proveedores.number }}">
+                <input type="hidden" name="sort" value="{{ sort }}">
+                <input type="hidden" name="order" value="{{ order }}">
+            </form>
+            {# FIN DEL FORMULARIO DE BÚSQUEDA Y FILTROS #}
+
+        </div>
+    </div>
+
+    <div id="results">
+        {% include "inventario/partials/proveedores_results.html" with proveedores=proveedores %}
+    </div>
+
+</div>
+{% endblock content %}
+
+{% block extra_js %}
+{# Se asume que el script AJAX ya está en tu base.html o se incluye aquí #}
+{% endblock %}

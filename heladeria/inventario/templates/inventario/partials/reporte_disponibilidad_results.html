@@ -1,0 +1,116 @@
+<div class="card">
+  <div class="card-body">
+    {% if categorias and categorias|length %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              {% if show_categorias %}<th>Categoría</th>{% endif %}
+              <th>Insumo</th>
+              <th>Unidad</th>
+              {% if show_precio_unitario %}<th class="text-end">Precio unit.</th>{% endif %}
+              {% if show_stock_total %}<th class="text-end">Stock total</th>{% endif %}
+              {% if show_prox_venc %}<th>Próx. venc.</th>{% endif %}
+              {% if show_precio_acum %}<th class="text-end">Precio acumulado</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for bloque in categorias %}
+              {% for i in bloque.insumos %}
+                <tr>
+                  {% if show_categorias %}<td>{{ bloque.categoria.nombre }}</td>{% endif %}
+                  <td>{{ i.nombre }}</td>
+                  <td>{{ i.unidad_medida }}</td>
+                  {% if show_precio_unitario %}
+                    <td class="text-end">{{ i.precio_unitario|default:0 }}</td>
+                  {% endif %}
+                  {% if show_stock_total %}
+                    <td class="text-end">{{ i.stock_total|default:0|floatformat:0 }}</td>
+                  {% endif %}
+                  {% if show_prox_venc %}
+                    <td>
+                      {% if i.prox_vencimiento %}
+                        {{ i.prox_vencimiento|date:"d-m-Y" }}
+                      {% else %}
+                        -
+                      {% endif %}
+                    </td>
+                  {% endif %}
+                  {% if show_precio_acum %}
+                    <td class="text-end">{{ i.precio_acumulado|default:0|floatformat:0 }}</td>
+                  {% endif %}
+                </tr>
+
+                {% if show_lotes and i.lotes_vis %}
+                  <tr class="bg-body-tertiary">
+                    <td colspan="{{ colspan_lotes }}">
+                      <div class="p-2">
+                        <div class="fw-semibold mb-1">Lotes</div>
+                        <div class="table-responsive">
+                          <table class="table table-sm mb-0">
+                            <thead>
+                              <tr>
+                                <th>ID</th>
+                                <th>Ingreso</th>
+                                <th>Venc.</th>
+                                <th class="text-end">Cantidad</th>
+                                <th>Bodega</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {% for lote in i.lotes_vis %}
+                                <tr>
+                                  <td>{{ lote.id }}</td>
+                                  <td>
+                                    {% if lote.fecha_ingreso %}
+                                      {{ lote.fecha_ingreso|date:"d-m-Y" }}
+                                    {% else %}
+                                      -
+                                    {% endif %}
+                                  </td>
+                                  <td>
+                                    {% if lote.fecha_expiracion %}
+                                      {{ lote.fecha_expiracion|date:"d-m-Y" }}
+                                    {% else %}
+                                      -
+                                    {% endif %}
+                                  </td>
+                                  <td class="text-end">
+                                    {{ lote.cantidad_actual|default:0|floatformat:2 }}
+                                  </td>
+                                  <td>{{ lote.bodega.nombre }}</td>
+                                </tr>
+                              {% endfor %}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fw-semibold">
+              {% if show_categorias %}<td></td>{% endif %}
+              <td colspan="2">Totales</td>
+              {% if show_precio_unitario %}<td></td>{% endif %}
+              {% if show_stock_total %}
+                <td class="text-end">{{ total_stock|default:0|floatformat:2 }}</td>
+              {% endif %}
+              {% if show_prox_venc %}<td></td>{% endif %}
+              {% if show_precio_acum %}
+                <td class="text-end">{{ total_valor|default:0|floatformat:2 }}</td>
+              {% endif %}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% else %}
+      <div class="text-center text-muted py-4">
+        No hay resultados con los filtros seleccionados.
+      </div>
+    {% endif %}
+  </div>
+</div>

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">Confirmar Eliminación / Desactivación</h5>
+            </div>
+            <div class="card-body">
+                
+                <h4 class="card-title mb-3">{{ titulo }}</h4>
+
+                <p class="text-danger fw-bold">
+                    ⚠️ Esta acción marcará el elemento ({{ tipo }}) como inactivo. 
+                    ¿Estás seguro de que deseas continuar?
+                </p>
+                
+                {% if obj.nombre_empresa %}
+                    <p>Elemento: <strong>{{ obj.nombre_empresa }} (RUT: {{ obj.rut_empresa }})</strong></p>
+                {% elif obj.nombre %}
+                    <p>Elemento: <strong>{{ obj.nombre }}</strong></p>
+                {% else %}
+                    <p>Elemento: <strong>#{{ obj.id }}</strong></p>
+                {% endif %}
+
+
+                <hr>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <a href="{{ cancel_url }}" class="btn btn-secondary me-2">Cancelar</a>
+                    <button type="submit" class="btn btn-danger" data-delete-form>
+                        Confirmar Desactivación
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}

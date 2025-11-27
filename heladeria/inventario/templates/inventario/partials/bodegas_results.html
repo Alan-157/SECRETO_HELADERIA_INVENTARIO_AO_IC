@@ -13,12 +13,20 @@
         <td>{{ b.direccion }}</td>
         <td class="text-end">
           {% if not read_only %}
-            <a class="btn btn-sm btn-warning" href="{% url 'inventario:editar_bodega' b.id %}">Editar</a>
+            <a class="btn btn-sm btn-warning"
+               href="{% url 'inventario:editar_bodega' b.id %}">
+              Editar
+            </a>
 
-            <!-- ✅ Formulario de eliminación conectado a la URL -->
-            <form method="post" action="{% url 'inventario:eliminar_bodega' b.id %}" class="d-inline" data-ajax="true">
+            <form method="post"
+                  action="{% url 'inventario:eliminar_bodega' b.id %}"
+                  class="d-inline">
               {% csrf_token %}
-              <a class="btn btn-sm btn-danger" href="{% url 'inventario:eliminar_bodega' b.id %}">Eliminar</a>
+              <button type="submit"
+                      class="btn btn-sm btn-danger"
+                      data-delete-bodega="1">
+                Eliminar
+              </button>
             </form>
 
           {% else %}
@@ -27,7 +35,11 @@
         </td>
       </tr>
     {% empty %}
-      <tr><td colspan="3" class="text-center text-muted py-3">Sin resultados</td></tr>
+      <tr>
+        <td colspan="3" class="text-center text-muted py-3">
+          Sin resultados
+        </td>
+      </tr>
     {% endfor %}
   </tbody>
 </table>
@@ -47,7 +59,9 @@
     {% endif %}
 
     <li class="page-item disabled">
-      <span class="page-link">Página {{ bodegas.number }} de {{ bodegas.paginator.num_pages }}</span>
+      <span class="page-link">
+        Página {{ bodegas.number }} de {{ bodegas.paginator.num_pages }}
+      </span>
     </li>
 
     {% if bodegas.has_next %}
