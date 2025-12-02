@@ -75,6 +75,7 @@ python manage.py seed_encargado
 python manage.py seed_bodeguero
 # Seed Inventario
 python manage.py seed_categorias
+python manage.py seed_unidadmedida
 python manage.py seed_insumos
 python manage.py seed_bodegas
 python manage.py seed_ubicaciones
