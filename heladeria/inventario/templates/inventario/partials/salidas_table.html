@@ -31,11 +31,9 @@
         {% if can_manage %}
           <div class="d-flex justify-content-center gap-1"> 
             
-            {#
             <a href="{% url 'inventario:editar_salida' mov.pk %}" class="btn btn-sm btn-outline-warning" title="Editar Salida">
               <i class="bi bi-pencil"></i> Editar
             </a>
-            #}
             
             <form method="post" action="{% url 'inventario:eliminar_salida' mov.pk %}" class="d-inline">
               {% csrf_token %}

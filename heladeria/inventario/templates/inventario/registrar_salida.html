@@ -13,11 +13,19 @@
             </div>
 
             <div class="card-body">
-                <form method="post" novalidate>
+                <form method="post" novalidate id="salida-form">
                     {% csrf_token %}
                     {{ formset.management_form }}
                     
-                    {# MUESTRA ERRORES GLOBALES #}
+                    {# MENSAJE DE ORDEN #}
+                    {% if orden %}
+                        <div class="alert alert-warning">
+                            Procesando la **Orden #{{ orden.id }}**. Selecciona el lote de origen para cada insumo.
+                            <input type="hidden" name="orden_id" value="{{ orden.id }}">
+                        </div>
+                    {% endif %}
+                    
+                    {# ERRORES GLOBALES #}
                     {% if formset.non_form_errors %}
                         <div class="alert alert-danger">
                             <strong>Errores Generales:</strong>
@@ -31,7 +39,6 @@
 
                     <div id="formset-body-salida">
                         {% for f in formset %}
-                            {# Usa el partial específico para Salida #}
                             {% include "inventario/partials/salida_linea_form.html" with form=f prefix=forloop.counter0 %}
                         {% endfor %}
                     </div>
@@ -49,32 +56,78 @@
 </div>
 {% endblock content %}
 
-{% comment %} Script de gestión simple (añadir/eliminar líneas) {% endcomment %}
+{# ----------------------------------------------------- #}
+{# TEMPLATE OCULTO Y LÓGICA JAVASCRIPT #}
+{# ----------------------------------------------------- #}
+<script type="text/template" id="empty-form-row-salida">
+    {% include "inventario/partials/salida_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
+</script>
+
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const formsetBody = document.getElementById('formset-body-salida');
     const addLineBtn = document.getElementById('add-line-salida');
     const totalForms = document.getElementById('id_form-TOTAL_FORMS');
-    
-    // Contenido de la plantilla para una nueva línea (debe apuntar al partial)
-    const emptyFormTpl = `
-        <div class="card mb-3 movimiento-card border-danger">
-            <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 text-danger">Nueva Línea de Salida</h6>
-                <div class="delete-controls">
-                    <input type="hidden" name="form-__prefix__-id" id="id_form-form-__prefix__-id">
-                    <input type="hidden" name="form-__prefix__-DELETE" id="id_form-form-__prefix__-DELETE">
-                    <button type="button" class="btn btn-sm btn-outline-danger del-line" title="Eliminar línea">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-            </div>
-            {% include "inventario/partials/salida_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
-        </div>
-    `;
+    const emptyFormTpl = document.getElementById('empty-form-row-salida').textContent;
 
-    // Lógica para agregar línea
+    function setDisabled(element, disabled) {
+        if (element) {
+            element.disabled = disabled;
+            element.closest('.form-control, .form-select, .form-check, .input-group')?.classList.toggle('disabled', disabled); 
+        }
+    }
+
+    // Función que verifica si todos los campos requeridos en un contenedor están llenos
+    function checkStepCompletion(container) {
+        let allRequiredFilled = true;
+        
+        container.querySelectorAll('select, input:not([type="hidden"]), textarea').forEach(element => {
+            if (element.required) {
+                if (!element.value || element.value === '') {
+                    allRequiredFilled = false;
+                }
+            }
+        });
+        return allRequiredFilled;
+    }
+    
+    function setupSequentialLogic(row) {
+        const rowElement = row.closest('.movimiento-card');
+        if (!rowElement) return;
+
+        // Contenedores de Pasos
+        const step1Container = rowElement.querySelector('[data-lock-step="1"]'); // Insumo, Lote Origen
+        const step2Container = rowElement.querySelector('[data-lock-step="2"]'); // Cantidad, Ubicación, Fecha
+        const step3Container = rowElement.querySelector('[data-lock-step="3"]'); // Observaciones
+
+        function applyLockState() {
+            // Bloqueo Paso 2
+            const step1Complete = checkStepCompletion(step1Container);
+            setLockState(step2Container, !step1Complete);
+            
+            // Bloqueo Paso 3
+            const step2Complete = step1Complete && checkStepCompletion(step2Container);
+            setLockState(step3Container, !step2Complete);
+        }
+
+        function setLockState(element, locked) {
+            if (!element) return;
+            element.querySelectorAll('input, select, textarea').forEach(el => setDisabled(el, locked));
+            element.style.pointerEvents = locked ? 'none' : 'auto';
+            element.style.opacity = locked ? '0.7' : '1';
+        }
+        
+        // --- ASIGNACIÓN DE EVENTOS ---
+        step1Container.addEventListener('change', applyLockState);
+        step1Container.addEventListener('input', applyLockState);
+        if (step2Container) step2Container.addEventListener('change', applyLockState);
+        
+        applyLockState();
+    }
+
+    // --- MANEJO DE FORMSET: Agregar y Eliminar Líneas ---
+    
     addLineBtn.addEventListener('click', function() {
         const index = parseInt(totalForms.value, 10);
         const newFormHtml = emptyFormTpl.replace(/__prefix__/g, index);
@@ -85,6 +138,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         formsetBody.appendChild(newRow);
         totalForms.value = index + 1;
+        
+        setupSequentialLogic(newRow); 
     });
 
     // Delegación para eliminar líneas
@@ -100,6 +155,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
+
+    document.querySelectorAll('.movimiento-card').forEach(setupSequentialLogic);
 });
 </script>
 {% endblock extra_js %}

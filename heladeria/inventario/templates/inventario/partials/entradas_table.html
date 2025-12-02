@@ -27,17 +27,12 @@
       </td>
       <td>{{ mov.usuario.name|default:mov.usuario.email }}</td>
       
-      {# CELDA DE ACCIONES (Botón Editar COMENTADO) #}
       <td class="text-center">
         {% if can_manage %}
           <div class="d-flex justify-content-center gap-1"> 
-            
-            {% comment %} DESHABILITADO TEMPORALMENTE POR ERROR DE INCONSISTENCIA DE DATOS HISTÓRICOS {% endcomment %}
-            {# 
             <a href="{% url 'inventario:editar_entrada' mov.pk %}" class="btn btn-sm btn-outline-warning" title="Editar Entrada">
               <i class="bi bi-pencil"></i> Editar
-            </a> 
-            #}
+            </a>
             
             <form method="post" action="{% url 'inventario:eliminar_entrada' mov.pk %}" class="d-inline">
               {% csrf_token %}

@@ -1,6 +1,9 @@
 from datetime import date
 import re
+from decimal import Decimal
+from django.db.models import Sum, Q, DecimalField
 from django import forms
+from django.db.models.functions import Coalesce
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.forms import inlineformset_factory, BaseInlineFormSet, formset_factory
 from .models import (
@@ -234,6 +237,7 @@ OrdenInsumoDetalleEditFormSet = inlineformset_factory(
 # ==========================================
 #  MULTI-LÍNEA MOVIMIENTOS
 # ==========================================
+# --- FORMULARIO DE LÍNEA PARA ENTRADA ---
 class EntradaLineaForm(forms.Form):
     # Campos base
     insumo = forms.ModelChoiceField(queryset=Insumo.objects.filter(is_active=True), label="Insumo", widget=forms.Select(attrs={"class": "form-select"}))
@@ -249,9 +253,9 @@ class EntradaLineaForm(forms.Form):
         ],
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "1",  # CRÍTICO: Indica al navegador que solo acepte números enteros
-            "max": "99999", # Máximo valor (5 dígitos)
-            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)", # JS para truncar a 5 dígitos
+            "step": "1", 
+            "max": "99999", 
+            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)",
         }),
     )
 
@@ -260,6 +264,15 @@ class EntradaLineaForm(forms.Form):
     fecha_expiracion = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), label="Fecha de expiración")
     
     observaciones = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2, "class": "form-control"}), label="Observaciones")
+
+    # VALIDACIÓN NUEVA: No aceptar fechas futuras
+    def clean_fecha(self):
+        fecha_mov = self.cleaned_data.get("fecha")
+        if fecha_mov and fecha_mov > date.today():
+            raise forms.ValidationError(
+                "La fecha de entrada no puede ser posterior al día de hoy."
+            )
+        return fecha_mov
 
     def clean(self):
         cd = super().clean()
@@ -289,7 +302,7 @@ class SalidaLineaForm(forms.Form):
         ],
         widget=forms.NumberInput(attrs={
             "class": "form-control",
-            "step": "1", # CRÍTICO: Indica al navegador que solo acepte números enteros
+            "step": "1",
             "max": "99999",
             "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)",
         }),
@@ -305,17 +318,40 @@ class SalidaLineaForm(forms.Form):
     
     observaciones = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2, "class": "form-control"}), label="Observaciones")
 
+    # VALIDACIÓN NUEVA: No aceptar fechas futuras
+    def clean_fecha(self):
+        fecha_mov = self.cleaned_data.get("fecha")
+        if fecha_mov and fecha_mov > date.today():
+            raise forms.ValidationError(
+                "La fecha de salida no puede ser posterior al día de hoy."
+            )
+        return fecha_mov
+
     def clean(self):
         cd = super().clean()
         lote = cd.get('insumo_lote')
         cant = cd.get('cantidad')
+        insumo = cd.get('insumo')
 
-        # Validación de Stock Suficiente
+        # 1. VALIDACIÓN: Stock Total del Insumo (no debe ser <= 0)
+        if insumo:
+            # Consulta para calcular el stock total activo del insumo
+            # Nota: Usamos InsumoLote.objects.filter(insumo=insumo, ...) para asegurarnos de que la consulta es correcta
+            total_stock = InsumoLote.objects.filter(
+                insumo=insumo, 
+                is_active=True 
+            ).aggregate(
+                s=Coalesce(Sum('cantidad_actual'), Decimal('0.00'), output_field=DecimalField())
+            )['s']
+             
+            if total_stock <= 0:
+                self.add_error("insumo", "No se puede registrar la salida, el insumo no tiene stock activo.")
+
+        # 2. Validación de Stock Suficiente en el Lote Seleccionado (Existente)
         if lote and cant and cant > lote.cantidad_actual:
             self.add_error("cantidad", f"Stock insuficiente en el lote. Disponible: {lote.cantidad_actual}")
         
         return cd
-
 # --- DEFINICIÓN DE LOS NUEVOS FORMSETS (permanecen igual, solo usan las clases actualizadas) ---
 EntradaLineaFormSet = formset_factory(EntradaLineaForm, extra=1, can_delete=True)
 SalidaLineaFormSet = formset_factory(SalidaLineaForm, extra=1, can_delete=True)

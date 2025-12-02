@@ -1059,6 +1059,10 @@ def registrar_entrada(request):
         formset = EntradaLineaFormSet(request.POST)
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            if not lineas:
+                messages.error(request, "No se ingresó ninguna línea válida para registrar la entrada.")
+                # Retornar con el formset para que el usuario vea los campos que llenó (aunque inválidos)
+                return render(request, "inventario/registrar_entrada.html", {"formset": formset, "titulo": "Registrar Entrada de Inventario"})
             
             for cd in lineas:
                 # Datos de Insumo
@@ -1148,6 +1152,9 @@ def registrar_salida(request):
         formset = SalidaLineaFormSet(request.POST)
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            if not lineas:
+                messages.error(request, "No se ingresó ninguna línea válida para registrar la salida.")
+                return render(request, "inventario/registrar_salida.html", {"formset": formset, "titulo": "Registrar Salida de Inventario", "orden": orden_obj})
             
             for cd in lineas:
                 # Datos de Salida
@@ -1165,7 +1172,7 @@ def registrar_salida(request):
                     except models.OrdenInsumoDetalle.DoesNotExist:
                         pass 
 
-                cant = min(cantidad, lote.cantidad_actual or Decimal("0")) 
+                cant = min(cd["cantidad"], lote.cantidad_actual or Decimal("0")) 
                 
                 # CREACIÓN DE LA SALIDA
                 models.Salida.objects.create(

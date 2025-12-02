@@ -14,8 +14,9 @@
     </div>
     <div class="card-body">
         
-        {# --- SECCIÓN 1: PRODUCTO Y LOTE DE ORIGEN (CRÍTICO) --- #}
-        <div class="row g-3 mb-4 p-3 border rounded bg-light-subtle">
+        {# --- SECCIÓN 1 (Paso 1: Insumo y Lote de Origen) --- #}
+        <div class="row g-3 mb-4 p-3 border rounded bg-light-subtle" data-lock-step="1">
+            <h6 class="text-secondary small border-bottom pb-2 mb-3">Paso 1: Producto y Origen</h6>
             <div class="col-md-6">
                 <label class="form-label required small">{{ form.insumo.label }}</label>
                 {{ form.insumo }}
@@ -28,8 +29,9 @@
             </div>
         </div>
 
-        {# --- SECCIÓN 2: CANTIDAD Y DESTINO --- #}
-        <div class="row g-3 mb-3 p-3 border rounded">
+        {# --- SECCIÓN 2 (Paso 2: Cantidad, Ubicación, Fecha) --- #}
+        <div class="row g-3 mb-3 p-3 border rounded" data-lock-step="2">
+            <h6 class="text-secondary small border-bottom pb-2 mb-3">Paso 2: Cantidad y Destino</h6>
             <div class="col-md-4">
                 <label class="form-label required small">{{ form.cantidad.label }}</label>
                 {{ form.cantidad }}
@@ -47,16 +49,18 @@
             </div>
         </div>
 
-        {# --- SECCIÓN 3: OBSERVACIONES --- #}
-        <div class="row g-3">
+        {# --- SECCIÓN 3 (Paso 3: Observaciones y Errores de Línea) --- #}
+        <div class="row g-3" data-lock-step="3">
+            <h6 class="text-secondary small border-bottom pb-2 mb-3">Paso 3: Observaciones</h6>
             <div class="col-md-12">
                 <label class="form-label small">{{ form.observaciones.label }}</label>
                 {{ form.observaciones }}
                 {% for error in form.observaciones.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             
+            {# ERRORES DE LÍNEA (Non-Field Errors): CRUCIAL para stock total y validación cruzada #}
             {% if form.non_field_errors %}
-                <div class="col-12">
+                <div class="col-12 mt-3">
                     <div class="alert alert-danger small">
                         <strong>Error de Línea:</strong> {{ form.non_field_errors|join:", " }}
                     </div>
