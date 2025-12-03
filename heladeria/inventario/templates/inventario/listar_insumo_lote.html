@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="mb-0">{{ titulo }}</h3>
+  {% if not read_only %}
+    <span class="text-muted small">Gestión desde movimientos/órdenes</span>
+  {% endif %}
+</div>
+
+<form id="filters-form"
+      class="row g-2 align-items-end mb-3"
+      method="get"
+      data-ajax-form>
+
+  {# Buscar #}
+  <div class="col-12 col-md-4">
+    <label class="form-label d-none d-md-block">&nbsp;</label>
+    <input id="q-input"
+           name="q"
+           type="text"
+           class="form-control"
+           placeholder="Buscar por insumo, bodega o proveedor..."
+           value="{{ q|default:'' }}">
+  </div>
+
+  {# 🔹 NUEVO: filtro por proveedor #}
+  <div class="col-12 col-md-3">
+    <label for="proveedor-select" class="form-label d-none d-md-block">Proveedor</label>
+    <select name="proveedor" id="proveedor-select" class="form-select">
+      <option value="">Todos los proveedores</option>
+      {% for p in proveedores %}
+        <option value="{{ p.id }}"
+                {% if proveedor_sel == p.id|stringformat:"s" %}selected{% endif %}>
+          {{ p.nombre_empresa }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  {# Ordenar por #}
+  <div class="col-6 col-md-2">
+    <label class="form-label d-none d-md-block">Ordenar por</label>
+    <select name="sort" class="form-select">
+      <option value="insumo"   {% if sort == "insumo"   %}selected{% endif %}>Ordenar por: Insumo</option>
+      <option value="bodega"   {% if sort == "bodega"   %}selected{% endif %}>Ordenar por: Bodega</option>
+      <option value="fingreso" {% if sort == "fingreso" %}selected{% endif %}>Ordenar por: F. Ingreso</option>
+      <option value="fexpira"  {% if sort == "fexpira"  %}selected{% endif %}>Ordenar por: F. Expiración</option>
+      <option value="cact"     {% if sort == "cact"     %}selected{% endif %}>Ordenar por: Cant. Actual</option>
+      <option value="cini"     {% if sort == "cini"     %}selected{% endif %}>Ordenar por: Cant. Inicial</option>
+    </select>
+  </div>
+
+  {# Dirección asc/desc #}
+  <div class="col-6 col-md-2">
+    <label class="form-label d-none d-md-block">Dirección</label>
+    <select name="order" class="form-select">
+      <option value="asc"  {% if order == "asc"  %}selected{% endif %}>Ascendente ↑</option>
+      <option value="desc" {% if order == "desc" %}selected{% endif %}>Descendente ↓</option>
+    </select>
+  </div>
+
+  {# Per page #}
+  <div class="col-4 col-md-1">
+    <label class="form-label d-none d-md-block">Por pág.</label>
+    <select name="per_page" class="form-select">
+      <option value="5"  {% if per_page == 5  %}selected{% endif %}>5</option>
+      <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+      <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+      <option value="30" {% if per_page == 30 %}selected{% endif %}>30</option>
+    </select>
+  </div>
+
+  {# Botón aplicar #}
+  <div class="col-4 col-md-1">
+    <label class="form-label d-none d-md-block">&nbsp;</label>
+    <button type="submit" class="btn btn-primary w-100">Aplicar</button>
+  </div>
+
+  {# Filtro vencimiento (todos / próximos a vencer) #}
+  <div class="col-6 col-md-3 mt-2">
+    <select name="vencimiento" class="form-select">
+      <option value="" {% if filtro_vencimiento == "todos" %}selected{% endif %}>Todos los lotes</option>
+      <option value="proximos" {% if filtro_vencimiento == "proximos" %}selected{% endif %}>
+        Próximos a vencer ({{ dias_proximos }} días)
+      </option>
+    </select>
+  </div>
+
+  <div class="col-6 col-md-2 mt-2">
+    <div class="input-group">
+      <span class="input-group-text">Días</span>
+      <input type="number"
+             name="dias"
+             min="1" max="365"
+             class="form-control"
+             value="{{ dias_proximos }}">
+    </div>
+  </div>
+
+  {# Botón Exportar, respetando todos los filtros (incluye proveedor) #}
+  <div class="col-12 col-md-2 mt-2 ms-md-auto text-md-end">
+    <div class="dropdown">
+      <button class="btn btn-outline-secondary dropdown-toggle w-100"
+              type="button"
+              data-bs-toggle="dropdown">
+        Exportar
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li>
+          <a class="dropdown-item"
+             href="?exportar=excel
+                    {% if q %}&q={{ q|urlencode }}{% endif %}
+                    {% if sort %}&sort={{ sort }}{% endif %}
+                    {% if order %}&order={{ order }}{% endif %}
+                    &per_page={{ per_page }}
+                    {% if filtro_vencimiento == 'proximos' %}&vencimiento=proximos&dias={{ dias_proximos }}{% endif %}
+                    {% if proveedor_sel %}&proveedor={{ proveedor_sel }}{% endif %}">
+            Excel
+          </a>
+        </li>
+        <li>
+          <a class="dropdown-item"
+             href="?exportar=pdf
+                    {% if q %}&q={{ q|urlencode }}{% endif %}
+                    {% if sort %}&sort={{ sort }}{% endif %}
+                    {% if order %}&order={{ order }}{% endif %}
+                    &per_page={{ per_page }}
+                    {% if filtro_vencimiento == 'proximos' %}&vencimiento=proximos&dias={{ dias_proximos }}{% endif %}
+                    {% if proveedor_sel %}&proveedor={{ proveedor_sel }}{% endif %}">
+            PDF
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</form>
+
+<div id="lotes-results">
+  {% include "inventario/partials/insumo_lote_results.html" %}
+</div>
+{% endblock %}

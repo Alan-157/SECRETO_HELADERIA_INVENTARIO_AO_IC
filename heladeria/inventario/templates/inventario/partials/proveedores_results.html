@@ -1,0 +1,92 @@
+<table class="table table-striped table-bordered mb-0">
+    <thead class="table-dark">
+        <tr>
+            <th>Empresa</th>
+            <th>RUT Empresa</th>
+            <th>Contacto</th>
+            <th>Ubicación</th>
+            <th class="text-center">Estado</th>
+            <th class="text-end" style="width: 20%;">Acciones</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for proveedor in proveedores %}
+        <tr>
+            <td class="fw-semibold">{{ proveedor.nombre_empresa }}</td>
+            <td>{{ proveedor.rut_empresa }}</td>
+            <td>
+                {{ proveedor.email }}<br>
+                <small class="text-muted">{{ proveedor.telefono }}</small>
+            </td>
+            <td>
+                {{ proveedor.ciudad }} ({{ proveedor.region }})
+            </td>
+            <td class="text-center">
+                {% if proveedor.estado == 'ACTIVO' %}
+                    <span class="badge bg-success">{{ proveedor.estado }}</span>
+                {% elif proveedor.estado == 'INACTIVO' %}
+                    <span class="badge bg-secondary">{{ proveedor.estado }}</span>
+                {% elif proveedor.estado == 'SUSPENDIDO' %}
+                    <span class="badge bg-warning text-dark">{{ proveedor.estado }}</span>
+                {% endif %}
+            </td>
+            <td class="text-end">
+                {% if not read_only %}
+                    <div class="d-flex justify-content-end gap-1">
+                        <a href="{% url 'inventario:editar_proveedor' proveedor.pk %}" class="btn btn-sm btn-outline-warning" title="Editar Proveedor">
+                            <i class="bi bi-pencil"></i> Editar
+                        </a>
+                        <form method="post" action="{% url 'inventario:eliminar_proveedor' proveedor.pk %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger" data-delete-form title="Eliminar Proveedor">
+                                <i class="bi bi-trash"></i> Eliminar
+                            </button>
+                        </form>
+                    </div>
+                {% else %}
+                    <span class="text-muted">—</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-3">No se encontraron proveedores.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{# Lógica de Paginación (sin 'split' en la llamada) #}
+{% if proveedores.has_other_pages %}
+<nav aria-label="Paginación" class="mt-2">
+  <ul class="pagination justify-content-center">
+    
+    {# Botón Anterior #}
+    {% if proveedores.has_previous %}
+      <li class="page-item">
+        <a class="page-link" data-ajax-link
+           href="?page={{ proveedores.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+          « Anterior
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
+    {% endif %}
+
+    {# Indicador de Página Actual #}
+    <li class="page-item disabled">
+      <span class="page-link">Página {{ proveedores.number }} de {{ proveedores.paginator.num_pages }}</span>
+    </li>
+
+    {# Botón Siguiente #}
+    {% if proveedores.has_next %}
+      <li class="page-item">
+        <a class="page-link" data-ajax-link
+           href="?page={{ proveedores.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+          Siguiente »
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}

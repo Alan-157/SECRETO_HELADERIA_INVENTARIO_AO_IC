@@ -1,0 +1,138 @@
+
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilo base para el formulario */
+        .form-control {
+            @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm;
+        }
+        .form-control-file {
+            @apply block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100;
+        }
+        .avatar-preview {
+            @apply w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg;
+        }
+        /* Estilos de mensajes (Django Messages) */
+        .message-success { @apply bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-md; }
+        .message-error { @apply bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md; }
+        .message-info { @apply bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-md; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased min-h-screen flex items-start justify-center p-4 sm:p-6">
+
+    <div class="w-full max-w-2xl bg-white p-6 sm:p-8 rounded-xl shadow-2xl mt-8">
+        <h1 class="text-3xl font-extrabold text-gray-900 mb-6 border-b pb-2">{{ title }}</h1>
+
+        <!-- Mensajes de Django -->
+        {% if messages %}
+            <div class="mb-4 space-y-2">
+                {% for message in messages %}
+                    <div class="
+                        {% if message.tags == 'success' %}message-success
+                        {% elif message.tags == 'error' %}message-error
+                        {% elif message.tags == 'info' %}message-info
+                        {% else %}message-info
+                        {% endif %}"
+                        role="alert">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data" class="space-y-6">
+            {% csrf_token %}
+
+            <div class="flex flex-col items-center space-y-4 mb-8">
+                <!-- Previsualización del Avatar Actual -->
+                {% if user.avatar %}
+                    <img src="{{ user.avatar.url }}" alt="Avatar actual" class="avatar-preview">
+                {% else %}
+                    <!-- Placeholder si no hay avatar -->
+                    <div class="avatar-preview bg-gray-300 flex items-center justify-center text-gray-600 text-4xl">
+                        <svg class="w-16 h-16" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>
+                    </div>
+                {% endif %}
+                <p class="text-sm text-gray-500">
+                    Tu avatar actual.
+                </p>
+            </div>
+
+            <!-- Campos del Formulario -->
+            
+            <!-- Nombre -->
+            <div>
+                <label for="{{ form.name.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.name.label }}</label>
+                {{ form.name }}
+                {% for error in form.name.errors %}
+                    <p class="mt-2 text-sm text-red-600">{{ error }}</p>
+                {% endfor %}
+            </div>
+
+            <!-- Teléfono -->
+            <div>
+                <label for="{{ form.phone.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.phone.label }}</label>
+                {{ form.phone }}
+                {% for error in form.phone.errors %}
+                    <p class="mt-2 text-sm text-red-600">{{ error }}</p>
+                {% endfor %}
+            </div>
+
+            <!-- Avatar -->
+            <div>
+                <label for="{{ form.avatar.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.avatar.label }}</label>
+                {{ form.avatar }}
+                <p class="mt-1 text-xs text-gray-500">{{ form.avatar.help_text|safe }}</p>
+                {% for error in form.avatar.errors %}
+                    <p class="mt-2 text-sm text-red-600">{{ error }}</p>
+                {% endfor %}
+                
+                <!-- Opción para ELIMINAR el avatar (opcional, si el campo es Nullable) -->
+                {% if user.avatar %}
+                    <div class="mt-4">
+                        <label class="inline-flex items-center text-sm font-medium text-gray-700">
+                            <input type="checkbox" name="avatar-clear" id="id_avatar-clear" class="rounded border-gray-300 text-red-600 shadow-sm focus:ring-red-500">
+                            <span class="ml-2 text-red-600">Eliminar avatar actual</span>
+                        </label>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Campos Ocultos (email, is_active, etc.) -->
+            {% for field in form.hidden_fields %}
+                {{ field }}
+            {% endfor %}
+            
+            {% comment %} 
+            Incluimos los campos que el Superuser podría editar si estuviera en el form, 
+            aunque para el usuario normal solo mostramos name, phone y avatar.
+            {% endcomment %}
+            <div class="hidden">
+                {{ form.email }}
+                {{ form.is_active }}
+            </div>
+
+
+            <!-- Botón de Envío -->
+            <div class="pt-4">
+                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out">
+                    Guardar Cambios
+                </button>
+            </div>
+            
+        </form>
+        
+        <div class="mt-6 text-center">
+            <a href="{% url 'accounts:perfil_view' %}" class="text-sm text-gray-600 hover:text-blue-600 transition duration-150">
+                Volver al Perfil
+            </a>
+        </div>
+    </div>
+
+</body>
+</html>

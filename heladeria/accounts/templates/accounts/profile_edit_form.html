@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+    /* * Mantenemos el CSS fuerte por si acaso, pero la clave ahora es el estilo inline en el tag <img>
+     */
+    .avatar-preview {
+        /* Usamos !important en el CSS para ser más fuertes que cualquier regla externa */
+        width: 150px !important; 
+        height: 150px !important;
+        border-radius: 50% !important;
+        object-fit: cover !important; 
+        
+        margin-bottom: 15px;
+        border: 3px solid #dee2e6;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        display: block; 
+    }
+    
+    /* Regla fuerte para las imágenes generadas dentro del widget de subida de archivo */
+    .file-upload-image-container img {
+        max-width: 100px !important; 
+        height: auto !important;
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        {# COLUMNA REDUCIDA: Esto centra el formulario y lo hace más pequeño (tipo tablita) #}
+        <div class="col-12 col-sm-10 col-md-6 col-lg-5"> 
+            <h1 class="mb-4 text-center">{{ titulo }}</h1>
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    
+                    <form method="post" enctype="multipart/form-data" novalidate>
+                        {% csrf_token %}
+
+                        <!-- Previsualización del Avatar Actual -->
+                        <div class="text-center mb-4">
+                            {% if user.avatar %}
+                                <!-- APLICACIÓN DE ESTILOS INLINE Y CLASE FUERTE -->
+                                <img src="{{ user.avatar.url }}" 
+                                     alt="Avatar actual" 
+                                     id="avatar-display" 
+                                     class="avatar-preview"
+                                     style="width: 150px; height: 150px; object-fit: cover;">
+                            {% else %}
+                                <img src="{% static 'img/default_avatar.png' %}" 
+                                     alt="Sin Avatar" 
+                                     id="avatar-display" 
+                                     class="avatar-preview"
+                                     style="width: 150px; height: 150px; object-fit: cover;">
+                            {% endif %}
+                        </div>
+
+                        {% for field in form.visible_fields %}
+                            <div class="mb-3">
+                                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                                
+                                {# Si es el campo avatar, añadimos un contenedor CSS para controlar su salida #}
+                                {% if field.name == 'avatar' %}
+                                    <div class="file-upload-image-container">
+                                        {{ field }}
+                                    </div>
+                                {% else %}
+                                    {{ field }}
+                                {% endif %}
+
+                                {% if field.help_text %}
+                                    <div class="form-text">{{ field.help_text }}</div>
+                                {% endif %}
+
+                                {% for error in field.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                        
+                        {# Campos ocultos #}
+                        {% for field in form.hidden_fields %}
+                            {{ field }}
+                        {% endfor %}
+
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg">Guardar Cambios</button>
+                            <a href="{% url 'accounts:password_change' %}" class="btn btn-outline-secondary">Cambiar Contraseña</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Script para previsualizar la imagen inmediatamente antes de subirla
+    const fileInput = document.getElementById('id_avatar');
+    const avatarDisplay = document.getElementById('avatar-display');
+
+    if (fileInput) {
+        fileInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // Muestra la imagen cargada en la previsualización
+                    avatarDisplay.src = e.target.result;
+                    // También reinicia la imagen por si el usuario elimina la selección
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+</script>
+{% endblock %}

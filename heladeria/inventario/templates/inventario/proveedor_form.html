@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10 col-lg-8">
+        <h3 class="mb-3">{{ titulo }}</h3>
+        
+        <div class="card shadow">
+            <div class="card-body">
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    
+                    <div class="row g-3">
+                        
+                        <div class="row g-3">
+                            <h5 class="text-primary border-bottom pb-2 mb-3">Datos de Contacto y Empresa</h5>
+                            <div class="col-md-6">
+                                <label for="{{ form.nombre_empresa.id_for_label }}" class="form-label required">{{ form.nombre_empresa.label }}</label>
+                                {{ form.nombre_empresa }}
+                                {% for error in form.nombre_empresa.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.rut_empresa.id_for_label }}" class="form-label required">{{ form.rut_empresa.label }}</label>
+                                {{ form.rut_empresa }}
+                                {% for error in form.rut_empresa.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.email.id_for_label }}" class="form-label required">{{ form.email.label }}</label>
+                                {{ form.email }}
+                                {% for error in form.email.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.telefono.id_for_label }}" class="form-label required">{{ form.telefono.label }}</label>
+                                {{ form.telefono }}
+                                {% for error in form.telefono.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.telefono_alternativo.id_for_label }}" class="form-label">{{ form.telefono_alternativo.label }}</label>
+                                {{ form.telefono_alternativo }}
+                                {% for error in form.telefono_alternativo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label for="{{ form.estado.id_for_label }}" class="form-label required">{{ form.estado.label }}</label>
+                                {{ form.estado }}
+                                {% for error in form.estado.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-4">
+                            <h5 class="text-primary border-bottom pb-2 mb-3">Ubicación y Crédito</h5>
+                            <div class="col-md-6">
+                                <label for="{{ form.direccion.id_for_label }}" class="form-label required">{{ form.direccion.label }}</label>
+                                {{ form.direccion }}
+                                {% for error in form.direccion.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="{{ form.ciudad.id_for_label }}" class="form-label required">{{ form.ciudad.label }}</label>
+                                {{ form.ciudad }}
+                                {% for error in form.ciudad.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                <label for="{{ form.region.id_for_label }}" class="form-label required">{{ form.region.label }}</label>
+                                {{ form.region }}
+                                {% for error in form.region.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="{{ form.condiciones_pago.id_for_label }}" class="form-label">{{ form.condiciones_pago.label }}</label>
+                                {{ form.condiciones_pago }}
+                                {% for error in form.condiciones_pago.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="{{ form.dias_credito.id_for_label }}" class="form-label required">{{ form.dias_credito.label }}</label>
+                                {{ form.dias_credito }}
+                                {% for error in form.dias_credito.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label for="{{ form.monto_credito.id_for_label }}" class="form-label required">{{ form.monto_credito.label }}</label>
+                                {{ form.monto_credito }}
+                                {% for error in form.monto_credito.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-12">
+                                <label for="{{ form.observaciones.id_for_label }}" class="form-label">{{ form.observaciones.label }}</label>
+                                {{ form.observaciones }}
+                                {% for error in form.observaciones.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
+
+                    </div>
+                    
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{% url 'inventario:listar_proveedores' %}" class="btn btn-secondary">Cancelar</a>
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-save"></i> Guardar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

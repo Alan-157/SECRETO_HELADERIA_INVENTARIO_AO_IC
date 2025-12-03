@@ -1,0 +1,112 @@
+<table class="table table-striped table-bordered mb-0">
+  <thead class="table-dark">
+    <tr>
+      <th>Nombre del Insumo</th>
+      <th>Categoría</th>
+      <th class="text-center">Stock Actual</th>
+      <th class="text-center">Stock Mínimo</th>
+      <th class="text-center">Stock Máximo</th>
+      <th>Unidad</th>
+      <th class="text-center">Acciones Movimiento</th> {# <-- Columna AÑADIDA/CORREGIDA #}
+      <th class="text-end">Administración</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for insumo in insumos %}
+    {% with sa=insumo.stock_actual|default:0 sm=insumo.stock_minimo|default:0 sx=insumo.stock_maximo|default:0 %}
+    <tr>
+      <td class="fw-semibold">{{ insumo.nombre }}</td>
+      <td><span class="badge bg-secondary">{{ insumo.categoria.nombre }}</span></td>
+
+      {# --- Semáforo de stock --- #}
+      <td class="text-center">
+        {% if sa < sm %}
+          <span class="badge bg-danger text-white" title="Bajo stock (menor al mínimo)">
+            {{ sa|floatformat:2 }}
+          </span>
+        {% elif sa > sx and sx > 0 %}
+          <span class="badge bg-warning text-dark" title="Sobre stock (mayor al máximo)">
+            {{ sa|floatformat:2 }}
+          </span>
+        {% else %}
+          <span class="badge bg-success text-white" title="Stock normal">
+            {{ sa|floatformat:2 }}
+          </span>
+        {% endif %}
+      </td>
+
+      <td class="text-center">{{ sm|floatformat:2 }}</td>
+      <td class="text-center">{{ sx|floatformat:2 }}</td>
+      <td>{{ insumo.unidad_medida }}</td>
+
+      {# --- BOTONES DE ACCIÓN DE MOVIMIENTO (CORREGIDO) --- #}
+      <td class="text-center">
+        {% if not read_only %}
+          <a href="{% url 'inventario:registrar_entrada' %}?insumo_id={{ insumo.id }}" 
+             class="btn btn-sm btn-success me-1" title="Registrar Entrada">
+            <i class="bi bi-plus-circle"></i> Entrada
+          </a>
+          <a href="{% url 'inventario:registrar_salida' %}?insumo_id={{ insumo.id }}" 
+             class="btn btn-sm btn-danger" title="Registrar Salida">
+            <i class="bi bi-dash-circle"></i> Salida
+          </a>
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
+
+      {# --- Columna de Administración Original --- #}
+      <td class="text-end">
+        {% if not read_only %}
+          <a href="{% url 'inventario:editar_insumo' insumo.id %}" class="btn btn-sm btn-warning">
+            <i class="bi bi-pencil"></i> Editar
+          </a>
+          <form method="post" action="{% url 'inventario:eliminar_insumo' insumo.id %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-danger" data-delete-form>
+              <i class="bi bi-trash"></i> Eliminar
+            </button>
+          </form>
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endwith %}
+    {% empty %}
+    <tr><td colspan="8" class="text-center text-muted py-3">Sin resultados</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if insumos.has_other_pages %}
+<nav aria-label="Paginación" class="mt-2">
+  <ul class="pagination justify-content-center">
+    {% if insumos.has_previous %}
+      <li class="page-item">
+        <a class="page-link" data-ajax-link
+           href="?page={{ insumos.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+          « Anterior
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
+    {% endif %}
+
+    <li class="page-item disabled">
+      <span class="page-link">Página {{ insumos.number }} de {{ insumos.paginator.num_pages }}</span>
+    </li>
+
+    {% if insumos.has_next %}
+      <li class="page-item">
+        <a class="page-link" data-ajax-link
+           href="?page={{ insumos.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+          Siguiente »
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}

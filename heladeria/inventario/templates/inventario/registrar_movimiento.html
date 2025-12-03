@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex align-items-center justify-content-between">
+                <h3 class="mb-0">{{ titulo }}</h3>
+                <button id="add-line" type="button" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-plus-circle"></i> Agregar Línea
+                </button>
+            </div>
+
+            <div class="card-body">
+                <form method="post" novalidate>
+                    {% if orden %}
+                        <input type="hidden" name="orden_id" value="{{ orden.id }}">
+                    {% endif %}
+                    {% csrf_token %}
+                    {{ formset.management_form }}
+                    
+                    {# MUESTRA ERRORES GLOBALES DEL FORMSET #}
+                    {% if formset.non_form_errors %}
+                        <div class="alert alert-danger">
+                            <strong>Errores Generales:</strong>
+                            <ul>
+                                {% for error in formset.non_form_errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+
+                    <div id="formset-body">
+                        {% for f in formset %}
+                            {# Incluye la plantilla parcial para cada línea #}
+                            {% include "inventario/partials/movimiento_linea_form.html" with form=f prefix=forloop.counter0 %}
+                        {% endfor %}
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Registrar Movimientos
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+
+
+{# ----------------------------------------------------- #}
+{# TEMPLATE OCULTO PARA NUEVAS LÍNEAS (Necesita el partial en /partials/movimiento_linea_form.html) #}
+{# ----------------------------------------------------- #}
+<script type="text/template" id="empty-form-row">
+    {% include "inventario/partials/movimiento_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
+</script>
+
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const formsetBody = document.getElementById('formset-body');
+    const addLineBtn = document.getElementById('add-line');
+    const totalForms = document.getElementById('id_form-TOTAL_FORMS');
+    const emptyFormTpl = document.getElementById('empty-form-row').textContent;
+
+    // --- LÓGICA SECUENCIAL Y BLOQUEO ---
+
+    function setupSequentialLogic(row) {
+        const rowElement = row.closest('.movimiento-card');
+        if (!rowElement) return;
+
+        const tipoSelect = rowElement.querySelector('[id$="-tipo"]');
+        const insumoSelect = rowElement.querySelector('[id$="-insumo"]');
+        const loteExistenteSelect = rowElement.querySelector('[id$="-insumo_lote"]');
+        const crearNuevoLoteCheckbox = rowElement.querySelector('[id$="-crear_nuevo_lote"]');
+        const fechaExpInput = rowElement.querySelector('[id$="-fecha_expiracion"]');
+        
+        // Contenedores de campos
+        const dataContainer = rowElement.querySelector('.data-container');
+        
+        // Bloquea/desbloquea un campo (Incluye control de estado visual)
+        function setDisabled(element, disabled) {
+            if (element) {
+                element.disabled = disabled;
+                element.closest('.form-control, .form-select, .form-check, .input-group')?.classList.toggle('disabled', disabled); 
+            }
+        }
+
+        function lockData() {
+            dataContainer.querySelectorAll('select, input, textarea').forEach(el => setDisabled(el, true));
+        }
+
+        function lockLoteAndData() {
+            setDisabled(loteExistenteSelect, true);
+            setDisabled(crearNuevoLoteCheckbox, true);
+            setDisabled(fechaExpInput, true);
+            lockData();
+        }
+
+        function unlockData() {
+            dataContainer.querySelectorAll('select, input, textarea').forEach(el => setDisabled(el, false));
+        }
+
+        // --- HANDLER PRINCIPAL DE ESTADO (Bloqueo Mutuo y Desbloqueo Secuencial) ---
+        
+        const handleLoteOrCrearChange = () => {
+            const isCreating = crearNuevoLoteCheckbox.checked;
+            const hasLoteSelected = !!loteExistenteSelect.value;
+            const isEntrada = tipoSelect.value === 'ENTRADA';
+            
+            if (!insumoSelect.value) {
+                lockLoteAndData();
+                return;
+            }
+
+            if (isCreating) {
+                // 1. MODO CREAR: Bloquea select, desbloquea fecha/datos
+                setDisabled(loteExistenteSelect, true); 
+                setDisabled(fechaExpInput, false);
+                unlockData();
+            } else if (hasLoteSelected) {
+                // 2. MODO LOTE EXISTENTE: Bloquea checkbox y fecha, desbloquea datos
+                setDisabled(crearNuevoLoteCheckbox, true);
+                setDisabled(fechaExpInput, true);
+                unlockData();
+            } else {
+                // 3. MODO NINGUNO SELECCIONADO: Restaura opciones de selección
+                setDisabled(loteExistenteSelect, false);
+                setDisabled(fechaExpInput, true); 
+                
+                setDisabled(crearNuevoLoteCheckbox, isEntrada ? false : true); 
+                
+                lockData();
+            }
+        };
+
+        // --- HANDLERS SECUENCIALES SIMPLES ---
+        
+        const handleTipoChange = () => {
+            const isEntrada = tipoSelect.value === 'ENTRADA';
+            
+            // 1. Ocultar/Mostrar visualmente la sección de fecha de expiración
+            rowElement.querySelector('.fecha-exp-container').closest('.col-md-6').style.display = isEntrada ? '' : 'none';
+
+            lockLoteAndData(); 
+            if (tipoSelect.value) {
+                setDisabled(insumoSelect, false);
+            } else {
+                setDisabled(insumoSelect, true);
+            }
+            insumoSelect.value = ''; 
+        };
+        
+        const handleInsumoChange = () => {
+            lockData(); 
+            if (insumoSelect.value) {
+                setDisabled(loteExistenteSelect, false); 
+                setDisabled(crearNuevoLoteCheckbox, tipoSelect.value === 'ENTRADA' ? false : true); 
+                handleLoteOrCrearChange();
+            } else {
+                lockLoteAndData();
+            }
+        };
+
+        // --- ASIGNACIÓN DE EVENTOS CON EXCLUSIÓN MUTUA ---
+        
+        tipoSelect.addEventListener('change', handleTipoChange);
+        insumoSelect.addEventListener('change', handleInsumoChange);
+
+        // 2. Lógica Mutua del Lote
+        crearNuevoLoteCheckbox.addEventListener('change', () => {
+             // Si checkeo, limpio y bloqueo el select
+             if (crearNuevoLoteCheckbox.checked) {
+                 loteExistenteSelect.value = ''; 
+                 setDisabled(loteExistenteSelect, true); 
+             } else {
+                 setDisabled(loteExistenteSelect, false); 
+             }
+             handleLoteOrCrearChange();
+        });
+        
+        loteExistenteSelect.addEventListener('change', () => {
+             // Si selecciono un lote, limpio y bloqueo el checkbox
+             if (loteExistenteSelect.value) {
+                 crearNuevoLoteCheckbox.checked = false; 
+                 setDisabled(crearNuevoLoteCheckbox, true); 
+             } else {
+                 const isEntrada = tipoSelect.value === 'ENTRADA';
+                 setDisabled(crearNuevoLoteCheckbox, isEntrada ? false : true); 
+             }
+             handleLoteOrCrearChange();
+        });
+
+        // --- ESTADO INICIAL ---
+        handleTipoChange(); 
+        if (insumoSelect.value) {
+            handleInsumoChange(); 
+            if (loteExistenteSelect.value || crearNuevoLoteCheckbox.checked) {
+                handleLoteOrCrearChange();
+            }
+        }
+    }
+
+    // --- MANEJO DE FORMSET: Agregar y Eliminar Líneas ---
+    
+    addLineBtn.addEventListener('click', function() {
+        const index = parseInt(totalForms.value, 10);
+        const newFormHtml = emptyFormTpl.replace(/__prefix__/g, index);
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = newFormHtml.trim();
+        const newRow = tempDiv.firstChild;
+        
+        formsetBody.appendChild(newRow);
+        totalForms.value = index + 1;
+        
+        setupSequentialLogic(newRow); // Aplica la lógica secuencial a la nueva línea
+    });
+
+    // Delegación para eliminar líneas
+    formsetBody.addEventListener('click', (e) => {
+        const delBtn = e.target.closest('.del-line');
+        if (delBtn) {
+            const row = delBtn.closest('.movimiento-card');
+            const deleteInput = row.querySelector('[name$="-DELETE"]');
+            
+            if (deleteInput) {
+                deleteInput.checked = true;
+                row.style.display = 'none';
+            }
+        }
+    });
+
+    // Aplicar lógica a todas las líneas existentes
+    document.querySelectorAll('.movimiento-card').forEach(setupSequentialLogic);
+});
+</script>
+{% endblock extra_js %}

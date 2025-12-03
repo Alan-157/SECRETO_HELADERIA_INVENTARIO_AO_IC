@@ -1,0 +1,132 @@
+{# inventario/partials/ordenes_results.html #}
+{% for orden in ordenes %}
+<div class="card shadow-sm mb-3">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <span class="fw-bold fs-5">Orden #{{ orden.id }}</span>
+            <small class="text-muted ms-2">
+                Creada por: {{ orden.usuario.name|default:orden.usuario.email }}
+            </small>
+            <small class="text-muted ms-3">Fecha: {{ orden.fecha }}</small>
+        </div>
+
+        {% if not read_only %}
+        <div class="d-flex align-items-center gap-2">
+            
+            {# CORREGIDO: Enlace a REGISTRAR SALIDA (Surtir Orden) #}
+            <a href="{% url 'inventario:registrar_salida' %}?orden={{ orden.id }}"
+                class="btn btn-sm btn-warning" title="Registrar la salida de stock para surtir esta orden">
+                <i class="bi bi-box-arrow-up"></i> Atender
+            </a>
+
+            <a href="{% url 'inventario:editar_orden' orden.id %}"
+                class="btn btn-sm btn-outline-secondary">
+                Editar
+            </a>
+
+            <form method="post"
+                action="{% url 'inventario:eliminar_orden' orden.id %}"
+                class="d-inline">
+                {% csrf_token %}
+                <button type="submit"
+                        class="btn btn-sm btn-danger"
+                        data-delete-orden="1">
+                    Eliminar
+                </button>
+            </form>
+
+            {# Cambio de estado por AJAX #}
+            <form method="post"
+                action="{% url 'inventario:orden_cambiar_estado' orden.id %}"
+                class="d-flex align-items-center gap-2"
+                data-ajax-form>
+                {% csrf_token %}
+                <select name="estado"
+                        class="form-select form-select-sm"
+                        style="min-width: 130px;">
+                    {% for e in ESTADOS_ORDEN %}
+                        <option value="{{ e }}"
+                                {% if orden.estado == e %}selected{% endif %}>
+                            {{ e|title|cut:"_" }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-primary">
+                    Actualizar
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="card-body">
+        <h5 class="card-title mb-3">Insumos Solicitados</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Insumo</th>
+                        <th class="text-end">Cantidad</th>
+                        <th>Unidad</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in orden.detalles.all %}
+                    <tr>
+                        <td>{{ d.insumo.nombre }}</td>
+                        <td class="text-end">{{ d.cantidad_solicitada|floatformat:0 }}</td>
+                        <td>{{ d.insumo.unidad_medida }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted">
+                            Esta orden no tiene detalles.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% empty %}
+<div class="alert alert-secondary">No hay órdenes.</div>
+{% endfor %}
+
+{% if ordenes.has_other_pages %}
+<nav aria-label="Paginación" class="mt-2">
+    <ul class="pagination pagination-sm mb-0">
+        {% if ordenes.has_previous %}
+          <li class="page-item">
+            <a class="page-link" data-ajax-link
+               href="?page={{ ordenes.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if estado %}&estado={{ estado }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+              « Anterior
+            </a>
+          </li>
+        {% else %}
+          <li class="page-item disabled">
+            <span class="page-link">« Anterior</span>
+          </li>
+        {% endif %}
+    
+        <li class="page-item disabled">
+          <span class="page-link">
+            Página {{ ordenes.number }} de {{ ordenes.paginator.num_pages }}
+          </span>
+        </li>
+    
+        {% if ordenes.has_next %}
+          <li class="page-item">
+            <a class="page-link" data-ajax-link
+               href="?page={{ ordenes.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if estado %}&estado={{ estado }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+              Siguiente »
+            </a>
+          </li>
+        {% else %}
+          <li class="page-item disabled">
+            <span class="page-link">Siguiente »</span>
+          </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}

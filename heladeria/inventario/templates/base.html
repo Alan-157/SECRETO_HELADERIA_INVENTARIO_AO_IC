@@ -1,0 +1,85 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{% block title %}Secreto Inventario{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{% static 'css/app.css' %}" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #F5F5DC; /* Código HEX para el color Beige Suave (Cornsilk) */
+        }
+    </style>
+    </head>
+<body> {% include "_partials/navbar.html" %}
+
+    <main class="container py-4">
+        {% if messages %}
+            <div class="container mb-3">
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'info' }} mb-2">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/app.js' %}"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // Confirmación SweetAlert2 para eliminar
+    document.querySelectorAll("[data-delete-form]").forEach((btn) => {
+        btn.addEventListener("click", function (e) {
+            e.preventDefault();
+            const form = this.closest("form");
+
+            Swal.fire({
+                title: "¿Estás seguro?",
+                text: "Esta acción no se puede deshacer.",
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonColor: "#A41C2D",
+                cancelButtonColor: "#6c757d",
+                confirmButtonText: "Sí, eliminar",
+                cancelButtonText: "Cancelar"
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Si es AJAX, se maneja la respuesta
+                    if (form.dataset.ajax === "true") {
+                        fetch(form.action, {
+                            method: "POST",
+                            headers: {
+                                "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value,
+                                "X-Requested-With": "XMLHttpRequest",
+                            },
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            Swal.fire("Eliminado", data.message || "El elemento fue eliminado.", "success")
+                                .then(() => location.reload());
+                        })
+                        .catch(() => {
+                            Swal.fire("Error", "No se pudo eliminar el elemento.", "error");
+                        });
+                    } else {
+                        // Envío normal del formulario (no AJAX)
+                        form.submit();
+                    }
+                }
+            });
+        });
+    });
+});
+</script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,174 @@
+{# inventario/listar_insumos.html #}
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h3 class="mb-4">{{ titulo }}</h3>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        
+        {# Botón de Nuevo Insumo #}
+        {% if not read_only %}
+            <a href="{% url 'inventario:crear_insumo' %}" class="btn btn-primary">
+                <i class="bi bi-plus-lg"></i> Nuevo Insumo
+            </a>
+        {% endif %}
+        
+        {# Nota: Se eliminaron los botones de paginación individuales de aquí para usar el selector único #}
+    </div>
+
+    {# INICIO DEL FORMULARIO DE BÚSQUEDA Y FILTROS #}
+    <form id="filters-form" class="row g-2 mb-3" method="get">
+        
+        {# CAMPO DE BÚSQUEDA Y BOTÓN APLICAR #}
+        <div class="col-md-4">
+            <div class="input-group">
+                <input type="search"
+                        name="q"
+                        id="q-input"
+                        class="form-control"
+                        placeholder="Buscar por nombre, categoría o unidad..."
+                        value="{{ q|default:'' }}">
+                
+                <button type="submit" class="btn btn-primary" id="apply-filter-btn">
+                    <i class="bi bi-search"></i> Aplicar
+                </button>
+            </div>
+        </div>
+
+        {# SELECT DE ORDENAR POR #}
+        <div class="col-md-3">
+            <div class="input-group">
+                <span class="input-group-text">Ordenar por</span>
+                <select name="sort" id="sort-select" class="form-select">
+                    <option value="nombre"    {% if sort == 'nombre' %}selected{% endif %}>Nombre</option>
+                    <option value="categoria" {% if sort == 'categoria' %}selected{% endif %}>Categoría</option>
+                    <option value="stock"     {% if sort == 'stock' %}selected{% endif %}>Stock actual</option>
+                    <option value="unidad"    {% if sort == 'unidad' %}selected{% endif %}>Unidad de medida</option>
+                </select>
+            </div>
+        </div>
+
+        {# SELECT DE ORDEN #}
+        <div class="col-md-2">
+            <select name="order" id="order-select" class="form-select">
+                <option value="asc"  {% if order != 'desc' %}selected{% endif %}>Ascendente</option>
+                <option value="desc" {% if order == 'desc' %}selected{% endif %}>Descendente</option>
+            </select>
+        </div>
+
+        {# SELECT DE ELEMENTOS POR PÁGINA (25 por defecto) #}
+        <div class="col-md-2">
+            <select name="per_page" id="per-page-select" class="form-select">
+                <option value="10"  {% if per_page == 10 %}selected{% endif %}>10 por página</option>
+                <option value="25"  {% if per_page == 25 %}selected{% endif %}>25 por página</option>
+                <option value="50"  {% if per_page == 50 %}selected{% endif %}>50 por página</option>
+                <option value="100" {% if per_page == 100 %}selected{% endif %}>100 por página</option>
+            </select>
+        </div>
+
+        <input type="hidden" name="page" id="page-input" value="{{ insumos.number }}">
+        
+        {# Botón invisible para aplicar, su funcionalidad será manejada por JS si el usuario presiona Enter o hace clic en un select #}
+        <button type="submit" style="display:none;" id="hidden-submit"></button>
+    </form>
+    {# FIN DEL FORMULARIO #}
+
+    <div id="results">
+        {% include "inventario/partials/insumos_results.html" %}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+    const form            = document.getElementById('filters-form');
+    const results         = document.getElementById('results');
+    const qInput          = document.getElementById('q-input');
+    const sortSelect      = document.getElementById('sort-select');
+    const orderSelect     = document.getElementById('order-select');
+    const perPageSelect   = document.getElementById('per-page-select');
+    const pageInput       = document.getElementById('page-input');
+    const applyBtn        = document.getElementById('apply-filter-btn');
+
+    // Función que construye la URL con los parámetros actuales
+    const buildURL = () => {
+        const params = new URLSearchParams(new FormData(form));
+        return `${location.pathname}?${params.toString()}`;
+    };
+
+    // Función central para hacer la petición AJAX
+    async function loadAjax(url){
+        try{
+            const resp = await fetch(url, {
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            
+            // Reemplaza los resultados y actualiza la URL
+            results.innerHTML = data.html;
+            history.replaceState({}, "", url);
+        }catch(err){
+            console.error("Error AJAX insumos:", err);
+            // Opcional: Mostrar un mensaje de error al usuario
+        }
+    }
+
+    // Debounce para evitar sobrecarga del servidor al escribir
+    const debounce = (fn, ms = 350) => {
+        let t;
+        return (...args) => {
+            clearTimeout(t);
+            t = setTimeout(() => fn(...args), ms);
+        };
+    };
+    
+    // --- EVENT LISTENERS ---
+
+    // 1. Envío del formulario (por botón "Aplicar" o Enter)
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        pageInput.value = "1"; // Siempre volver a la página 1 al aplicar filtros de búsqueda
+        loadAjax(buildURL());
+    });
+    
+    // 2. Búsqueda mientras escribe (opcionalmente)
+    // qInput.addEventListener('input', debounce(() => {
+    //     // Si se quiere que el debounce no envíe, este listener se comenta
+    //     // y solo se usa el botón "Aplicar"
+    // }));
+
+    // 3. Cambios en selects (activan el filtro inmediatamente)
+    sortSelect.addEventListener('change', () => {
+        pageInput.value = "1";
+        loadAjax(buildURL());
+    });
+
+    orderSelect.addEventListener('change', () => {
+        pageInput.value = "1";
+        loadAjax(buildURL());
+    });
+
+    perPageSelect.addEventListener('change', () => {
+        pageInput.value = "1"; // Volver a la página 1 si cambia el tamaño de la página
+        loadAjax(buildURL());
+    });
+
+    // 4. Delegación de eventos para Paginación (links con data-ajax-link)
+    results.addEventListener('click', (e) => {
+        const a = e.target.closest('a[data-ajax-link]');
+        if (a){
+            e.preventDefault();
+            loadAjax(a.href);
+            return;
+        }
+    });
+
+})();
+</script>
+{% endblock %}

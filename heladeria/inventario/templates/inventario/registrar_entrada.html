@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white d-flex align-items-center justify-content-between">
+                <h3 class="mb-0">{{ titulo }}</h3>
+                <button id="add-line" type="button" class="btn btn-sm btn-success">
+                    <i class="bi bi-plus-circle"></i> Agregar Línea
+                </button>
+            </div>
+
+            <div class="card-body">
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    {{ formset.management_form }}
+                    
+                    {# MUESTRA ERRORES GLOBALES #}
+                    {% if formset.non_form_errors %}
+                        <div class="alert alert-danger">
+                            <strong>Errores Generales:</strong>
+                            <ul>
+                                {% for error in formset.non_form_errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    {% endif %}
+
+                    <div id="formset-body">
+                        {% for f in formset %}
+                            {# Usa el partial específico para Entrada #}
+                            {% include "inventario/partials/entrada_linea_form.html" with form=f prefix=forloop.counter0 %}
+                        {% endfor %}
+                    </div>
+
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{% url 'inventario:listar_movimientos' %}" class="btn btn-secondary">Cancelar</a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-save"></i> Registrar Entrada
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+
+{% comment %} Script de gestión simple (añadir/eliminar líneas) {% endcomment %}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const formsetBody = document.getElementById('formset-body');
+    const addLineBtn = document.getElementById('add-line');
+    const totalForms = document.getElementById('id_form-TOTAL_FORMS');
+    
+    // Contenido de la plantilla para una nueva línea (debe apuntar al partial)
+    const emptyFormTpl = `
+        <div class="card mb-3 movimiento-card border-success">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 text-success">Nueva Línea de Entrada</h6>
+                <div class="delete-controls">
+                    <input type="hidden" name="form-__prefix__-id" id="id_form-form-__prefix__-id">
+                    <input type="hidden" name="form-__prefix__-DELETE" id="id_form-form-__prefix__-DELETE">
+                    <button type="button" class="btn btn-sm btn-outline-danger del-line" title="Eliminar línea">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+            {% include "inventario/partials/entrada_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
+        </div>
+    `;
+
+    // Lógica para agregar línea
+    addLineBtn.addEventListener('click', function() {
+        const index = parseInt(totalForms.value, 10);
+        const newFormHtml = emptyFormTpl.replace(/__prefix__/g, index);
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = newFormHtml.trim();
+        const newRow = tempDiv.firstChild;
+        
+        formsetBody.appendChild(newRow);
+        totalForms.value = index + 1;
+    });
+
+    // Delegación para eliminar líneas
+    formsetBody.addEventListener('click', (e) => {
+        const delBtn = e.target.closest('.del-line');
+        if (delBtn) {
+            const row = delBtn.closest('.movimiento-card');
+            const deleteInput = row.querySelector('[name$="-DELETE"]');
+            
+            if (deleteInput) {
+                deleteInput.checked = true;
+                row.style.display = 'none';
+            }
+        }
+    });
+});
+</script>
+{% endblock extra_js %}

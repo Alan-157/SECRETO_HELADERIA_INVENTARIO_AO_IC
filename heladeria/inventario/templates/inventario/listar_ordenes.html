@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h3 class="mb-0">{{ titulo }}</h3>
+  {% if not read_only %}
+    <a href="{% url 'inventario:crear_orden' %}" class="btn btn-primary">
+      + Nueva orden
+    </a>
+  {% endif %}
+</div>
+
+<form id="filtros" class="row g-2 align-items-center mb-3" method="get">
+  <div class="col-12 col-md">
+    <input class="form-control"
+           type="text"
+           name="q"
+           value="{{ q|default_if_none:'' }}"
+           placeholder="Buscar por creador (nombre o correo)…">
+  </div>
+
+  <div class="col-auto">
+    <select class="form-select" name="estado">
+      <option value="">Todos los estados</option>
+      {% for e in ESTADOS_ORDEN %}
+        <option value="{{ e }}" {% if estado == e %}selected{% endif %}>
+          {{ e|title|cut:"_" }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-auto">
+    <select class="form-select" name="sort">
+      <option value="">Ordenar por…</option>
+      <option value="id"        {% if sort == 'id' %}selected{% endif %}>ID</option>
+      <option value="fecha"     {% if sort == 'fecha' %}selected{% endif %}>Fecha</option>
+      <option value="estado"    {% if sort == 'estado' %}selected{% endif %}>Estado</option>
+      <option value="usuario"   {% if sort == 'usuario' %}selected{% endif %}>Creador</option>
+      <option value="creado"    {% if sort == 'creado' %}selected{% endif %}>Creado</option>
+      <option value="actualizado" {% if sort == 'actualizado' %}selected{% endif %}>Actualizado</option>
+    </select>
+  </div>
+
+  <div class="col-auto">
+    <select class="form-select" name="order">
+      <option value="asc"  {% if order != 'desc' %}selected{% endif %}>Asc</option>
+      <option value="desc" {% if order == 'desc' %}selected{% endif %}>Desc</option>
+    </select>
+  </div>
+
+  <div class="col-auto">
+    <select class="form-select" name="per_page">
+      <option value="10"  {% if per_page == 10 %}selected{% endif %}>10</option>
+      <option value="25"  {% if per_page == 25 %}selected{% endif %}>25</option>
+      <option value="50"  {% if per_page == 50 %}selected{% endif %}>50</option>
+      <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+    </select>
+  </div>
+
+  <input type="hidden" name="page" id="page-input" value="{{ ordenes.number }}">
+</form>
+
+<div id="list-container">
+  {% include "inventario/partials/ordenes_results.html" %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const form      = document.getElementById('filtros');
+  const container = document.getElementById('list-container');
+  const pageInput = document.getElementById('page-input');
+
+  const buildURL = () => {
+    const params = new URLSearchParams(new FormData(form));
+    return `${location.pathname}?${params.toString()}`;
+  };
+
+  async function loadAjax(url){
+    try{
+      const resp = await fetch(url, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      container.innerHTML = data.html;
+      history.replaceState({}, '', url);
+    }catch(err){
+      console.error('Error AJAX órdenes:', err);
+    }
+  }
+
+  const debounce = (fn, ms = 350) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  };
+
+  // Buscar mientras escribe
+  const qInput = form.querySelector('input[name="q"]');
+  qInput.addEventListener('input', debounce(() => {
+    pageInput.value = '1';
+    loadAjax(buildURL());
+  }));
+
+  // Cambios en selects (estado, sort, order, per_page)
+  form.querySelectorAll('select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      pageInput.value = '1';
+      loadAjax(buildURL());
+    });
+  });
+
+  // Delegación en el contenedor: paginación, eliminar, cambio de estado
+  container.addEventListener('click', (e) => {
+    // Paginación AJAX
+    const a = e.target.closest('a[data-ajax-link]');
+    if (a){
+      e.preventDefault();
+      loadAjax(a.href);
+      return;
+    }
+
+    // Eliminar orden (submit normal, solo confirmación)
+    const delBtn = e.target.closest('button[data-delete-orden]');
+    if (delBtn){
+      const f = delBtn.closest('form');
+      if (f && confirm('¿Eliminar esta orden?')){
+        f.submit();
+      }
+    }
+  });
+
+  // Cambio de estado por AJAX (form[data-ajax-form])
+  container.addEventListener('submit', async (e) => {
+    const f = e.target.closest('form[data-ajax-form]');
+    if (!f) return;
+    e.preventDefault();
+
+    const formData = new FormData(f);
+    try{
+      const resp = await fetch(f.action, {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!resp.ok) return;
+
+      // Después de cambiar estado, recargamos la lista con filtros actuales
+      await loadAjax(buildURL());
+    }catch(err){
+      console.error('Error al cambiar estado de la orden:', err);
+    }
+  });
+})();
+</script>
+{% endblock %}

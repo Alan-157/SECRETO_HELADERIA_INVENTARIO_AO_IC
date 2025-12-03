@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    
+    {# HEADER Y BOTÓN NUEVO MOVIMIENTO (DROPDOWN) #}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0">{{ titulo }}</h3>
+
+        {% if can_manage %}
+            <div class="dropdown">
+                <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-plus-lg"></i> Nuevo Movimiento
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                        <a class="dropdown-item text-success" href="{% url 'inventario:registrar_entrada' %}">
+                            <i class="bi bi-box-arrow-in-down"></i> Registrar Entrada
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="{% url 'inventario:registrar_salida' %}">
+                            <i class="bi bi-box-arrow-up"></i> Registrar Salida
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+
+    {# INICIO: ESTRUCTURA DE PESTAÑAS (TABS) #}
+    <div class="card shadow-sm">
+        <div class="card-header p-0">
+            <ul class="nav nav-tabs card-header-tabs" id="movimientosTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="entrada-tab" data-bs-toggle="tab" data-bs-target="#entrada-pane" type="button" role="tab" aria-controls="entrada-pane" aria-selected="true">
+                        Entradas ({{ entradas.paginator.count }})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="salida-tab" data-bs-toggle="tab" data-bs-target="#salida-pane" type="button" role="tab" aria-controls="salida-pane" aria-selected="false">
+                        Salidas ({{ salidas.paginator.count }})
+                    </button>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <div class="tab-content" id="movimientosTabContent">
+                
+                {# PESTAÑA 1: ENTRADAS #}
+                <div class="tab-pane fade show active" id="entrada-pane" role="tabpanel" aria-labelledby="entrada-tab" tabindex="0">
+                    {# El error se debía a la falta de este parcial #}
+                    {% include "inventario/partials/entradas_table.html" with movimientos=entradas %}
+                </div>
+
+                {# PESTAÑA 2: SALIDAS #}
+                <div class="tab-pane fade" id="salida-pane" role="tabpanel" aria-labelledby="salida-tab" tabindex="0">
+                    {% include "inventario/partials/salidas_table.html" with movimientos=salidas %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {# FIN: ESTRUCTURA DE PESTAÑAS (TABS) #}
+
+</div>
+{% endblock content %}

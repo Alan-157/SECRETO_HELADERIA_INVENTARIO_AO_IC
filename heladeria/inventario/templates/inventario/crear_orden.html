@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+    <h3 class="mb-0">{{ titulo }}</h3>
+
+    <!-- Botón agregar fila -->
+    <button type="button" id="add-row" class="btn btn-sm btn-outline-primary">
+      + Agregar ítem
+    </button>
+  </div>
+
+  <div class="card-body">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {{ formset.management_form }}
+
+      {% if formset.non_form_errors %}
+      <div class="alert alert-danger">
+        {% for error in formset.non_form_errors %}
+          <div>{{ error }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <p class="text-muted">Completa las filas necesarias. Las filas vacías se ignorarán.</p>
+
+      <div class="table-responsive">
+        <table class="table table-bordered align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:60%">Insumo</th>
+              <th style="width:40%">Cantidad solicitada</th>
+            </tr>
+          </thead>
+
+          <tbody id="formset-body">
+            {% for form in formset %}
+            <tr class="form-row">
+              <td>
+                {{ form.insumo }}
+                {% for e in form.insumo.errors %}
+                  <div class="text-danger small mt-1">{{ e }}</div>
+                {% endfor %}
+              </td>
+              <td>
+                {{ form.cantidad_solicitada }}
+                {% for e in form.cantidad_solicitada.errors %}
+                  <div class="text-danger small mt-1">{{ e }}</div>
+                {% endfor %}
+              </td>
+
+              <!-- hidden fields de la fila -->
+              {% for hidden in form.hidden_fields %}
+                {{ hidden }}
+              {% endfor %}
+            </tr>
+
+            {% if form.non_field_errors %}
+            <tr>
+              <td colspan="2" class="text-danger small">
+                {{ form.non_field_errors }}
+              </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <hr>
+
+      <div class="d-flex justify-content-end gap-2">
+        <a href="{% url 'inventario:listar_ordenes' %}" class="btn btn-secondary">Cancelar</a>
+        <button type="submit" class="btn btn-primary">Guardar Orden</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Template fila vacía -->
+<script type="text/template" id="empty-form-template">
+  <tr class="form-row">
+    <td>
+      {{ formset.empty_form.insumo }}
+    </td>
+    <td>
+      {{ formset.empty_form.cantidad_solicitada }}
+    </td>
+    {% for hidden in formset.empty_form.hidden_fields %}
+      {{ hidden }}
+    {% endfor %}
+  </tr>
+</script>
+
+<script>
+(() => {
+  const prefix = "{{ formset.prefix }}"; 
+  const totalEl = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
+  const tbody = document.getElementById("formset-body");
+  const tpl = document.getElementById("empty-form-template").innerHTML;
+
+  document.getElementById("add-row").addEventListener("click", () => {
+    const index = parseInt(totalEl.value);
+
+    const html = tpl.replace(/__prefix__/g, index);
+    const wrapper = document.createElement("tbody");
+    wrapper.innerHTML = html.trim();
+
+    const row = wrapper.firstElementChild;
+
+    // limpiar valores iniciales
+    row.querySelectorAll("input, select").forEach(el => {
+      if (el.tagName === "INPUT") el.value = "";
+      if (el.tagName === "SELECT") el.selectedIndex = 0;
+    });
+
+    tbody.appendChild(row);
+    totalEl.value = index + 1;
+  });
+})();
+</script>
+{% endblock %}

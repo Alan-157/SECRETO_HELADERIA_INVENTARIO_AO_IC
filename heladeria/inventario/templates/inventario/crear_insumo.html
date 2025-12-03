@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <h3 class="mb-3">{{ titulo }}</h3>
+        
+        <div class="card shadow">
+            <div class="card-body">
+                <form method="post" novalidate id="insumo-form">
+                    {% csrf_token %}
+                    
+                    {% for field in form %}
+                        
+                        {# ESTRUCTURA PARA EL CAMPO UNIDAD DE MEDIDA (ForeignKey) #}
+                        {% if field.name == 'unidad_medida' %}
+                            <div class="mb-3">
+                                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                                <div class="input-group">
+                                    {{ field }}
+                                    
+                                    <button type="button" class="btn btn-outline-warning" 
+                                            id="edit-unidad-btn" title="Editar Unidad de Medida seleccionada" 
+                                            data-bs-toggle="modal" data-bs-target="#unidadMedidaModal" disabled>
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    
+                                    <button type="button" class="btn btn-outline-danger" 
+                                            id="delete-unidad-btn" title="Eliminar Unidad de Medida seleccionada" disabled>
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+
+                                    <button type="button" class="btn btn-outline-primary" 
+                                            id="create-unidad-btn" data-bs-toggle="modal" data-bs-target="#unidadMedidaModal" 
+                                            title="Crear nueva Unidad de Medida">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </div>
+                                {% for error in field.errors %}
+                                    <div class="alert alert-danger p-1 mt-1 small">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        
+                        {# ESTRUCTURA PARA EL RESTO DE CAMPOS (Incluye Stock Min/Max) #}
+                        {% else %}
+                            <div class="mb-3">
+                                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                                {% for error in field.errors %}
+                                    <div class="alert alert-danger p-1 mt-1 small">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        
+                    {% endfor %}
+                    
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-secondary">Cancelar</a>
+                        
+                        <button class="btn btn-success" type="submit">
+                            <i class="bi bi-save"></i> Guardar Insumo
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="unidadMedidaModal" tabindex="-1" aria-labelledby="unidadMedidaModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="unidadMedidaModalLabel">Crear Nueva Unidad de Medida</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="unidad-form" method="post" action="{% url 'inventario:crear_unidad_medida_ajax' %}">
+            {% csrf_token %}
+            
+            {# Renderizar el formulario de la Unidad de Medida #}
+            {% for field in UnidadMedidaForm %} 
+                <div class="mb-3">
+                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                    {{ field }}
+                </div>
+            {% endfor %}
+
+            <div id="unidad-errors" class="alert alert-danger d-none"></div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        <button type="button" class="btn btn-primary" id="save-unidad-btn">Guardar Unidad</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const saveCreateBtn = document.getElementById('save-unidad-btn');
+    const createBtn = document.getElementById('create-unidad-btn');
+    const editBtn = document.getElementById('edit-unidad-btn');
+    const deleteBtn = document.getElementById('delete-unidad-btn');
+    const selectUnidad = document.getElementById('id_unidad_medida');
+    const modalElement = document.getElementById('unidadMedidaModal');
+    const modal = new bootstrap.Modal(modalElement);
+    const form = document.getElementById('unidad-form');
+    const errorDiv = document.getElementById('unidad-errors');
+
+    // URLs base
+    const urlCrear = "{% url 'inventario:crear_unidad_medida_ajax' %}";
+    const urlEditarBase = "{% url 'inventario:editar_unidad_medida_ajax' 0 %}";
+    const urlEliminarBase = "{% url 'inventario:eliminar_unidad_medida_ajax' 0 %}";
+
+
+    // Función para activar/desactivar botones de edición/eliminación
+    function toggleEditDeleteButtons() {
+        const pk = selectUnidad.value;
+        const disabled = !pk || pk === '';
+        editBtn.disabled = disabled;
+        deleteBtn.disabled = disabled;
+    }
+    
+    // Inicializar y escuchar el cambio en el select
+    toggleEditDeleteButtons();
+    selectUnidad.addEventListener('change', toggleEditDeleteButtons);
+
+    // 1. Lógica para manejar el Modal antes de abrirlo (Crear vs. Editar)
+    modalElement.addEventListener('show.bs.modal', function(event) {
+        // Obtener el botón que disparó el modal (createBtn o editBtn)
+        const button = event.relatedTarget; 
+        
+        // Limpiar formulario y errores
+        form.reset();
+        document.querySelectorAll('#unidad-form .text-danger').forEach(el => el.remove());
+        errorDiv.classList.add('d-none');
+
+        if (button.id === 'create-unidad-btn') {
+            // MODO CREAR
+            form.action = urlCrear;
+            document.querySelector('#unidadMedidaModalLabel').textContent = 'Crear Nueva Unidad de Medida';
+        } else if (button.id === 'edit-unidad-btn') {
+            // MODO EDITAR: Cargar datos y usar URL de edición
+            const pk = selectUnidad.value;
+            const unitText = selectUnidad.options[selectUnidad.selectedIndex].text;
+            
+            // Reconstruir la URL de edición con el PK y establecer acción
+            form.action = urlEditarBase.replace('0', pk);
+            document.querySelector('#unidadMedidaModalLabel').textContent = `Editar Unidad: ${unitText}`;
+
+            // Cargar datos actuales en los campos del modal (Parsing del formato '__str__')
+            const parts = unitText.match(/\((.*?)\)$/); // Extrae el código corto (KG)
+            const nombreCorto = parts ? parts[1] : '';
+            const nombreLargo = unitText.replace(` (${nombreCorto})`, '').trim();
+
+            document.getElementById('id_nombre_largo').value = nombreLargo;
+            document.getElementById('id_nombre_corto').value = nombreCorto;
+        }
+    });
+
+    // 2. Lógica AJAX para Guardar (Crear y Editar)
+    saveCreateBtn.addEventListener('click', function() {
+        const formData = new FormData(form);
+        const url = form.action;
+
+        // Limpiar errores previos
+        document.querySelectorAll('#unidad-form .text-danger').forEach(el => el.remove());
+        errorDiv.classList.add('d-none');
+        
+        fetch(url, {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-CSRFToken': formData.get('csrfmiddlewaretoken') }
+        })
+        .then(response => response.json().then(data => {
+            if (response.ok) {
+                // Éxito: Actualizar/Añadir el select y seleccionar el nuevo valor
+                const newOption = new Option(data.text, data.id, true, true);
+                
+                // Si es Edición, removemos la vieja opción para actualizarla
+                if (url !== urlCrear) {
+                    selectUnidad.remove(selectUnidad.selectedIndex);
+                }
+                selectUnidad.add(newOption);
+                
+                Swal.fire("Guardado", `Unidad "${data.text}" guardada con éxito.`, "success");
+                form.reset();
+                modal.hide();
+
+            } else {
+                // Error: Mostrar errores de validación
+                errorDiv.classList.remove('d-none');
+                
+                let errorHtml = '';
+                const errors = data.errors;
+                
+                // Asume que el JSON de errores sigue el formato de Django {field: [{message: "..."}]}
+                for (let fieldName in errors) {
+                    const fieldErrors = JSON.parse(errors[fieldName]); 
+                    const fieldInput = document.getElementById(`id_${fieldName}`);
+                    
+                    fieldErrors.forEach(err => {
+                        const errorMessage = err.message || JSON.stringify(err);
+                        errorHtml += `<li>${errorMessage}</li>`;
+                        if(fieldInput) {
+                            fieldInput.insertAdjacentHTML('afterend', `<div class="text-danger small mt-1">${errorMessage}</div>`);
+                        }
+                    });
+                }
+                errorDiv.innerHTML = `<ul>${errorHtml}</ul>`;
+            }
+        }))
+        .catch(error => {
+            Swal.fire("Error", "Error de conexión o del servidor.", "error");
+        });
+    });
+
+    // 3. Lógica AJAX para Eliminar
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', function() {
+            const pk = selectUnidad.value;
+            const unitText = selectUnidad.options[selectUnidad.selectedIndex].text;
+            
+            if (!pk) return;
+            
+            Swal.fire({
+                title: "¿Estás seguro?",
+                text: `Se eliminará la unidad: ${unitText}. Si está en uso, la eliminación fallará.`,
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonColor: "#d33",
+                cancelButtonColor: "#6c757d",
+                confirmButtonText: "Sí, eliminar",
+                cancelButtonText: "Cancelar"
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const url = urlEliminarBase.replace('0', pk);
+                    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                    
+                    fetch(url, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrfToken }
+                    })
+                    .then(response => response.json().then(data => {
+                        if (response.ok) {
+                            selectUnidad.remove(selectUnidad.selectedIndex);
+                            Swal.fire("Eliminado", data.message, "success");
+                            selectUnidad.value = selectUnidad.options[0].value;
+                            toggleEditDeleteButtons();
+                        } else {
+                            Swal.fire("Error", data.message || "No se pudo completar la eliminación.", "error");
+                        }
+                    }))
+                    .catch(() => Swal.fire("Error", "Error de conexión con el servidor.", "error"));
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock extra_js %}

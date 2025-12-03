@@ -1,0 +1,59 @@
+<table class="table table-striped table-bordered table-sm mb-3">
+  <thead class="table-success">
+    <tr>
+      <th style="width: 10%;">Fecha</th>      
+      <th>Insumo</th>                       
+      <th style="width: 8%;">Cantidad</th>     
+      <th style="width: 12%;">Ubicación</th>    
+      <th style="width: 12%;">Fecha Exp.</th>   
+      <th style="width: 18%;">Usuario</th>      
+      <th style="width: 20%;" class="text-center">Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for mov in movimientos %}
+    <tr>
+      <td>{{ mov.fecha|date:"d M Y" }}</td>
+      <td>{{ mov.insumo.nombre }}</td>
+      <td>{{ mov.cantidad|floatformat:0 }}</td> 
+      <td>{{ mov.ubicacion.nombre }}</td>
+      
+      <td>
+        {% if mov.insumo_lote and mov.insumo_lote.fecha_expiracion %}
+          {{ mov.insumo_lote.fecha_expiracion|date:"d M Y" }}
+        {% else %}
+          —
+        {% endif %}
+      </td>
+      <td>{{ mov.usuario.name|default:mov.usuario.email }}</td>
+      
+      {# CELDA DE ACCIONES #}
+      <td class="text-center">
+        {% if can_manage %}
+          <div class="d-flex justify-content-center gap-1"> 
+            
+            {% comment %} FUNCIONALIDAD DE EDICIÓN TEMPORALMENTE DESHABILITADA POR ERROR DE INCONSISTENCIA DE DATOS HISTÓRICOS {% endcomment %}
+            <a href="{% url 'inventario:editar_entrada' mov.pk %}" class="btn btn-sm btn-outline-warning" title="Editar Entrada">
+              <i class="bi bi-pencil"></i> Editar
+            </a> 
+            
+            <form method="post" action="{% url 'inventario:eliminar_entrada' mov.pk %}" class="d-inline">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-sm btn-outline-danger" data-delete-form title="Eliminar Entrada">
+                <i class="bi bi-trash"></i> Eliminar
+              </button>
+            </form>
+          </div>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7" class="text-center text-muted py-3">No hay entradas registradas.</td></tr> 
+    {% endfor %}
+  </tbody>
+</table>
+
+{# Lógica de Paginación para Entradas #}
+{% if movimientos.has_other_pages %}
+  {% include "inventario/partials/pagination.html" with page_obj=movimientos %}
+{% endif %}

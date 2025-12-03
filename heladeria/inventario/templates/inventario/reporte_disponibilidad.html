@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ titulo|default:"Reporte de Disponibilidad" }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12 col-xxl-10 mx-auto">
+
+      <div class="card mb-4">
+        <div class="card-body">
+          <h4 class="mb-3">{{ titulo|default:"Reporte de Disponibilidad de Insumos" }}</h4>
+          <p class="text-muted mb-4">
+            Configura los filtros y columnas. Lo que ves es lo que se exporta.
+          </p>
+
+          <!-- ALERTA AJAX -->
+          <div id="alert-filtros" class="alert alert-success py-2 px-3 d-none" role="alert">
+            ✔ Filtros y columnas actualizados.
+          </div>
+
+          <form id="filtros-form" class="row g-3" method="get" action="">
+
+            <!-- INSUMOS -->
+            <div class="col-12 col-lg-6">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <h6 class="mb-0">Selecciona insumos</h6>
+                <div class="d-flex gap-2">
+                  <button id="btn-select-all" type="button" class="btn btn-sm btn-outline-primary">
+                    Seleccionar todos
+                  </button>
+                  <button id="btn-clear" type="button" class="btn btn-sm btn-outline-secondary">
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+
+              <!-- Buscador y paginación local de insumos -->
+              <div class="mb-2 d-flex flex-wrap gap-2 align-items-center">
+                <div class="flex-grow-1">
+                  <input type="text"
+                         id="insumo-search"
+                         class="form-control form-control-sm"
+                         placeholder="Buscar insumo...">
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <label for="insumos-per-page" class="small mb-0">Mostrar</label>
+                  <select id="insumos-per-page" class="form-select form-select-sm" style="width: 80px;">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="20">20</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Cuadro de seleccionados -->
+              <label class="form-label small mb-1">Insumos seleccionados</label>
+              <div id="selected-insumos"
+                   class="form-control form-control-sm mb-2"
+                   style="min-height: 3rem; max-height: 96px; overflow:auto;">
+                <!-- badges dinámicos -->
+              </div>
+
+              <!-- Lista total (paginada en front) -->
+              <div class="border rounded p-2" style="max-height: 320px; overflow:auto;">
+                {% if all_insumo_names %}
+                  <div id="insumo-list">
+                    {% for nombre in all_insumo_names %}
+                      <div class="form-check insumo-item" data-nombre="{{ nombre|lower }}">
+                        <input class="form-check-input insumo-check"
+                               type="checkbox"
+                               value="{{ nombre }}"
+                               id="insumo_{{ forloop.counter }}"
+                               name="insumo"
+                               {% if selected_insumos and nombre in selected_insumos %}checked{% endif %}>
+                        <label class="form-check-label" for="insumo_{{ forloop.counter }}">
+                          {{ nombre }}
+                        </label>
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="text-muted small">No hay insumos disponibles.</div>
+                {% endif %}
+              </div>
+
+              <!-- Controles de página local para insumos -->
+              <div class="d-flex justify-content-between align-items-center mt-2 small">
+                <div id="insumo-page-info" class="text-muted">
+                  <!-- se completa por JS -->
+                </div>
+                <div class="btn-group btn-group-sm" role="group">
+                  <button id="insumo-prev" type="button" class="btn btn-outline-secondary">
+                    « Anterior
+                  </button>
+                  <button id="insumo-next" type="button" class="btn btn-outline-secondary">
+                    Siguiente »
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- COLUMNAS -->
+            <div class="col-12 col-lg-6">
+              <h6 class="mb-2">Columnas</h6>
+              <div class="row row-cols-1 row-cols-sm-2 g-2">
+                <div class="col">
+                  <div class="form-check">
+                    <input class="form-check-input col-switch"
+                           type="checkbox"
+                           id="show_stock_total"
+                           name="show_stock_total"
+                           {% if show_stock_total %}checked{% endif %}>
+                    <label class="form-check-label" for="show_stock_total">
+                      Stock total
+                    </label>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="form-check">
+                    <input class="form-check-input col-switch"
+                           type="checkbox"
+                           id="show_precio_unitario"
+                           name="show_precio_unitario"
+                           {% if show_precio_unitario %}checked{% endif %}>
+                    <label class="form-check-label" for="show_precio_unitario">
+                      Precio unitario
+                    </label>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="form-check">
+                    <input class="form-check-input col-switch"
+                           type="checkbox"
+                           id="show_prox_venc"
+                           name="show_prox_venc"
+                           {% if show_prox_venc %}checked{% endif %}>
+                    <label class="form-check-label" for="show_prox_venc">
+                      Próx. vencimiento
+                    </label>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="form-check">
+                    <input class="form-check-input col-switch"
+                           type="checkbox"
+                           id="show_lotes"
+                           name="show_lotes"
+                           {% if show_lotes %}checked{% endif %}>
+                    <label class="form-check-label" for="show_lotes">
+                      Lotes
+                    </label>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="form-check">
+                    <input class="form-check-input col-switch"
+                           type="checkbox"
+                           id="show_categorias"
+                           name="show_categorias"
+                           {% if show_categorias %}checked{% endif %}>
+                    <label class="form-check-label" for="show_categorias">
+                      Categoría
+                    </label>
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="form-check">
+                    <input class="form-check-input col-switch"
+                           type="checkbox"
+                           id="show_precio_acum"
+                           name="show_precio_acum"
+                           {% if show_precio_acum %}checked{% endif %}>
+                    <label class="form-check-label" for="show_precio_acum">
+                      Precio acumulado
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex gap-2 mt-3">
+                <a href="{{ request.path }}" class="btn btn-outline-secondary">
+                  Restablecer
+                </a>
+              </div>
+
+              <!-- EXPORTAR -->
+              <div class="d-flex gap-2 mt-3">
+                <button type="button"
+                        class="btn btn-outline-secondary export-btn"
+                        data-format="csv">
+                  ⬇️ CSV
+                </button>
+                <button type="button"
+                        class="btn btn-outline-success export-btn"
+                        data-format="xlsx">
+                  ⬇️ Excel
+                </button>
+                <button type="button"
+                        class="btn btn-outline-danger export-btn"
+                        data-format="pdf">
+                  ⬇️ PDF
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- TABLA (se reemplaza vía AJAX) -->
+      <div id="tabla-contenedor">
+        {% include "inventario/partials/reporte_disponibilidad_results.html" %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const form = document.getElementById('filtros-form');
+  const btnAll = document.getElementById('btn-select-all');
+  const btnClear = document.getElementById('btn-clear');
+  const exportBtns = document.querySelectorAll('.export-btn');
+  const alertFiltros = document.getElementById('alert-filtros');
+
+  // --------- SELECCIÓN DE INSUMOS ---------
+  const insumoList = document.getElementById('insumo-list');
+  const insumoSearch = document.getElementById('insumo-search');
+  const perPageSelect = document.getElementById('insumos-per-page');
+  const pageInfo = document.getElementById('insumo-page-info');
+  const btnPrev = document.getElementById('insumo-prev');
+  const btnNext = document.getElementById('insumo-next');
+  const selectedBox = document.getElementById('selected-insumos');
+
+  let currentPage = 1;
+  let perPage = parseInt(perPageSelect?.value || '10', 10);
+
+  function getItems() {
+    return Array.from(
+      insumoList?.querySelectorAll('.insumo-item') || []
+    );
+  }
+
+  function getFilteredItems() {
+    const term = (insumoSearch?.value || '').trim().toLowerCase();
+    const items = getItems();
+    if (!term) return items;
+    return items.filter(it => {
+      const n = it.getAttribute('data-nombre') || '';
+      return n.indexOf(term) !== -1;
+    });
+  }
+
+  function renderInsumoPagination() {
+    const all = getItems();
+    const filtered = getFilteredItems();
+
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / perPage));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+
+    const startIdx = (currentPage - 1) * perPage;
+    const endIdx = startIdx + perPage;
+
+    all.forEach(it => it.classList.add('d-none'));
+    filtered.forEach((it, idx) => {
+      if (idx >= startIdx && idx < endIdx) {
+        it.classList.remove('d-none');
+      }
+    });
+
+    if (pageInfo) {
+      pageInfo.textContent = total
+        ? `Mostrando ${startIdx + 1}-${Math.min(endIdx, total)} de ${total} insumos`
+        : 'Sin insumos';
+    }
+
+    if (btnPrev) btnPrev.disabled = currentPage <= 1;
+    if (btnNext) btnNext.disabled = currentPage >= totalPages;
+  }
+
+  function updateSelectedBox() {
+    if (!selectedBox) return;
+    const checks = form.querySelectorAll('input[name="insumo"]:checked');
+    selectedBox.innerHTML = '';
+
+    if (!checks.length) {
+      selectedBox.innerHTML = '<span class="text-muted small">No hay insumos seleccionados.</span>';
+      return;
+    }
+    checks.forEach(chk => {
+      const badge = document.createElement('span');
+      badge.className = 'badge text-bg-primary me-1 mb-1';
+      badge.textContent = chk.value;
+      selectedBox.appendChild(badge);
+    });
+  }
+
+  // Inicializar seleccionados
+  updateSelectedBox();
+
+  // Eventos selección global
+  btnAll?.addEventListener('click', () => {
+    form.querySelectorAll('input[name="insumo"]').forEach(chk => {
+      chk.checked = true;
+    });
+    updateSelectedBox();
+    submitAjax();
+  });
+
+  btnClear?.addEventListener('click', () => {
+    form.querySelectorAll('input[name="insumo"]').forEach(chk => {
+      chk.checked = false;
+    });
+    updateSelectedBox();
+    submitAjax();
+  });
+
+  // Cambio individual de insumos: actualiza cuadro + tabla
+  form.querySelectorAll('.insumo-check').forEach(chk => {
+    chk.addEventListener('change', () => {
+      updateSelectedBox();
+      submitAjax();
+    });
+  });
+
+  // --------- Paginación / búsqueda local de insumos ---------
+  perPageSelect?.addEventListener('change', () => {
+    perPage = parseInt(perPageSelect.value, 10) || 10;
+    currentPage = 1;
+    renderInsumoPagination();
+  });
+
+  insumoSearch?.addEventListener('input', () => {
+    currentPage = 1;
+    renderInsumoPagination();
+  });
+
+  btnPrev?.addEventListener('click', () => {
+    currentPage--;
+    renderInsumoPagination();
+  });
+
+  btnNext?.addEventListener('click', () => {
+    currentPage++;
+    renderInsumoPagination();
+  });
+
+  renderInsumoPagination();
+
+  // --------- COLUMNAS: disparan AJAX al cambiar ---------
+  document.querySelectorAll('.col-switch').forEach(chk => {
+    chk.addEventListener('change', () => {
+      submitAjax();
+    });
+  });
+
+  // --------- SUBMIT POR AJAX ---------
+  function showAlert() {
+    if (!alertFiltros) return;
+    alertFiltros.classList.remove('d-none');
+    alertFiltros.classList.add('show');
+    setTimeout(() => {
+      alertFiltros.classList.add('d-none');
+      alertFiltros.classList.remove('show');
+    }, 2000);
+  }
+
+  function submitAjax() {
+    if (!form) return;
+    const url = form.getAttribute('action') || window.location.pathname;
+    const fd = new FormData(form);
+    // evitar conflicto con export
+    fd.delete('format');
+
+    const params = new URLSearchParams();
+    for (const [k, v] of fd.entries()) {
+      if (v !== null && v !== '') {
+        params.append(k, v);
+      }
+    }
+
+    fetch(url + '?' + params.toString(), {
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.html !== undefined) {
+          const cont = document.getElementById('tabla-contenedor');
+          if (cont) cont.innerHTML = data.html;
+          showAlert();
+        }
+      })
+      .catch(err => {
+        console.error('Error al actualizar reporte por AJAX', err);
+      });
+  }
+
+  // Submit normal del form -> también AJAX (para botón "Aplicar filtros")
+  form?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    submitAjax();
+  });
+
+  // --------- EXPORTAR (respeta filtros actuales y SIN duplicar "format") ---------
+  exportBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const fd = new FormData(form);
+      fd.delete('format');
+      const params = new URLSearchParams();
+      for (const [k, v] of fd.entries()) {
+        if (v !== null && v !== '') params.append(k, v);
+      }
+      params.append('format', btn.dataset.format);
+      window.location.href = `${location.pathname}?${params.toString()}`;
+    });
+  });
+})();
+</script>
+{% endblock %}
