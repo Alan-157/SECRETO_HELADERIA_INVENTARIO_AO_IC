@@ -135,6 +135,7 @@ def dashboard_view(request):
     ordenes_pendientes_count = OrdenInsumo.objects.filter(estado='PENDIENTE').count()
     visitas = request.session.get('visitas', 0)
     request.session['visitas'] = visitas + 1
+    alertas_activas = AlertaInsumo.objects.filter(is_active=True).order_by('-fecha')
 
     # --- Listas para el Dashboard (Top 5) ---
     top_insumos = Insumo.objects.filter(is_active=True).select_related('categoria', 'unidad_medida').order_by('-created_at')[:5] 
@@ -153,7 +154,8 @@ def dashboard_view(request):
         'top_bodegas': top_bodegas,          
         'top_ordenes': top_ordenes,
         'top_alertas': top_alertas,          # NUEVO
-        'total_alertas': total_alertas,      # NUEVO
+        'total_alertas': total_alertas,
+        'alertas': alertas_activas,# NUEVO
         'visitas': visitas,
     }
     return render(request, 'dashboard.html', context)
@@ -194,6 +196,46 @@ def listar_alertas(request):
             "read_only": read_only,
         },
     )
+
+def check_and_create_alerts(insumo):
+    """
+    Calcula el stock total del insumo y genera alertas si está bajo, sobre o agotado.
+    Elimina las alertas antiguas antes de crear una nueva.
+    """
+    from decimal import Decimal
+    from django.db.models import Sum, DecimalField
+    from django.db.models.functions import Coalesce
+    
+    # Calcular stock actual total
+    total_stock = models.InsumoLote.objects.filter(
+        insumo=insumo,
+        is_active=True # Solo consideramos lotes activos
+    ).aggregate(
+        s=Coalesce(Sum('cantidad_actual'), Decimal('0.00'), output_field=DecimalField())
+    )['s']
+
+    # Eliminar alertas antiguas del mismo insumo para evitar duplicados
+    models.AlertaInsumo.objects.filter(insumo=insumo).delete() 
+
+    # EVALUACIÓN DE CONDICIONES
+    if total_stock <= 0:
+        models.AlertaInsumo.objects.create(
+            insumo=insumo,
+            tipo="SIN_STOCK",
+            mensaje=f"El insumo '{insumo.nombre}' ha agotado su stock ({total_stock:.2f})."
+        )
+    elif total_stock <= insumo.stock_minimo:
+        models.AlertaInsumo.objects.create(
+            insumo=insumo,
+            tipo="STOCK_BAJO",
+            mensaje=f"El insumo '{insumo.nombre}' ({total_stock:.2f}) ha caído por debajo del stock mínimo ({insumo.stock_minimo:.2f})."
+        )
+    elif total_stock > insumo.stock_maximo:
+        models.AlertaInsumo.objects.create(
+            insumo=insumo,
+            tipo="SOBRE_STOCK",
+            mensaje=f"El insumo '{insumo.nombre}' ({total_stock:.2f}) excede el stock máximo permitido ({insumo.stock_maximo:.2f})."
+        )
     
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
@@ -1032,6 +1074,7 @@ def registrar_movimiento(request):
         "orden": orden_obj,
     })'''
 
+
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
@@ -1097,6 +1140,7 @@ def registrar_entrada(request):
                 # ACTUALIZACIÓN DEL LOTE
                 lote.cantidad_actual += cantidad
                 lote.save(update_fields=["cantidad_actual"])
+                check_and_create_alerts(insumo)
                 
             messages.success(request, "✅ Entrada(s) registrada(s) correctamente.")
             return redirect('inventario:listar_movimientos')
@@ -1187,6 +1231,9 @@ def registrar_salida(request):
                 lote.cantidad_actual -= cant
                 lote.save(update_fields=["cantidad_actual"])
                 
+                # 🚨 INTEGRACIÓN ALERTA: Chequea el estado después del movimiento
+                check_and_create_alerts(insumo)
+                
                 # Actualizar cantidad atendida en el detalle
                 if detalle_obj:
                     detalle_obj.cantidad_atendida += cant
@@ -1218,6 +1265,7 @@ def registrar_salida(request):
 def editar_entrada(request, pk):
     # 1. Recuperar la entrada
     entrada = get_object_or_404(models.Entrada, pk=pk)
+    insumo = entrada.insumo
 
     # --- 2. INICIALIZACIÓN DE OBJETOS HISTÓRICOS Y MANEJO DE ERROR ---
     
@@ -1264,6 +1312,9 @@ def editar_entrada(request, pk):
         lote.cantidad_actual += delta
         lote.save(update_fields=["cantidad_actual"])
         form.save()
+        
+        # 🚨 INTEGRACIÓN ALERTA
+        check_and_create_alerts(insumo)
 
         if entrada.detalle_id:
             det = entrada.detalle
@@ -1294,6 +1345,7 @@ def editar_entrada(request, pk):
 @transaction.atomic
 def eliminar_entrada(request, pk):
     entrada = get_object_or_404(Entrada, pk=pk)
+    insumo = entrada.insumo
     
     # Se añade validación para evitar stock negativo al eliminar la entrada
     lote = entrada.insumo_lote
@@ -1312,6 +1364,7 @@ def eliminar_entrada(request, pk):
             det.save(update_fields=["cantidad_atendida"])
             entrada.orden.recalc_estado()
         entrada.delete()
+        check_and_create_alerts(insumo)
         messages.success(request, "Entrada eliminada correctamente.")
         return redirect("inventario:listar_movimientos")
 
@@ -1325,6 +1378,7 @@ def editar_salida(request, pk):
     salida = get_object_or_404(Salida, pk=pk)
     old_qty = Decimal(salida.cantidad)
     lote = salida.insumo_lote
+    insumo = salida.insumo
 
     # REMOVIDA: from .forms import SalidaForm (ahora importada globalmente)
     form = SalidaForm(request.POST or None, instance=salida)
@@ -1341,6 +1395,7 @@ def editar_salida(request, pk):
         lote.cantidad_actual -= delta
         lote.save(update_fields=["cantidad_actual"])
         form.save()
+        check_and_create_alerts(insumo)
         messages.success(request, "Salida modificada correctamente.")
         return redirect("inventario:listar_movimientos")
 
@@ -1362,12 +1417,14 @@ def editar_salida(request, pk):
 @transaction.atomic
 def eliminar_salida(request, pk):
     salida = get_object_or_404(Salida, pk=pk)
+    insumo = salida.insumo
     if request.method == "POST":
         lote = salida.insumo_lote
         # Al eliminar una salida, se revierte el stock
         lote.cantidad_actual += salida.cantidad
         lote.save(update_fields=["cantidad_actual"])
         salida.delete()
+        check_and_create_alerts(insumo)
         messages.success(request, "Salida eliminada correctamente.")
         return redirect("inventario:listar_movimientos")
 
