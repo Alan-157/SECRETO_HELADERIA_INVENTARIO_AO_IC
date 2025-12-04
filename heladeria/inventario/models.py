@@ -19,6 +19,14 @@ ESTADO_ORDEN_CHOICES = [
     ("CANCELADA", "Cancelada"),
 ]
 
+# Nuevo: Definición de Tipos de Alerta
+TIPO_ALERTA_CHOICES = [
+    ("SIN_STOCK", "Sin Stock (Stock = 0)"),
+    ("BAJO_STOCK", "Stock Bajo (Stock < Mínimo)"),
+    ("STOCK_EXCESIVO", "Stock Excesivo (Stock > Máximo)"), # <--- NUEVO
+    ("VENCIMIENTO_PROXIMO", "Próximo a Vencer"),
+]
+
 # --- MODELOS DE CATÁLOGO Y ESTRUCTURA ---
 
 class Categoria(BaseModel):
@@ -231,11 +239,13 @@ class Salida(BaseModel):
 
 # --- ALERTAS DE STOCK ---
 
-class AlertaInsumo(BaseModel):
-    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, related_name="alertas")
-    tipo = models.CharField(max_length=50, default="STOCK_BAJO")
-    mensaje = models.TextField()
-    fecha = models.DateField(auto_now_add=True)
 
-    def __str__(self):
-        return f"Alerta {self.tipo} para {self.insumo.nombre}"
+class AlertaInsumo(BaseModel):
+    insumo = models.ForeignKey(Insumo, on_delete=models.PROTECT, related_name="alertas") #
+    tipo = models.CharField( #
+        max_length=50, 
+        choices=TIPO_ALERTA_CHOICES, # <--- MODIFICADO
+        default="BAJO_STOCK"         # <--- MODIFICADO el default
+    )
+    mensaje = models.TextField() #
+    fecha = models.DateField(auto_now_add=True) #

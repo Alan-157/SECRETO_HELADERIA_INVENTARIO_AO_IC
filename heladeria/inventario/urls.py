@@ -61,4 +61,7 @@ urlpatterns = [
     path('proveedores/crear/', views.crear_proveedor, name='crear_proveedor'),
     path('proveedores/<int:pk>/editar/', views.editar_proveedor, name='editar_proveedor'),
     path('proveedores/<int:pk>/eliminar/', views.eliminar_proveedor, name='eliminar_proveedor'),
+    
+    # URL para AJAX que consulta stock y límites
+    path('ajax/insumo/<int:insumo_id>/stock-info/', views.get_insumo_stock_info, name='get_insumo_stock_info'),
 ]

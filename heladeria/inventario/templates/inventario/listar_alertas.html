@@ -64,7 +64,22 @@
                 <option value="50"  {% if per_page == 50 %}selected{% endif %}>50 por página</option>
             </select>
         </div>
-
+        
+        {# NUEVO: FILTRO MOSTRAR INACTIVAS (CHECKBOX) #}
+        <div class="col-md-1 d-flex align-items-center justify-content-end">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="mostrarInactivasSwitch"
+                    name="mostrar_inactivas" value="1" 
+                    {% if mostrar_inactivas %}checked{% endif %}
+                    onchange="document.getElementById('filters-form').submit();">
+                <label class="form-check-label" for="mostrarInactivasSwitch" title="Mostrar alertas marcadas como revisadas/inactivas.">
+                    Historial
+                </label>
+            </div>
+        </div>
+        
+        {# El hidden field mostrar_inactivas ya no es necesario aquí, la lógica la lleva el switch o se omite si está desmarcado. #}
+        {# Necesitamos el hidden de página para que no vuelva a la página 1 cuando se usan los filtros de arriba #}
         <input type="hidden" name="page" id="page-input" value="{{ alertas.number }}">
     </form>
     {# FIN DEL FORMULARIO #}

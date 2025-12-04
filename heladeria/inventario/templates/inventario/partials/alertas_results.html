@@ -2,6 +2,7 @@
   <thead class="table-dark">
     <tr>
       <th style="width: 15%;">Tipo</th>
+      <th style="width: 10%;">Estado</th>
       <th style="width: 25%;">Insumo</th>
       <th>Mensaje</th>
       <th style="width: 15%;">Fecha</th>
@@ -10,20 +11,42 @@
   </thead>
   <tbody>
     {% for alerta in alertas %}
+    {% with tipo_alerta=alerta.tipo %}
     <tr>
       <td>
-        <span class="badge bg-danger">{{ alerta.tipo }}</span>
+        {# Asignar color al badge según el tipo #}
+        {% if alerta.is_active %}
+            {% if tipo_alerta == 'SIN_STOCK' %}
+                <span class="badge bg-danger">{{ tipo_alerta|default:"N/A" }}</span>
+            {% elif tipo_alerta == 'BAJO_STOCK' or tipo_alerta == 'VENCIMIENTO_PROXIMO' %}
+                <span class="badge bg-warning text-dark">{{ tipo_alerta|default:"N/A" }}</span>
+            {% elif tipo_alerta == 'STOCK_EXCESIVO' %}
+                <span class="badge bg-info text-dark">{{ tipo_alerta|default:"N/A" }}</span>
+            {% else %}
+                <span class="badge bg-secondary">{{ tipo_alerta|default:"N/A" }}</span>
+            {% endif %}
+        {% else %}
+            <span class="badge bg-secondary">{{ tipo_alerta|default:"N/A" }}</span>
+        {% endif %}
+      </td>
+      <td>
+        {# Mostrar estado (Activa / Revisada) #}
+        {% if alerta.is_active %}
+            <span class="badge bg-success">Activa</span>
+        {% else %}
+            <span class="badge bg-dark">Revisada</span>
+        {% endif %}
       </td>
       <td>{{ alerta.insumo.nombre }}</td>
       <td>{{ alerta.mensaje }}</td>
       <td>{{ alerta.fecha|date:"d M Y" }}</td>
       <td class="text-center">
-        {# Asumimos que la acción de eliminar es marcar como revisada #}
-        {% if not read_only %}
+        {# La acción solo se permite si la alerta está activa #}
+        {% if alerta.is_active and not read_only %}
             <form method="post" action="{% url 'inventario:eliminar_alerta' alerta.id %}" class="d-inline">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Marcar como revisada" data-delete-form>
-                    <i class="bi bi-x-circle"></i> Eliminar
+                    <i class="bi bi-x-circle"></i> Revisada
                 </button>
             </form>
         {% else %}
@@ -31,8 +54,9 @@
         {% endif %}
       </td>
     </tr>
+    {% endwith %}
     {% empty %}
-    <tr><td colspan="5" class="text-center text-muted py-3">No hay alertas que coincidan con la búsqueda.</td></tr>
+    <tr><td colspan="6" class="text-center text-muted py-3">No hay alertas que coincidan con la búsqueda.</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -48,7 +72,7 @@
     {% if alertas.has_previous %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ alertas.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+           href="?page={{ alertas.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if mostrar_inactivas %}&mostrar_inactivas=1{% endif %}">
           « Anterior
         </a>
       </li>
@@ -65,7 +89,7 @@
     {% if alertas.has_next %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ alertas.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+           href="?page={{ alertas.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if mostrar_inactivas %}&mostrar_inactivas=1{% endif %}">
           Siguiente »
         </a>
       </li>

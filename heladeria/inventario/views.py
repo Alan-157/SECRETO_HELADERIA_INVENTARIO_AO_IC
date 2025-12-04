@@ -12,6 +12,7 @@ from django.forms import ModelForm, inlineformset_factory
 from django.views.decorators.http import require_POST
 from accounts.services import user_has_role
 from django.contrib.auth.decorators import login_required
+from .services import check_and_create_stock_alerts
 from .models import (
     Insumo, Categoria, Bodega,
     Entrada, Salida, InsumoLote,
@@ -142,8 +143,8 @@ def dashboard_view(request):
     top_ordenes = OrdenInsumo.objects.filter(estado='PENDIENTE').select_related('usuario').order_by('-fecha')[:5] 
     
     # NUEVO: Alertas (Top 5 más recientes)
-    top_alertas = models.AlertaInsumo.objects.all().select_related('insumo').order_by('-fecha')[:5]
-    total_alertas = models.AlertaInsumo.objects.all().count() # Conteo total de alertas
+    top_alertas = models.AlertaInsumo.objects.filter(is_active=True).select_related('insumo').order_by('-fecha')[:5] # MODIFICADO
+    total_alertas = models.AlertaInsumo.objects.filter(is_active=True).count() # MODIFICADO
 
     context = {
         'total_insumos': total_insumos,
@@ -158,19 +159,28 @@ def dashboard_view(request):
     }
     return render(request, 'dashboard.html', context)
 
-@login_required
-@perfil_required(allow=("administrador", "Encargado"))
+# heladeria/inventario/views.py (Modificando listar_alertas)
+
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 def listar_alertas(request):
     """
     Listado de alertas con filtros y paginación.
+    Permite ver el historial de alertas (inactivas).
     """
+    
+    # NUEVO: Filtro para mostrar todas (activas e inactivas)
+    mostrar_inactivas = request.GET.get("mostrar_inactivas", "0") == "1"
+    
     qs = (
         models.AlertaInsumo.objects.all()
-        .select_related("insumo")
-        .order_by("-fecha", "-created_at") # Nota: Este order_by en el QS base es opcional, la paginación lo sobrescribe.
     )
+    
+    if not mostrar_inactivas:
+        # Si no se pide el historial, se filtra por activas (comportamiento por defecto)
+        qs = qs.filter(is_active=True)
+    
+    qs = qs.select_related("insumo").order_by("-fecha", "-created_at")
 
     read_only = not (
         request.user.is_superuser
@@ -181,17 +191,18 @@ def listar_alertas(request):
         request,
         qs,
         search_fields=["insumo__nombre", "tipo", "mensaje"],
-        order_field="fecha", # <-- CORRECCIÓN: Usar solo el nombre del campo
+        order_field="fecha", 
         session_prefix="alertas",
         context_key="alertas",
         full_template="inventario/listar_alertas.html", 
         partial_template="inventario/partials/alertas_results.html", 
         default_per_page=20,
-        default_order="desc", # <-- ESPECIFICAR ORDEN DESCENDENTE AQUÍ
+        default_order="desc", 
         tie_break="id",
         extra_context={
             "titulo": "Alertas de Inventario",
             "read_only": read_only,
+            "mostrar_inactivas": mostrar_inactivas, # <--- Se pasa al contexto para el botón de historial
         },
     )
     
@@ -237,7 +248,7 @@ def eliminar_alerta(request, pk):
         # Opción 2: Eliminación permanente
         # alerta.delete() 
 
-        messages.success(request, f"🗑️ La alerta para '{alerta.insumo.nombre}' ha sido marcada como revisada/eliminada.")
+        messages.success(request, f"La alerta para '{alerta.insumo.nombre}' ha sido marcada como revisada/eliminada.")
         return redirect('inventario:listar_alertas')
     
     # Si es una petición GET, se muestra la plantilla de confirmación
@@ -251,6 +262,77 @@ def eliminar_alerta(request, pk):
             "cancel_url": reverse("inventario:listar_alertas"),
         }
     )
+
+# heladeria/inventario/views.py
+
+# ... (Asegúrate de que estas importaciones existen al inicio del archivo)
+from django.http import JsonResponse 
+from django.db.models import Sum, Q, DecimalField
+from django.db.models.functions import Coalesce
+from decimal import Decimal
+# ...
+
+# --- Función AJAX: Obtener información de stock y límites para un Insumo ---
+
+@login_required
+def get_insumo_stock_info(request, insumo_id):
+    """
+    Retorna en formato JSON el stock actual, stock mínimo y stock máximo 
+    para un insumo dado, usado para asistir al usuario en formularios de movimiento.
+    """
+    try:
+        # 1. Obtener el insumo y calcular el stock actual en una sola consulta
+        insumo = (
+            Insumo.objects.filter(id=insumo_id, is_active=True)
+            .annotate(
+                stock_actual=Coalesce(
+                    Sum('lotes__cantidad_actual', filter=Q(lotes__is_active=True)), 
+                    Decimal("0.00"), 
+                    output_field=DecimalField(max_digits=10, decimal_places=2)
+                )
+            )
+            .select_related('unidad_medida')
+            .get()
+        )
+        
+        # 2. Determinar el mensaje de ayuda (simulación de inteligencia)
+        current_stock = insumo.stock_actual
+        min_stock = insumo.stock_minimo
+        max_stock = insumo.stock_maximo
+        unidad_corto = insumo.unidad_medida.nombre_corto
+
+        mensaje_ayuda = ""
+
+        if current_stock < min_stock:
+            cantidad_sugerida = max_stock - current_stock
+            mensaje_ayuda = (
+                f"🚨 **Stock Bajo**: {current_stock:.2f} {unidad_corto}. "
+                f"Sugerencia: Entrar **{cantidad_sugerida:.2f}** {unidad_corto} para alcanzar el máximo ({max_stock:.2f})."
+            )
+        elif current_stock > max_stock:
+            cantidad_sugerida = current_stock - max_stock
+            mensaje_ayuda = (
+                f"⚠️ **Stock Excesivo**: {current_stock:.2f} {unidad_corto}. "
+                f"Sugerencia: Salir **{cantidad_sugerida:.2f}** {unidad_corto} para volver al máximo ({max_stock:.2f})."
+            )
+        else:
+            mensaje_ayuda = f"✅ **Stock OK**: {current_stock:.2f} {unidad_corto}. Rango óptimo: {min_stock:.2f} - {max_stock:.2f}."
+
+
+        return JsonResponse({
+            'success': True,
+            'stock_actual': float(current_stock),
+            'stock_minimo': float(min_stock),
+            'stock_maximo': float(max_stock),
+            'unidad_medida': unidad_corto,
+            'mensaje_ayuda': mensaje_ayuda,
+        })
+
+    except Insumo.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Insumo no encontrado o inactivo.'}, status=404)
+    except Exception as e:
+        # Manejo genérico de errores (ej. si falta el insumo_id en la URL)
+        return JsonResponse({'success': False, 'message': f'Error interno: {str(e)}'}, status=500)
 
 # --- CRUD INSUMOS ---
 @login_required
@@ -1119,6 +1201,8 @@ def registrar_entrada(request):
                 # ACTUALIZACIÓN DEL LOTE
                 lote.cantidad_actual += cantidad
                 lote.save(update_fields=["cantidad_actual"])
+                #Verificar y actualizar alertas de stock para este insumo
+                check_and_create_stock_alerts(insumo)
                 
             messages.success(request, "✅ Entrada(s) registrada(s) correctamente.")
             return redirect('inventario:listar_movimientos')
@@ -1210,6 +1294,7 @@ def registrar_salida(request):
                 if detalle_obj:
                     detalle_obj.cantidad_atendida += cant
                     detalle_obj.save(update_fields=["cantidad_atendida"])
+                check_and_create_stock_alerts(insumo)
 
 
             # Recalcular el estado de la orden al finalizar

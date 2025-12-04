@@ -1,4 +1,4 @@
-<div class="card mb-3 movimiento-card border-{{ form.errors|yesno:'danger,success' }}">
+<div class="card mb-3 movimiento-card border-{{ form.errors|yesno:'danger,success' }} js-movement-line">
     <div class="card-header bg-light d-flex justify-content-between align-items-center">
         <h6 class="mb-0 text-danger">Nueva Línea de Salida</h6>
         <div class="delete-controls">
@@ -15,7 +15,7 @@
     <div class="card-body">
         
         {# --- SECCIÓN 1: PRODUCTO Y LOTE DE ORIGEN (CRÍTICO) --- #}
-        <div class="row g-3 mb-4 p-3 border rounded bg-light-subtle">
+        <div class="row g-3 mb-2 p-3 border rounded bg-light-subtle">
             <div class="col-md-6">
                 <label class="form-label required small">{{ form.insumo.label }}</label>
                 {{ form.insumo }}
@@ -27,6 +27,16 @@
                 {% for error in form.insumo_lote.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
         </div>
+
+        {# NUEVO: STOCK INFO DISPLAY PARA ASISTENCIA #}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="js-stock-info-display">
+                    <span class="text-muted small">Seleccione un insumo para ver límites de stock y sugerencias.</span>
+                </div>
+            </div>
+        </div>
+        {# FIN ASISTENCIA #}
 
         {# --- SECCIÓN 2: CANTIDAD Y DESTINO --- #}
         <div class="row g-3 mb-3 p-3 border rounded">
