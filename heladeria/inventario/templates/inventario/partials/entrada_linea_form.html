@@ -5,12 +5,16 @@
             {# Campos ocultos de gestión #}
             {{ form.id }}
             {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
-            {# Botón de Eliminar #}
+            {# Botón de Marcar para Eliminar #}
             {% if formset.can_delete %}
-                {{ form.DELETE }} 
-                <button type="button" class="btn btn-sm btn-outline-danger del-line" title="Eliminar línea">
-                    <i class="bi bi-trash"></i>
+                <button type="button" class="btn btn-sm btn-outline-secondary mark-delete-line" title="✓ Marcar para eliminar (se eliminará al guardar)">
+                    <i class="bi bi-check-square"></i> ✓ Marcar
                 </button>
+                <button type="button" class="btn btn-sm btn-outline-danger del-line" title="🗑️ Eliminar línea">
+                    <i class="bi bi-trash"></i> 🗑️
+                </button>
+                {# Campo DELETE oculto #}
+                <div style="display: none;">{{ form.DELETE }}</div>
             {% endif %}
         </div>
     </div>

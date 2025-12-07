@@ -23,20 +23,20 @@
                                     {{ field }}
                                     
                                     <button type="button" class="btn btn-outline-warning" 
-                                            id="edit-unidad-btn" title="Editar Unidad de Medida seleccionada" 
+                                            id="edit-unidad-btn" title="✏️ Editar Unidad de Medida seleccionada" 
                                             data-bs-toggle="modal" data-bs-target="#unidadMedidaModal" disabled>
-                                        <i class="bi bi-pencil"></i>
+                                        <i class="bi bi-pencil"></i> ✏️
                                     </button>
                                     
                                     <button type="button" class="btn btn-outline-danger" 
-                                            id="delete-unidad-btn" title="Eliminar Unidad de Medida seleccionada" disabled>
-                                        <i class="bi bi-trash"></i>
+                                            id="delete-unidad-btn" title="🗑️ Eliminar Unidad de Medida seleccionada" disabled>
+                                        <i class="bi bi-trash"></i> 🗑️
                                     </button>
 
-                                    <button type="button" class="btn btn-outline-primary" 
+                                    <button type="button" class="btn btn-outline-success" 
                                             id="create-unidad-btn" data-bs-toggle="modal" data-bs-target="#unidadMedidaModal" 
-                                            title="Crear nueva Unidad de Medida">
-                                        <i class="bi bi-plus-lg"></i>
+                                            title="➕ Crear nueva Unidad de Medida">
+                                        <i class="bi bi-plus-lg"></i> ➕
                                     </button>
                                 </div>
                                 {% for error in field.errors %}
