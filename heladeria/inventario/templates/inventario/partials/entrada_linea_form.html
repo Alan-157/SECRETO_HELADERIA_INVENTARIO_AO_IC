@@ -29,14 +29,14 @@
                 {% for error in form.ubicacion.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             
-            {# CANTIDAD Y ASISTENCIA DE STOCK #}
+            {# CANTIDAD Y ASISTENCIA DE STOCK (Ajuste de columnas: de 6/6 a 3/3 para caber) #}
             <div class="col-md-3">
                 <label class="form-label required small">{{ form.cantidad.label }}</label>
                 {{ form.cantidad }}
                 {% for error in form.cantidad.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
             </div>
             
-            {# NUEVO: Contenedor para la Asistencia Inteligente #}
+            {# ⚠️ CONTENEDOR DE ASISTENCIA DE STOCK #}
             <div class="col-md-3 d-flex align-items-end"> 
                 <div class="js-stock-info-display w-100">
                     <span class="text-muted small">Seleccione un insumo.</span>

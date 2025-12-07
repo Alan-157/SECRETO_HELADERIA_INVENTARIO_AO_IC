@@ -1,84 +1,100 @@
-<div class="card">
-  <div class="card-body">
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
     {% if categorias and categorias|length %}
       <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead>
-            <tr>
-              {% if show_categorias %}<th>Categoría</th>{% endif %}
-              <th>Insumo</th>
-              <th>Unidad</th>
-              {% if show_precio_unitario %}<th class="text-end">Precio unit.</th>{% endif %}
-              {% if show_stock_total %}<th class="text-end">Stock total</th>{% endif %}
-              {% if show_prox_venc %}<th>Próx. venc.</th>{% endif %}
-              {% if show_precio_acum %}<th class="text-end">Precio acumulado</th>{% endif %}
-            </tr>
-          </thead>
+        <table class="table table-hover align-middle mb-0" style="border-collapse: collapse;">
           <tbody>
             {% for bloque in categorias %}
               {% for i in bloque.insumos %}
-                <tr>
-                  {% if show_categorias %}<td>{{ bloque.categoria.nombre }}</td>{% endif %}
-                  <td>{{ i.nombre }}</td>
-                  <td>{{ i.unidad_medida }}</td>
-                  {% if show_precio_unitario %}
-                    <td class="text-end">{{ i.precio_unitario|default:0 }}</td>
-                  {% endif %}
-                  {% if show_stock_total %}
-                    <td class="text-end">{{ i.stock_total|default:0|floatformat:0 }}</td>
-                  {% endif %}
-                  {% if show_prox_venc %}
-                    <td>
-                      {% if i.prox_vencimiento %}
-                        {{ i.prox_vencimiento|date:"d-m-Y" }}
-                      {% else %}
-                        -
-                      {% endif %}
-                    </td>
-                  {% endif %}
-                  {% if show_precio_acum %}
-                    <td class="text-end">{{ i.precio_acumulado|default:0|floatformat:0 }}</td>
-                  {% endif %}
-                </tr>
-
                 {% if show_lotes and i.lotes_vis %}
-                  <tr class="bg-body-tertiary">
-                    <td colspan="{{ colspan_lotes }}">
-                      <div class="p-2">
-                        <div class="fw-semibold mb-1">Lotes</div>
+                  <tr class="bg-light">
+                    <td colspan="{{ colspan_lotes }}" style="padding: 0; border: none;">
+                      <div style="padding: 20px;">
+                        <!-- Encabezado con nombre e insumo -->
+                        <div style="border-bottom: 2px solid #4472C4; padding-bottom: 12px; margin-bottom: 16px;">
+                          <div style="font-size: 1.2rem; font-weight: 700; color: #1f4e78; margin-bottom: 6px;">{{ i.nombre }}</div>
+                          <div style="font-size: 0.85rem; color: #666;">{{ i.lotes_vis|length }} lote{{ i.lotes_vis|length|pluralize:"s" }} disponible{{ i.lotes_vis|length|pluralize:"s" }}</div>
+                        </div>
+                        
+                        <!-- Detalles del insumo en 2 columnas -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; background-color: #ffffff; padding: 16px; border-radius: 8px; border: 1px solid #e9ecef;">
+                          <div>
+                            {% if show_categorias %}
+                              <div style="margin-bottom: 12px;">
+                                <div style="font-size: 0.75rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px;">Categoría</div>
+                                <div style="font-size: 1rem; font-weight: 600; color: #1f4e78; margin-top: 4px;">{{ bloque.categoria.nombre }}</div>
+                              </div>
+                            {% endif %}
+                            <div>
+                              <div style="font-size: 0.75rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px;">Unidad de Medida</div>
+                              <div style="font-size: 1rem; font-weight: 600; color: #1f4e78; margin-top: 4px;">{{ i.unidad_medida }}</div>
+                            </div>
+                          </div>
+                          
+                          <div>
+                            {% if show_precio_unitario %}
+                              <div style="margin-bottom: 12px;">
+                                <div style="font-size: 0.75rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px;">Precio Unitario</div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #d63031; margin-top: 4px; font-family: 'Courier New', monospace;">${{ i.precio_unitario|default:0|floatformat:2 }}</div>
+                              </div>
+                            {% endif %}
+                            {% if show_stock_total %}
+                              <div>
+                                <div style="font-size: 0.75rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px;">Stock Total</div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #2d5f3f; margin-top: 4px; font-family: 'Courier New', monospace;">{{ i.stock_total|default:0|floatformat:2 }}</div>
+                              </div>
+                            {% endif %}
+                          </div>
+                        </div>
+                        
+                        {% if show_prox_venc %}
+                          <div style="background-color: #fff3cd; padding: 12px; border-radius: 6px; margin-bottom: 16px; border-left: 4px solid #ffc107;">
+                            <div style="font-size: 0.75rem; font-weight: 700; color: #856404; text-transform: uppercase; letter-spacing: 0.5px;">Próximo Vencimiento</div>
+                            <div style="margin-top: 6px;">
+                              {% if i.prox_vencimiento %}
+                                <span class="badge bg-warning text-dark" style="font-size: 0.9rem; padding: 6px 10px;">{{ i.prox_vencimiento|date:"d/m/Y" }}</span>
+                              {% else %}
+                                <span class="badge bg-secondary" style="font-size: 0.9rem; padding: 6px 10px;">Sin vencimiento</span>
+                              {% endif %}
+                            </div>
+                          </div>
+                        {% endif %}
+                        
+                        <!-- Tabla de lotes -->
+                        <div style="font-size: 0.75rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Detalles de Lotes</div>
                         <div class="table-responsive">
-                          <table class="table table-sm mb-0">
-                            <thead>
+                          <table class="table table-sm table-borderless mb-0" style="font-size: 0.9rem;">
+                            <thead style="background-color: #4472C4; color: white;">
                               <tr>
-                                <th>ID</th>
-                                <th>Ingreso</th>
-                                <th>Venc.</th>
-                                <th class="text-end">Cantidad</th>
-                                <th>Bodega</th>
+                                <th style="padding: 10px; font-weight: 600;">ID Lote</th>
+                                <th style="padding: 10px; font-weight: 600;">Ingreso</th>
+                                <th style="padding: 10px; font-weight: 600;">Vencimiento</th>
+                                <th class="text-end" style="padding: 10px; font-weight: 600;">Cantidad</th>
+                                <th style="padding: 10px; font-weight: 600;">Bodega</th>
                               </tr>
                             </thead>
                             <tbody>
                               {% for lote in i.lotes_vis %}
-                                <tr>
-                                  <td>{{ lote.id }}</td>
-                                  <td>
+                                <tr style="border-bottom: 1px solid #e9ecef;">
+                                  <td style="padding: 10px;"><code style="background-color: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-weight: 500;">{{ lote.id }}</code></td>
+                                  <td style="padding: 10px;">
                                     {% if lote.fecha_ingreso %}
-                                      {{ lote.fecha_ingreso|date:"d-m-Y" }}
+                                      {{ lote.fecha_ingreso|date:"d/m/Y" }}
                                     {% else %}
-                                      -
+                                      <span class="text-muted">-</span>
                                     {% endif %}
                                   </td>
-                                  <td>
+                                  <td style="padding: 10px;">
                                     {% if lote.fecha_expiracion %}
-                                      {{ lote.fecha_expiracion|date:"d-m-Y" }}
+                                      <span class="badge bg-danger">{{ lote.fecha_expiracion|date:"d/m/Y" }}</span>
                                     {% else %}
-                                      -
+                                      <span class="badge bg-secondary">Sin venc.</span>
                                     {% endif %}
                                   </td>
-                                  <td class="text-end">
+                                  <td class="text-end" style="padding: 10px; font-weight: 600; font-family: 'Courier New', monospace; color: #2d5f3f;">
                                     {{ lote.cantidad_actual|default:0|floatformat:2 }}
                                   </td>
-                                  <td>{{ lote.bodega.nombre }}</td>
+                                  <td style="padding: 10px;">{{ lote.bodega.nombre }}</td>
                                 </tr>
                               {% endfor %}
                             </tbody>
@@ -88,28 +104,40 @@
                     </td>
                   </tr>
                 {% endif %}
+                
+                <tr style="border-bottom: 1px solid #e9ecef;">
+                  {% if show_categorias %}<td style="padding: 12px; font-weight: 500; color: #1f4e78;">{{ bloque.categoria.nombre }}</td>{% endif %}
+                  <td style="padding: 12px; font-weight: 600;">{{ i.nombre }}</td>
+                  <td class="text-center" style="padding: 12px; font-size: 0.9rem; color: #666;">{{ i.unidad_medida }}</td>
+                  {% if show_precio_unitario %}
+                    <td class="text-end" style="padding: 12px; font-family: 'Courier New', monospace;">${{ i.precio_unitario|default:0|floatformat:2 }}</td>
+                  {% endif %}
+                  {% if show_stock_total %}
+                    <td class="text-end" style="padding: 12px; font-weight: 600; font-family: 'Courier New', monospace; color: #2d5f3f;">{{ i.stock_total|default:0|floatformat:2 }}</td>
+                  {% endif %}
+                  {% if show_prox_venc %}
+                    <td class="text-center" style="padding: 12px;">
+                      {% if i.prox_vencimiento %}
+                        <span class="badge bg-warning text-dark">{{ i.prox_vencimiento|date:"d/m/Y" }}</span>
+                      {% else %}
+                        <span class="text-muted">-</span>
+                      {% endif %}
+                    </td>
+                  {% endif %}
+                  {% if show_precio_acum %}
+                    <td class="text-end" style="padding: 12px; font-family: 'Courier New', monospace; color: #d63031;">{{ i.precio_acumulado|default:0|floatformat:0 }}</td>
+                  {% endif %}
+                </tr>
               {% endfor %}
             {% endfor %}
           </tbody>
-          <tfoot>
-            <tr class="fw-semibold">
-              {% if show_categorias %}<td></td>{% endif %}
-              <td colspan="2">Totales</td>
-              {% if show_precio_unitario %}<td></td>{% endif %}
-              {% if show_stock_total %}
-                <td class="text-end">{{ total_stock|default:0|floatformat:2 }}</td>
-              {% endif %}
-              {% if show_prox_venc %}<td></td>{% endif %}
-              {% if show_precio_acum %}
-                <td class="text-end">{{ total_valor|default:0|floatformat:2 }}</td>
-              {% endif %}
-            </tr>
-          </tfoot>
         </table>
       </div>
     {% else %}
-      <div class="text-center text-muted py-4">
-        No hay resultados con los filtros seleccionados.
+      <div class="text-center text-muted py-5" style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+        <div style="font-size: 3rem; margin-bottom: 12px;">🍦</div>
+        <div style="font-weight: 600; font-size: 1.1rem;">No hay resultados</div>
+        <div style="font-size: 0.9rem; margin-top: 6px;">Intenta seleccionar diferentes filtros o insumos.</div>
       </div>
     {% endif %}
   </div>

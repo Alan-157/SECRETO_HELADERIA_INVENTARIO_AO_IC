@@ -1,5 +1,8 @@
 from datetime import date
 import re
+from django.db.models import Sum, Q, DecimalField
+from decimal import Decimal
+from django.db.models.functions import Coalesce
 from django import forms
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.forms import inlineformset_factory, BaseInlineFormSet, formset_factory
@@ -256,7 +259,13 @@ class EntradaLineaForm(forms.Form):
     )
 
     # Lote y Expiración (Específicos de ENTRADA)
-    proveedor = forms.ModelChoiceField(queryset=Proveedor.objects.filter(estado='ACTIVO'), required=False, label="Proveedor", widget=forms.Select(attrs={"class": "form-select"}))
+    # ⚠️ CORRECCIÓN CLAVE: Proveedor ahora es obligatorio (required=True)
+    proveedor = forms.ModelChoiceField(
+        queryset=Proveedor.objects.filter(estado='ACTIVO'), 
+        required=True, # ⬅️ OBLIGATORIO
+        label="Proveedor", 
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
     fecha_expiracion = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), label="Fecha de expiración")
     
     observaciones = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2, "class": "form-control"}), label="Observaciones")
@@ -265,12 +274,32 @@ class EntradaLineaForm(forms.Form):
         cd = super().clean()
         fexp = cd.get('fecha_expiracion')
         fecha = cd.get('fecha')
+        insumo = cd.get('insumo')
+        cantidad_int = cd.get('cantidad')
+        
+        # ⚠️ CORRECCIÓN 1: CONVERSIÓN CRÍTICA de int a Decimal para el guardado
+        if cantidad_int is not None:
+            cd['cantidad'] = Decimal(cantidad_int)
+        
+        cantidad = cd.get('cantidad') # Obtenemos el Decimal
         
         # Validación de Fecha de Expiración
         if not fexp:
             self.add_error("fecha_expiracion", "La fecha de expiración es requerida para el lote de entrada.")
         if fexp and fecha and fexp < fecha:
             self.add_error("fecha_expiracion", "La fecha de expiración no puede ser anterior a la fecha de entrada.")
+
+        # Validación de Stock Máximo (Si la cantidad es válida)
+        if insumo and cantidad and cantidad > 0:
+            stock_data = insumo.lotes.filter(is_active=True).aggregate(
+                stock_actual=Coalesce(Sum('cantidad_actual'), Decimal("0.00"), output_field=DecimalField())
+            )
+            stock_actual = stock_data['stock_actual']
+            stock_proyectado = stock_actual + cantidad
+
+            if stock_proyectado > insumo.stock_maximo:
+                max_permisible = insumo.stock_maximo - stock_actual
+                self.add_error("cantidad", f"La entrada excede el stock máximo ({int(insumo.stock_maximo)}). Máximo a entrar: {int(max_permisible)}")
 
         return cd
 
@@ -308,17 +337,29 @@ class SalidaLineaForm(forms.Form):
     def clean(self):
         cd = super().clean()
         lote = cd.get('insumo_lote')
+        cant_int = cd.get('cantidad')
+        
+        # ⚠️ CORRECCIÓN 1: CONVERSIÓN CRÍTICA de int a Decimal
+        if cant_int is not None:
+            cd['cantidad'] = Decimal(cant_int)
+        
         cant = cd.get('cantidad')
-
+        
         # Validación de Stock Suficiente
         if lote and cant and cant > lote.cantidad_actual:
             self.add_error("cantidad", f"Stock insuficiente en el lote. Disponible: {lote.cantidad_actual}")
         
         return cd
 
-# --- DEFINICIÓN DE LOS NUEVOS FORMSETS (permanecen igual, solo usan las clases actualizadas) ---
-EntradaLineaFormSet = formset_factory(EntradaLineaForm, extra=1, can_delete=True)
-SalidaLineaFormSet = formset_factory(SalidaLineaForm, extra=1, can_delete=True)
+# --- DEFINICIÓN DE LOS NUEVOS FORMSETS ---
+# extra=0: No agrega formularios vacíos. El usuario usa el botón "Agregar Línea" para añadir.
+EntradaLineaFormSet = formset_factory(EntradaLineaForm, extra=0, can_delete=True)
+SalidaLineaFormSet = formset_factory(SalidaLineaForm, extra=0, can_delete=True)
+
+# --- FORMSETS PARA MOVIMIENTOS (con extra=1 para agregar automáticamente línea) ---
+# Estos se usan cuando accedes desde listar_movimientos SIN pre-cargar insumo
+EntradaLineaFormSetMovimiento = formset_factory(EntradaLineaForm, extra=1, can_delete=True)
+SalidaLineaFormSetMovimiento = formset_factory(SalidaLineaForm, extra=1, can_delete=True)
 
 class EntradaForm(forms.ModelForm):
     # MODIFICADO: De DecimalField a IntegerField (para edición individual)

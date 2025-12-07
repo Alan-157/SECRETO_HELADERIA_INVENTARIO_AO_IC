@@ -20,8 +20,8 @@ def user_has_role(user, *roles):
     try:
         current = (user.active_asignacion.perfil.nombre or "").strip().lower()
     except Exception:
-        name = ""
-        return name in {r.strip().lower() for r in roles}
+        current = ""
+    
     synonyms = {
         "administrador": {"administrador", "admin"},
         "encargado": {"encargado"},

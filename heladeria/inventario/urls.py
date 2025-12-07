@@ -27,6 +27,8 @@ urlpatterns = [
     # --- Creación de Movimientos (NUEVAS VISTAS SEPARADAS) ---
     path("movimientos/entrada/", views.registrar_entrada, name="registrar_entrada"),
     path("movimientos/salida/", views.registrar_salida, name="registrar_salida"),
+    path("movimientos/entrada-movimiento/", views.registrar_entrada_movimiento, name="registrar_entrada_movimiento"),
+    path("movimientos/salida-movimiento/", views.registrar_salida_movimiento, name="registrar_salida_movimiento"),
     
     # --- Edición y Eliminación de Movimientos ---
     path("movimientos/entrada/<int:pk>/editar/", views.editar_entrada, name="editar_entrada"),

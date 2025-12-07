@@ -110,25 +110,13 @@
       <ul class="dropdown-menu dropdown-menu-end">
         <li>
           <a class="dropdown-item"
-             href="?exportar=excel
-                    {% if q %}&q={{ q|urlencode }}{% endif %}
-                    {% if sort %}&sort={{ sort }}{% endif %}
-                    {% if order %}&order={{ order }}{% endif %}
-                    &per_page={{ per_page }}
-                    {% if filtro_vencimiento == 'proximos' %}&vencimiento=proximos&dias={{ dias_proximos }}{% endif %}
-                    {% if proveedor_sel %}&proveedor={{ proveedor_sel }}{% endif %}">
+             href="{% url 'inventario:exportar_lotes' %}?exportar=excel{% if q %}&q={{ q|urlencode }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filtro_vencimiento == 'proximos' %}&proximos=1&dias={{ dias_proximos }}{% endif %}{% if proveedor_sel %}&proveedor={{ proveedor_sel }}{% endif %}">
             Excel
           </a>
         </li>
         <li>
           <a class="dropdown-item"
-             href="?exportar=pdf
-                    {% if q %}&q={{ q|urlencode }}{% endif %}
-                    {% if sort %}&sort={{ sort }}{% endif %}
-                    {% if order %}&order={{ order }}{% endif %}
-                    &per_page={{ per_page }}
-                    {% if filtro_vencimiento == 'proximos' %}&vencimiento=proximos&dias={{ dias_proximos }}{% endif %}
-                    {% if proveedor_sel %}&proveedor={{ proveedor_sel }}{% endif %}">
+             href="{% url 'inventario:exportar_lotes' %}?exportar=pdf{% if q %}&q={{ q|urlencode }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if filtro_vencimiento == 'proximos' %}&proximos=1&dias={{ dias_proximos }}{% endif %}{% if proveedor_sel %}&proveedor={{ proveedor_sel }}{% endif %}">
             PDF
           </a>
         </li>
