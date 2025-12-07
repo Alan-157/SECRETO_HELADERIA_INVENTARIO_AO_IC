@@ -352,12 +352,12 @@ class SalidaLineaForm(forms.Form):
         return cd
 
 # --- DEFINICIÓN DE LOS NUEVOS FORMSETS ---
-# extra=0: No agrega formularios vacíos. El usuario usa el botón "Agregar Línea" para añadir.
-EntradaLineaFormSet = formset_factory(EntradaLineaForm, extra=0, can_delete=True)
-SalidaLineaFormSet = formset_factory(SalidaLineaForm, extra=0, can_delete=True)
+# extra=1: Siempre muestra al menos una línea en blanco para que el usuario pueda llenar
+EntradaLineaFormSet = formset_factory(EntradaLineaForm, extra=1, can_delete=True)
+SalidaLineaFormSet = formset_factory(SalidaLineaForm, extra=1, can_delete=True)
 
 # --- FORMSETS PARA MOVIMIENTOS (con extra=1 para agregar automáticamente línea) ---
-# Estos se usan cuando accedes desde listar_movimientos SIN pre-cargar insumo
+# Igual que los anteriores, siempre muestran una línea en blanco
 EntradaLineaFormSetMovimiento = formset_factory(EntradaLineaForm, extra=1, can_delete=True)
 SalidaLineaFormSetMovimiento = formset_factory(SalidaLineaForm, extra=1, can_delete=True)
 

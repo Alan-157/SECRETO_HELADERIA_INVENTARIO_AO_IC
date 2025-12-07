@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
@@ -31,7 +31,6 @@
 
                     <div id="formset-body-salida">
                         {% for f in formset %}
-                            {# Usa el partial específico para Salida #}
                             {% include "inventario/partials/salida_linea_form.html" with form=f prefix=forloop.counter0 %}
                         {% endfor %}
                     </div>
@@ -51,20 +50,13 @@
 
 {% block extra_js %}
 <script>
-    // ⚠️ URL de la API de AJAX (usando el ID 0 como placeholder que será reemplazado)
     const STOCK_INFO_URL_TEMPLATE = "{% url 'inventario:get_insumo_stock_info' insumo_id=0 %}".replace('/0/', '/{insumo_id}/');
 
-    /**
-     * Define el color del fondo de la tarjeta según el estado de stock
-     */
     function updateCardBorder(formRow, status) {
         const card = formRow.closest('.movimiento-card');
         if (!card) return;
         
-        // Remover clases de borde existentes que inyecta la lógica de Stock Assist
         card.classList.remove('border-success', 'border-warning', 'border-danger', 'border-secondary');
-
-        // Solo actualizamos el borde si no hay errores de validación en el formulario
         const hasFormErrors = card.classList.contains('border-danger'); 
         if (hasFormErrors) return; 
 
@@ -74,7 +66,7 @@
                 break;
             case 'BAJO STOCK':
             case 'EXCESO':
-            case 'SIN STOCK': // También marcamos SIN STOCK en la tarjeta de Salida
+            case 'SIN STOCK':
                 card.classList.add('border-danger');
                 break;
             default:
@@ -82,10 +74,6 @@
         }
     }
 
-    /**
-     * Configura los listeners AJAX para obtener la información de stock 
-     * en una fila de formulario específica.
-     */
     function setupStockInfoListener(formRow) {
         const insumoSelect = formRow.querySelector('[name$="-insumo"]'); 
         const stockDisplay = formRow.querySelector('.js-stock-info-display');
@@ -101,7 +89,7 @@
             }
 
             const url = STOCK_INFO_URL_TEMPLATE.replace('{insumo_id}', insumoId);
-            stockDisplay.innerHTML = '<span class="text-primary small">Cargando información...</span>';
+            stockDisplay.innerHTML = '<span class="text-primary small">Cargando informacion...</span>';
 
             fetch(url)
                 .then(response => {
@@ -112,12 +100,11 @@
                 })
                 .then(data => {
                     if (data.success) {
-                        // Inyectar el mensaje de ayuda y el stock actual
                         stockDisplay.innerHTML = `
                             <div class="alert alert-sm alert-stock p-2 mt-2" data-status="${data.status}" role="alert">
                                 ${data.mensaje_ayuda}
                                 <hr class="my-1">
-                                <small>Stock actual: <b>${data.stock_actual.toFixed(0)} ${data.unidad_medida}</b>. Mínimo: ${data.stock_minimo.toFixed(0)}.</small>
+                                <small>Stock actual: <b>${data.stock_actual.toFixed(0)} ${data.unidad_medida}</b>. Maximo: ${data.stock_maximo.toFixed(0)}.</small>
                             </div>
                         `;
                         updateCardBorder(formRow, data.status);
@@ -132,7 +119,6 @@
                 });
         };
         
-        // 3. Inicialización y Event Listener
         fetchStockInfo(); 
         insumoSelect.addEventListener('change', fetchStockInfo);
     }
@@ -142,28 +128,59 @@
         const addLineBtn = document.getElementById('add-line-salida');
         const totalForms = document.getElementById('id_form-TOTAL_FORMS');
 
-        // Inicializa todas las filas existentes al cargar la página
         document.querySelectorAll('.movimiento-card').forEach(setupStockInfoListener);
         
-        // Contenido de la plantilla para una nueva línea (template de la plantilla)
         const emptyFormTpl = `
             <div class="card mb-3 movimiento-card border-secondary js-movement-line">
                 <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 text-danger">Nueva Línea de Salida</h6>
+                    <h6 class="mb-0 text-danger">Nueva Linea de Salida</h6>
                     <div class="delete-controls">
                         <input type="hidden" name="form-__prefix__-id" id="id_form-form-__prefix__-id">
                         <input type="hidden" name="form-__prefix__-DELETE" id="id_form-form-__prefix__-DELETE">
-                        <button type="button" class="btn btn-sm btn-outline-danger del-line" title="Eliminar línea">
+                        <button type="button" class="btn btn-sm btn-outline-danger del-line" title="Eliminar linea">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
                 </div>
-                {# Incluimos el parcial de forma segura #}
-                {% include "inventario/partials/salida_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
+                <div class="card-body">
+                    <div class="row g-3 mb-4 p-3 border rounded bg-light-subtle">
+                        <div class="col-md-6">
+                            <label class="form-label required small">Insumo</label>
+                            <select name="form-__prefix__-insumo" id="id_form-__prefix__-insumo" class="form-select form-select-sm" required>
+                                <option value="">Seleccione un insumo</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label required small">Ubicacion</label>
+                            <select name="form-__prefix__-ubicacion" id="id_form-__prefix__-ubicacion" class="form-select form-select-sm" required>
+                                <option value="">Seleccione una ubicacion</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label required small">Lote</label>
+                            <select name="form-__prefix__-insumo_lote" id="id_form-__prefix__-insumo_lote" class="form-select form-select-sm" required>
+                                <option value="">Seleccione un lote</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label required small">Cantidad</label>
+                            <input type="number" name="form-__prefix__-cantidad" id="id_form-__prefix__-cantidad" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label required small">Fecha</label>
+                            <input type="date" name="form-__prefix__-fecha" id="id_form-__prefix__-fecha" class="form-control form-control-sm" required>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label small">Observaciones</label>
+                            <textarea name="form-__prefix__-observaciones" id="id_form-__prefix__-observaciones" class="form-control form-control-sm" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
 
-        // Lógica para agregar línea
         addLineBtn.addEventListener('click', function() {
             const index = parseInt(totalForms.value, 10);
             const newFormHtml = emptyFormTpl.replace(/__prefix__/g, index);
@@ -175,11 +192,9 @@
             formsetBody.appendChild(newRow);
             totalForms.value = index + 1;
             
-            // ⚠️ CRÍTICO: Inicializar el listener para la nueva línea
             setupStockInfoListener(newRow); 
         });
 
-        // Delegación para eliminar líneas (mantenida del código original)
         formsetBody.addEventListener('click', (e) => {
             const delBtn = e.target.closest('.del-line');
             if (delBtn) {
@@ -196,10 +211,8 @@
 </script>
 
 <style>
-    /* Estilos para asistencia de stock (CSS que acompaña al JS) */
     .alert-sm { padding: 0.5rem; margin-bottom: 0; font-size: 0.875rem; }
     .alert-sm .my-1 { margin-top: 0.25rem !important; margin-bottom: 0.25rem !important; border-top: 1px solid #dcdcdc; }
-
     .alert-stock[data-status="SIN STOCK"] { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
     .alert-stock[data-status="BAJO STOCK"] { background-color: #fff3cd; color: #856404; border-color: #ffeeba; }
     .alert-stock[data-status="EXCESO"] { background-color: #cce5ff; color: #004085; border-color: #b8daff; }

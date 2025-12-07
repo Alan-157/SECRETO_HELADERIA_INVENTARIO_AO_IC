@@ -5,10 +5,10 @@ from accounts.services import user_has_role
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.contrib import messages
 from django.db import transaction
-from django.db.models import Sum, Q, DecimalField, Count, Min, F, Prefetch, Case, When, Value, IntegerField
+from django.db.models import Sum, Q, DecimalField, Count, Min, F, Prefetch
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
-from django.forms import ModelForm, inlineformset_factory  
+from django.forms import ModelForm, inlineformset_factory, formset_factory
 from django.views.decorators.http import require_POST
 from accounts.services import user_has_role
 from django.contrib.auth.decorators import login_required
@@ -32,12 +32,12 @@ from .forms import (
 import json
 from io import BytesIO
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, numbers, PatternFill, Border, Side
+from openpyxl.styles import Alignment, Font, numbers, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, numbers
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from datetime import date,timedelta
 import csv
@@ -181,17 +181,7 @@ def listar_alertas(request):
         # Si no se pide el historial, se filtra por activas (comportamiento por defecto)
         qs = qs.filter(is_active=True)
     
-    # Ordenar por tipo de alerta (prioridad) y luego por fecha
-    qs = qs.annotate(
-        tipo_orden=Case(
-            When(tipo="SIN_STOCK", then=Value(1)),
-            When(tipo="BAJO_STOCK", then=Value(2)),
-            When(tipo="STOCK_EXCESIVO", then=Value(3)),
-            When(tipo="VENCIMIENTO_PROXIMO", then=Value(4)),
-            default=Value(5),
-            output_field=IntegerField(),
-        )
-    ).select_related("insumo").order_by("tipo_orden", "-fecha", "-created_at")
+    qs = qs.select_related("insumo").order_by("-fecha", "-created_at")
 
     read_only = not (
         request.user.is_superuser
@@ -569,7 +559,7 @@ def exportar_lotes(request):
     # 1. Preparación del QuerySet (Similar a listar_insumos_lote)
     qs = (
         InsumoLote.objects.filter(is_active=True)
-        .select_related("insumo", "bodega", "proveedor")
+        .select_related("insumo", "bodega", "proveedor")  # ⬅️ ahora incluye proveedor
         .annotate(
             cant_act=Coalesce(F("cantidad_actual"), 0, output_field=DecimalField()),
             cant_ini=Coalesce(F("cantidad_inicial"), 0, output_field=DecimalField()),
@@ -577,37 +567,27 @@ def exportar_lotes(request):
     )
 
     hoy = date.today()
-    
+    dias_proximos = 14  # rango de días para considerar "próximos a vencer"
+
     # ¿Es un reporte solo de próximos a vencer?
     solo_proximos = (request.GET.get("proximos") == "1")
-    
+
     if solo_proximos:
-        # Obtener días del parámetro, default 14
-        try:
-            dias_proximos = int(request.GET.get("dias", 14))
-            dias_proximos = max(1, min(365, dias_proximos))  # Validar rango
-        except (ValueError, TypeError):
-            dias_proximos = 14
-            
         limite = hoy + timedelta(days=dias_proximos)
         qs = qs.filter(
             fecha_expiracion__isnull=False,
             fecha_expiracion__gte=hoy,
             fecha_expiracion__lte=limite,
         )
-    else:
-        dias_proximos = None
 
-    # Filtro por proveedor
+    # 🔹 NUEVO: filtro por proveedor (igual que en listar_insumos_lote)
     proveedor_id = request.GET.get("proveedor")
     if proveedor_id:
-        try:
-            qs = qs.filter(proveedor_id=int(proveedor_id))
-        except (ValueError, TypeError):
-            pass
+        qs = qs.filter(proveedor_id=proveedor_id)
 
     # Filtros de búsqueda (q)
     q = (request.GET.get("q") or "").strip()
+    # también buscamos por proveedor
     search_fields = ["insumo__nombre", "bodega__nombre", "proveedor__nombre_empresa"]
     if q:
         q_objs = []
@@ -615,11 +595,12 @@ def exportar_lotes(request):
             q_objs.append(Q(**{f"{f}__icontains": q}))
         qs = qs.filter(reduce(operator.or_, q_objs))
     
-    # Orden
+    # Orden (sort y order)
     allowed_sort = {"insumo", "bodega", "fingreso", "fexpira", "cact", "cini"}
-    sort = request.GET.get("sort", "insumo")
+    sort = request.GET.get("sort")
     if sort not in allowed_sort:
-        sort = "insumo"
+        # La exportación no depende de la sesión, solo de la URL
+        sort = "insumo" 
 
     sort_map = {
         "insumo":   "insumo__nombre",
@@ -630,7 +611,7 @@ def exportar_lotes(request):
         "cini":     "cant_ini",
     }
     
-    order = request.GET.get("order", "asc")
+    order = request.GET.get("order")
     allowed_order = {"asc", "desc"}
     if order not in allowed_order:
         order = "asc"
@@ -640,269 +621,176 @@ def exportar_lotes(request):
     qs = qs.order_by(ordering, tie_break)
     
     # Obtener todos los datos sin paginación
-    lotes = list(qs.all())
+    lotes = qs.all()
     
     # 2. Lógica de Exportación
-    exportar = (request.GET.get("exportar") or "").strip().lower()
-    
-    if not lotes:
-        messages.warning(request, "No hay lotes que exportar con los filtros especificados.")
-        return redirect('inventario:listar_insumos_lote')
+    exportar = request.GET.get("exportar")
 
     # Títulos según si es reporte general o de próximos a vencer
     if solo_proximos:
-        titulo_reporte = f"Reporte de Lotes Próximos a Vencer (próximos {dias_proximos} días)"
-        sufijo_nombre = f"lotes_proximos_{hoy.isoformat()}"
+        titulo_reporte = "Reporte de Lotes de Insumos Próximos a Vencer"
+        sufijo_nombre = "lotes_proximos"
     else:
         titulo_reporte = "Reporte de Lotes de Insumos"
-        sufijo_nombre = f"lotes_{hoy.isoformat()}"
+        sufijo_nombre = "lotes"
 
     if exportar == "excel":
         # --- Exportar a Excel (openpyxl) ---
-        try:
-            response = HttpResponse(
-                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-            response["Content-Disposition"] = f'attachment; filename="{sufijo_nombre}.xlsx"'
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="{sufijo_nombre}_{hoy.isoformat()}.xlsx"'
+        )
 
-            # Workbook y Worksheet
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Lotes de Insumos"
+        # Workbook y Worksheet
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Lotes de Insumos"
 
-            # Título
-            ws.merge_cells("A1:H1")
-            title_cell = ws.cell(row=1, column=1, value=titulo_reporte)
-            title_cell.font = Font(size=14, bold=True, color="FFFFFF")
-            title_cell.alignment = Alignment(horizontal="center", vertical="center")
-            title_cell.fill = PatternFill(start_color='1F4E78', end_color='1F4E78', fill_type="solid")  # Azul oscuro
-            ws.row_dimensions[1].height = 25
+        # Título (ahora hay 8 columnas: A–H)
+        ws.merge_cells("A1:H1")
+        ws.cell(row=1, column=1, value=titulo_reporte).font = Font(size=14, bold=True)
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
+        
+        # 🔹 Cabeceras con Proveedor
+        headers = [
+            "Insumo",
+            "Bodega",
+            "Proveedor",
+            "Fecha de Ingreso",
+            "Fecha de Expiración",
+            "Cantidad Inicial",
+            "Cantidad Actual",
+            "ID Lote",
+        ]
+        ws.append(headers)
+        
+        # Estilo para encabezados
+        header_row = ws[2]
+        header_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type="solid")  # Verde claro
+        for cell in header_row:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+            cell.fill = header_fill
+
+        # Datos
+        row_num = 3
+        for i, lote in enumerate(lotes):
+            # Alternar color de fondo de las filas
+            bg_color = 'E6E6FA' if i % 2 == 0 else 'FFFFFF'  # Lavanda pálida / Blanco
             
-            # Subtítulo con fecha
-            ws.merge_cells("A2:H2")
-            subtitle_cell = ws.cell(row=2, column=1, value=f"Generado: {hoy.strftime('%d/%m/%Y')}")
-            subtitle_cell.font = Font(size=10, italic=True, color="666666")
-            subtitle_cell.alignment = Alignment(horizontal="right")
-            ws.row_dimensions[2].height = 15
-            
-            # Espacio
-            ws.row_dimensions[3].height = 5
-
-            # Cabeceras
-            headers = [
-                "Insumo",
-                "Bodega",
-                "Proveedor",
-                "Fecha de Ingreso",
-                "Fecha de Expiración",
-                "Cantidad Inicial",
-                "Cantidad Actual",
-                "ID Lote",
+            data = [
+                lote.insumo.nombre,
+                lote.bodega.nombre,
+                lote.proveedor.nombre_empresa if lote.proveedor else "",  # ⬅️ proveedor
+                lote.fecha_ingreso.strftime("%Y-%m-%d") if lote.fecha_ingreso else "",
+                lote.fecha_expiracion.strftime("%Y-%m-%d") if lote.fecha_expiracion else "N/A",
+                float(lote.cantidad_inicial),
+                float(lote.cantidad_actual),
+                lote.id,
             ]
-            header_row = 4
-            ws.append(["" for _ in headers])  # Insertar fila vacía
+            ws.append(data)
             
-            for col_idx, header in enumerate(headers, 1):
-                cell = ws.cell(row=header_row, column=col_idx, value=header)
-                cell.font = Font(bold=True, color="FFFFFF", size=11)
-                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-                cell.fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type="solid")  # Azul
-            ws.row_dimensions[header_row].height = 20
-
-            # Datos con estilos alternados
-            row_num = header_row + 1
-            for i, lote in enumerate(lotes):
-                # Alternar color de fondo
-                if i % 2 == 0:
-                    bg_color = 'D9E8F5'  # Azul muy pálido
-                    text_color = '000000'
-                else:
-                    bg_color = 'FFFFFF'
-                    text_color = '000000'
-                
-                data = [
-                    lote.insumo.nombre or "",
-                    lote.bodega.nombre or "",
-                    lote.proveedor.nombre_empresa if lote.proveedor else "",
-                    lote.fecha_ingreso.strftime("%d/%m/%Y") if lote.fecha_ingreso else "-",
-                    lote.fecha_expiracion.strftime("%d/%m/%Y") if lote.fecha_expiracion else "Sin venc.",
-                    float(lote.cantidad_inicial),
-                    float(lote.cantidad_actual),
-                    str(lote.id),
-                ]
-                
-                for col_idx, value in enumerate(data, 1):
-                    cell = ws.cell(row=row_num, column=col_idx, value=value)
-                    cell.font = Font(color=text_color, size=10)
-                    cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
-                    
-                    # Alineación por tipo
-                    if col_idx in [1, 2, 3]:  # Texto izquierda
-                        cell.alignment = Alignment(horizontal="left", vertical="center")
-                    elif col_idx in [4, 5]:  # Fechas centro
-                        cell.alignment = Alignment(horizontal="center", vertical="center")
-                    elif col_idx in [6, 7, 8]:  # Números derecha
-                        cell.alignment = Alignment(horizontal="right", vertical="center")
-                    
-                    # Formato de números para cantidades
-                    if col_idx in [6, 7]:
-                        cell.number_format = '#,##0.00'
-                    
-                    # Bordes
-                    thin_border = Border(
-                        left=Side(style='thin', color='B4C7E7'),
-                        right=Side(style='thin', color='B4C7E7'),
-                        top=Side(style='thin', color='B4C7E7'),
-                        bottom=Side(style='thin', color='B4C7E7'),
-                    )
-                    cell.border = thin_border
-                
-                ws.row_dimensions[row_num].height = 18
-                row_num += 1
-
-            # Ajustar ancho de columnas automáticamente
-            column_widths = {
-                'A': 25,  # Insumo
-                'B': 20,  # Bodega
-                'C': 22,  # Proveedor
-                'D': 18,  # F. Ingreso
-                'E': 18,  # F. Expiración
-                'F': 18,  # Cant. Inicial
-                'G': 18,  # Cant. Actual
-                'H': 12,  # ID Lote
-            }
-            for col, width in column_widths.items():
-                ws.column_dimensions[col].width = width
+            # Aplicar estilo de fondo y formato de números
+            fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
             
-            buffer = BytesIO()
-            wb.save(buffer)
-            response.write(buffer.getvalue())
-            return response
-        except Exception as e:
-            messages.error(request, f"Error al exportar Excel: {str(e)}")
-            return redirect('inventario:listar_insumos_lote')
+            for col_idx in range(1, len(data) + 1):
+                cell = ws.cell(row=row_num, column=col_idx)
+                cell.fill = fill
+                # Formato de números para las cantidades
+                # ahora las cantidades están en columnas 6 y 7 (antes 5 y 6)
+                if col_idx in [6, 7]:
+                    cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
+            row_num += 1
+
+        # Ajustar ancho de columnas
+        for col in ws.columns:
+            max_length = 0
+            column = col[1].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length + 4)
+            # Ajustamos un poco las columnas de fechas/cantidades
+            if column in ('C', 'D', 'E', 'F', 'G', 'H') and adjusted_width < 15:
+                adjusted_width = 15
+            ws.column_dimensions[column].width = adjusted_width
+            
+        buffer = BytesIO()
+        wb.save(buffer)
+        response.write(buffer.getvalue())
+        return response
 
     elif exportar == "pdf":
-        # --- Exportar a PDF (reportlab) con mejor formato ---
-        try:
-            bio = BytesIO()
-            doc = SimpleDocTemplate(
-                bio,
-                pagesize=landscape(A4),
-                leftMargin=15, rightMargin=15, topMargin=20, bottomMargin=15,
-            )
-            
-            story = []
-            styles = getSampleStyleSheet()
+        # --- Exportar a PDF (reportlab) ---
+        bio = BytesIO()
+        doc = SimpleDocTemplate(
+            bio,
+            pagesize=landscape(A4),
+            leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20,
+        )
+        
+        story = []
+        styles = getSampleStyleSheet()
 
-            # Título principal
-            title_style = styles.add(ParagraphStyle(
-                name='CustomTitle',
-                parent=styles['Heading1'],
-                fontSize=16,
-                textColor=colors.HexColor('#1F4E78'),
-                spaceAfter=6,
-                alignment=1,  # CENTER
-                fontName='Helvetica-Bold',
-            ))
-            titulo = Paragraph(f"<b>{titulo_reporte}</b>", title_style)
-            story.append(titulo)
+        # Título
+        titulo = Paragraph(f"<b>{titulo_reporte}</b>", styles["h1"])
+        story.append(titulo)
+        story.append(Spacer(1, 12))
 
-            # Subtítulo con fecha
-            subtitle_style = styles.add(ParagraphStyle(
-                name='CustomSubtitle',
-                parent=styles['Normal'],
-                fontSize=9,
-                textColor=colors.HexColor('#666666'),
-                spaceAfter=12,
-                alignment=1,  # CENTER
-                fontName='Helvetica-Oblique',
-            ))
-            subtitle = Paragraph(f"Generado: {hoy.strftime('%d de %B de %Y')}", subtitle_style)
-            story.append(subtitle)
+        # Datos de la tabla
+        data = [
+            ["Insumo", "Bodega", "Proveedor", "F. Ingreso", "F. Exp.", "Cant. Inicial", "Cant. Actual", "ID Lote"]
+        ]
+        
+        for lote in lotes:
+            data.append([
+                lote.insumo.nombre,
+                lote.bodega.nombre,
+                lote.proveedor.nombre_empresa if lote.proveedor else "",
+                lote.fecha_ingreso.strftime("%Y-%m-%d") if lote.fecha_ingreso else "",
+                lote.fecha_expiracion.strftime("%Y-%m-%d") if lote.fecha_expiracion else "N/A",
+                f"{lote.cantidad_inicial:,.2f}",
+                f"{lote.cantidad_actual:,.2f}",
+                str(lote.id),
+            ])
+            
+        table_style = [
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4A86E8')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('ALIGN', (0, 1), (2, -1), 'LEFT'),
+            ('ALIGN', (3, 1), (-2, -1), 'CENTER'),
+            ('ALIGN', (-1, 1), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#F5F5F5'), colors.white]),
+        ]
+        
+        # A4 apaisado — 8 columnas
+        t = Table(
+            data,
+            colWidths=[200, 100, 140, 70, 70, 90, 90, 50]
+        )
+        t.setStyle(TableStyle(table_style))
+        story.append(t)
+        
+        doc.build(story)
+        pdf_value = bio.getvalue()
+        bio.close()
+        response = HttpResponse(pdf_value, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'attachment; filename="{sufijo_nombre}_{hoy.isoformat()}.pdf"'
+        )
+        return response
 
-            # Datos de la tabla
-            data = [
-                ["Insumo", "Bodega", "Proveedor", "F. Ingreso", "F. Exp.", "Cant. Inicial", "Cant. Actual", "ID"]
-            ]
-            
-            for lote in lotes:
-                data.append([
-                    lote.insumo.nombre or "",
-                    lote.bodega.nombre or "",
-                    lote.proveedor.nombre_empresa if lote.proveedor else "-",
-                    lote.fecha_ingreso.strftime("%d/%m/%Y") if lote.fecha_ingreso else "-",
-                    lote.fecha_expiracion.strftime("%d/%m/%Y") if lote.fecha_expiracion else "Sin venc.",
-                    f"{lote.cantidad_inicial:,.2f}",
-                    f"{lote.cantidad_actual:,.2f}",
-                    str(lote.id),
-                ])
-            
-            # Estilo de tabla mejorado
-            table_style = [
-                # Encabezado
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 11),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('TOPPADDING', (0, 0), (-1, 0), 12),
-                
-                # Cuerpo
-                ('ALIGN', (0, 1), (2, -1), 'LEFT'),
-                ('ALIGN', (3, 1), (-2, -1), 'CENTER'),
-                ('ALIGN', (-1, 1), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('LEFTPADDING', (0, 1), (-1, -1), 8),
-                ('RIGHTPADDING', (0, 1), (-1, -1), 8),
-                ('TOPPADDING', (0, 1), (-1, -1), 6),
-                ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-                
-                # Bordes
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#B4C7E7')),
-                
-                # Filas alternadas con color
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#D9E8F5'), colors.white]),
-            ]
-            
-            # Ancho de columnas (A4 apaisado = ~280mm = ~800px)
-            colWidths = [180, 140, 150, 70, 70, 90, 90, 50]
-            
-            t = Table(data, colWidths=colWidths)
-            t.setStyle(TableStyle(table_style))
-            story.append(t)
-            
-            # Pie de página
-            spacer = Spacer(1, 15)
-            story.append(spacer)
-            footer_style = styles.add(ParagraphStyle(
-                name='Footer',
-                parent=styles['Normal'],
-                fontSize=8,
-                textColor=colors.HexColor('#999999'),
-                alignment=2,  # RIGHT
-                fontName='Helvetica-Oblique',
-            ))
-            footer = Paragraph(f"Heladerías Sistema de Inventario | {hoy.strftime('%d/%m/%Y %H:%M')}", footer_style)
-            story.append(footer)
-            
-            doc.build(story)
-            pdf_value = bio.getvalue()
-            bio.close()
-            
-            response = HttpResponse(pdf_value, content_type="application/pdf")
-            response["Content-Disposition"] = f'attachment; filename="{sufijo_nombre}.pdf"'
-            return response
-        except Exception as e:
-            messages.error(request, f"Error al exportar PDF: {str(e)}")
-            return redirect('inventario:listar_insumos_lote')
-
-    messages.error(request, "Método de exportación no válido.")
-    return redirect('inventario:listar_insumos_lote')
+    return HttpResponseBadRequest("Método de exportación no válido.")
 
 # --- LISTAR LOTES DE INSUMO ---
 @login_required
@@ -1261,7 +1149,6 @@ def registrar_entrada(request):
         messages.error(request, "No tienes permisos para registrar entradas.")
         return redirect('inventario:listar_movimientos')
 
-    formset = None
     initial_data = []
 
     # --- LÓGICA DE PRE-CARGA (Insumo ID) ---
@@ -1271,20 +1158,17 @@ def registrar_entrada(request):
             insumo_obj = models.Insumo.objects.get(id=insumo_id)
             initial_data.append({
                 'insumo': insumo_obj.id,
-                'cantidad': 1, # Cantidad por defecto
+                'cantidad': 1,
             })
         except models.Insumo.DoesNotExist:
             messages.warning(request, "El insumo solicitado no es válido.")
 
-
     if request.method == "POST":
-        # ⚠️ CORRECCIÓN CLAVE: Instanciar con request.POST. Esto preserva los datos ingresados.
         formset = EntradaLineaFormSet(request.POST)
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
             
             for cd in lineas:
-                # ... (Lógica de guardado y creación de lote/entrada) ...
                 insumo = cd.get("insumo")
                 ubicacion = cd.get("ubicacion")
                 cantidad = cd.get("cantidad")
@@ -1292,12 +1176,10 @@ def registrar_entrada(request):
                 proveedor = cd.get("proveedor")
                 fecha_exp = cd.get("fecha_expiracion")
                 
-                # Validación para evitar error 500
                 if not all([insumo, ubicacion, cantidad, fecha, proveedor, fecha_exp]):
                     messages.warning(request, "Datos incompletos en una línea de entrada. Se ignoró esta línea.")
                     continue
                 
-                # CREACIÓN DEL LOTE
                 lote = models.InsumoLote.objects.create(
                     insumo=insumo,
                     bodega=ubicacion.bodega,
@@ -1309,33 +1191,137 @@ def registrar_entrada(request):
                     usuario=request.user,
                 )
 
-                # CREACIÓN DE LA ENTRADA
                 models.Entrada.objects.create(
                     insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
                     cantidad=cantidad, fecha=fecha, usuario=request.user,
                     observaciones=cd.get("observaciones", ""),
                 )
                 
-                # ACTUALIZACIÓN DEL LOTE
                 lote.cantidad_actual += cantidad
                 lote.save(update_fields=["cantidad_actual"])
                 
-                # ⚠️ Llamada a alerta automática
-                check_and_create_stock_alerts(insumo) # Asumiendo que está importado
+                check_and_create_stock_alerts(insumo)
 
             messages.success(request, "✅ Entrada(s) registrada(s) correctamente.")
             return redirect('inventario:listar_movimientos')
 
-        # Si NO es válido, la ejecución continúa y 'formset' mantiene los errores y los datos.
         messages.error(request, "Revisa los errores en el formulario antes de continuar.")
 
-    # ⚠️ Nuevo Bloque: Si formset es None (es decir, es una petición GET inicial)
-    if formset is None:
-        formset = EntradaLineaFormSet(initial=initial_data if initial_data else None)
+    else:
+        # Si hay precarga (insumo pasado por GET), no crear línea extra vacía
+        if initial_data:
+            DynamicFormSet = formset_factory(EntradaLineaForm, extra=0, can_delete=True)
+        else:
+            DynamicFormSet = EntradaLineaFormSet
+        formset = DynamicFormSet(initial=initial_data if initial_data else None)
 
     return render(request, "inventario/registrar_entrada.html", {
         "formset": formset,
         "titulo": "Registrar Entrada de Inventario",
+    })
+
+
+# --- REGISTRAR MOVIMIENTO (SALIDA DEDICADA) ---
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+def registrar_salida(request):
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para registrar salidas.")
+        return redirect('inventario:listar_movimientos')
+
+    orden_obj = None
+    initial_data = []
+
+    # --- LÓGICA DE PRE-CARGA (Orden ID) ---
+    orden_id = request.GET.get("orden")
+    if orden_id:
+        orden_obj = get_object_or_404(models.OrdenInsumo, id=orden_id)
+        for detalle in orden_obj.detalles.all():
+            initial_data.append({
+                'insumo': detalle.insumo.id,
+                'cantidad': detalle.cantidad_solicitada,
+            })
+    
+    # --- LÓGICA DE PRE-CARGA (Insumo ID - Si NO HAY Orden) ---
+    elif request.GET.get("insumo_id"):
+        insumo_id = request.GET.get("insumo_id")
+        try:
+            insumo_obj = models.Insumo.objects.get(id=insumo_id)
+            initial_data.append({
+                'insumo': insumo_obj.id,
+                'cantidad': 1, 
+            })
+        except models.Insumo.DoesNotExist:
+            messages.warning(request, "El insumo solicitado no es válido.")
+
+    if request.method == "POST":
+        formset = SalidaLineaFormSet(request.POST)
+        if formset.is_valid():
+            lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            
+            for cd in lineas:
+                insumo = cd.get("insumo")
+                ubicacion = cd.get("ubicacion")
+                cantidad = cd.get("cantidad")
+                fecha_salida = cd.get("fecha")
+                lote = cd.get("insumo_lote") 
+                observaciones = cd.get("observaciones", "")
+
+                if lote is None or insumo is None or cantidad is None or ubicacion is None or fecha_salida is None:
+                    messages.warning(request, "Datos incompletos en una línea de salida. Se ignoró esta línea.")
+                    continue
+                
+                if cantidad <= Decimal("0"):
+                    messages.warning(request, f"Cantidad inválida para {insumo.nombre}. Se ignoró esta línea.")
+                    continue 
+                
+                detalle_obj = None
+                if orden_obj:
+                    try:
+                        detalle_obj = orden_obj.detalles.get(insumo=insumo)
+                    except models.OrdenInsumoDetalle.DoesNotExist:
+                        pass 
+
+                cant = min(cantidad, lote.cantidad_actual or Decimal("0")) 
+                
+                models.Salida.objects.create(
+                    insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
+                    cantidad=cant, 
+                    fecha_generada=fecha_salida, 
+                    usuario=request.user,
+                    tipo="USO_PRODUCCION", observaciones=observaciones,
+                    orden=orden_obj,          
+                    detalle=detalle_obj,      
+                )
+                
+                lote.cantidad_actual -= cant
+                lote.save(update_fields=["cantidad_actual"])
+                
+                if detalle_obj:
+                    detalle_obj.cantidad_atendida += cant
+                    detalle_obj.save(update_fields=["cantidad_atendida"])
+
+            if orden_obj:
+                orden_obj.recalc_estado()
+                
+            messages.success(request, "Salida(s) registrada(s) correctamente.")
+            return redirect('inventario:listar_movimientos')
+
+        messages.error(request, "Revisa los errores en el formulario antes de continuar.")
+
+    else:
+        # Evitar línea extra cuando se precarga desde insumo u orden
+        if initial_data:
+            DynamicFormSet = formset_factory(SalidaLineaForm, extra=0, can_delete=True)
+        else:
+            DynamicFormSet = SalidaLineaFormSet
+        formset = DynamicFormSet(initial=initial_data if initial_data else None)
+
+    return render(request, "inventario/registrar_salida.html", {
+        "formset": formset,
+        "titulo": "Registrar Salida de Inventario",
+        "orden": orden_obj,
     })
 
 
@@ -1344,14 +1330,30 @@ def registrar_entrada(request):
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def registrar_entrada_movimiento(request):
-    """Registrar entrada directamente desde listar_movimientos con extra=1"""
+    """Registrar entrada CON línea automática (desde listar_movimientos)"""
     if not user_has_role(request.user, "Administrador", "Encargado"):
         messages.error(request, "No tienes permisos para registrar entradas.")
         return redirect('inventario:listar_movimientos')
 
     formset = None
+    initial_data = []
+    hay_precarga = False
+
+    # --- LÓGICA DE PRE-CARGA (Insumo ID) ---
+    insumo_id = request.GET.get("insumo_id")
+    if insumo_id:
+        try:
+            insumo_obj = models.Insumo.objects.get(id=insumo_id)
+            initial_data.append({
+                'insumo': insumo_obj.id,
+                'cantidad': 1,
+            })
+            hay_precarga = True
+        except models.Insumo.DoesNotExist:
+            messages.warning(request, "El insumo solicitado no es válido.")
 
     if request.method == "POST":
+        # Usar formset con extra=1 (línea automática)
         formset = EntradaLineaFormSetMovimiento(request.POST)
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
@@ -1387,6 +1389,7 @@ def registrar_entrada_movimiento(request):
                 
                 lote.cantidad_actual += cantidad
                 lote.save(update_fields=["cantidad_actual"])
+                
                 check_and_create_stock_alerts(insumo)
 
             messages.success(request, "✅ Entrada(s) registrada(s) correctamente.")
@@ -1395,125 +1398,11 @@ def registrar_entrada_movimiento(request):
         messages.error(request, "Revisa los errores en el formulario antes de continuar.")
 
     if formset is None:
-        formset = EntradaLineaFormSetMovimiento()
+        formset = EntradaLineaFormSetMovimiento(initial=initial_data if initial_data else None)
 
     return render(request, "inventario/registrar_entrada.html", {
         "formset": formset,
         "titulo": "Registrar Entrada de Inventario",
-    })
-
-
-# --- REGISTRAR MOVIMIENTO (SALIDA DEDICADA) ---
-@login_required
-@perfil_required(allow=("administrador", "Encargado"))
-@transaction.atomic
-def registrar_salida(request):
-    if not user_has_role(request.user, "Administrador", "Encargado"):
-        messages.error(request, "No tienes permisos para registrar salidas.")
-        return redirect('inventario:listar_movimientos')
-
-    orden_obj = None
-    initial_data = []
-
-    # --- 1. LÓGICA DE PRE-CARGA (Orden ID) ---
-    orden_id = request.GET.get("orden")
-    if orden_id:
-        orden_obj = get_object_or_404(models.OrdenInsumo, id=orden_id)
-        # Pre-cargar con los detalles de la orden
-        for detalle in orden_obj.detalles.all():
-            initial_data.append({
-                'insumo': detalle.insumo.id,
-                'cantidad': detalle.cantidad_solicitada,
-            })
-    
-    # --- 2. LÓGICA DE PRE-CARGA (Insumo ID - Si NO HAY Orden) ---
-    elif request.GET.get("insumo_id"):
-        insumo_id = request.GET.get("insumo_id")
-        try:
-            insumo_obj = models.Insumo.objects.get(id=insumo_id)
-            initial_data.append({
-                'insumo': insumo_obj.id,
-                'cantidad': 1, 
-            })
-        except models.Insumo.DoesNotExist:
-            messages.warning(request, "El insumo solicitado no es válido.")
-
-
-    formset = None
-
-    if request.method == "POST":
-        # ⚠️ CORRECCIÓN CLAVE: Instanciar con request.POST. Esto preserva los datos ingresados.
-        formset = SalidaLineaFormSet(request.POST)
-        if formset.is_valid():
-            lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
-            
-            for cd in lineas:
-                # ... (Extracción de variables) ...
-                insumo = cd.get("insumo")
-                ubicacion = cd.get("ubicacion")
-                cantidad = cd.get("cantidad")
-                fecha_salida = cd.get("fecha") # Se extrae como 'fecha' según el formulario
-                lote = cd.get("insumo_lote") 
-                observaciones = cd.get("observaciones", "")
-
-                # ⚠️ SALVAGUARDA CRÍTICA CONTRA ERROR 500
-                if lote is None or insumo is None or cantidad is None or ubicacion is None or fecha_salida is None:
-                    messages.warning(request, "Datos incompletos en una línea de salida. Se ignoró esta línea.")
-                    continue
-                
-                if cantidad <= Decimal("0"):
-                    messages.warning(request, f"Cantidad inválida para {insumo.nombre}. Se ignoró esta línea.")
-                    continue 
-                
-                # Búsqueda del detalle si venimos de una orden
-                detalle_obj = None
-                if orden_obj:
-                    try:
-                        detalle_obj = orden_obj.detalles.get(insumo=insumo)
-                    except models.OrdenInsumoDetalle.DoesNotExist:
-                        pass 
-
-                cant = min(cantidad, lote.cantidad_actual or Decimal("0")) 
-                
-                # CREACIÓN DE LA SALIDA
-                models.Salida.objects.create(
-                    insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
-                    cantidad=cant, 
-                    fecha_generada=fecha_salida, 
-                    usuario=request.user,
-                    tipo="USO_PRODUCCION", observaciones=observaciones,
-                    orden=orden_obj,          
-                    detalle=detalle_obj,      
-                )
-                
-                # ... (Actualización de Lote y Alerta) ...
-                lote.cantidad_actual -= cant
-                lote.save(update_fields=["cantidad_actual"])
-                
-                if detalle_obj:
-                    detalle_obj.cantidad_atendida += cant
-                    detalle_obj.save(update_fields=["cantidad_atendida"])
-                
-                # check_and_create_stock_alerts(insumo) # Asumiendo que está importado
-
-
-            # Recalcular el estado de la orden al finalizar
-            if orden_obj:
-                orden_obj.recalc_estado() 
-                
-            messages.success(request, "✅ Salida(s) registrada(s) correctamente.")
-            return redirect('inventario:listar_movimientos')
-
-        messages.error(request, "Revisa los errores en el formulario antes de continuar.")
-
-    # ⚠️ Nuevo Bloque: Si formset es None (es decir, es una petición GET inicial)
-    if formset is None:
-        formset = SalidaLineaFormSet(initial=initial_data if initial_data else None)
-
-    return render(request, "inventario/registrar_salida.html", {
-        "formset": formset,
-        "titulo": "Registrar Salida de Inventario",
-        "orden": orden_obj,
     })
 
 
@@ -1522,14 +1411,27 @@ def registrar_salida(request):
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def registrar_salida_movimiento(request):
-    """Registrar salida directamente desde listar_movimientos con extra=1"""
+    """Registrar salida CON línea automática (desde listar_movimientos)"""
     if not user_has_role(request.user, "Administrador", "Encargado"):
         messages.error(request, "No tienes permisos para registrar salidas.")
         return redirect('inventario:listar_movimientos')
 
     formset = None
+    initial_data = []
+    hay_precarga = False
+
+    # --- LÓGICA DE PRE-CARGA (Orden ID) ---
+    orden_id = request.GET.get("orden_id")
+    orden_obj = None
+    if orden_id:
+        try:
+            orden_obj = models.OrdenInsumo.objects.get(id=orden_id)
+            hay_precarga = True
+        except models.OrdenInsumo.DoesNotExist:
+            messages.warning(request, "La orden solicitada no es válida.")
 
     if request.method == "POST":
+        # Usar formset con extra=1 (línea automática)
         formset = SalidaLineaFormSetMovimiento(request.POST)
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
@@ -1538,30 +1440,32 @@ def registrar_salida_movimiento(request):
                 insumo = cd.get("insumo")
                 ubicacion = cd.get("ubicacion")
                 cantidad = cd.get("cantidad")
-                fecha_salida = cd.get("fecha")
-                lote = cd.get("insumo_lote") 
-                observaciones = cd.get("observaciones", "")
-
-                if lote is None or insumo is None or cantidad is None or ubicacion is None or fecha_salida is None:
+                fecha = cd.get("fecha")
+                
+                if not all([insumo, ubicacion, cantidad, fecha]):
                     messages.warning(request, "Datos incompletos en una línea de salida. Se ignoró esta línea.")
                     continue
                 
-                if cantidad <= Decimal("0"):
-                    messages.warning(request, f"Cantidad inválida para {insumo.nombre}. Se ignoró esta línea.")
-                    continue 
-
-                cant = min(cantidad, lote.cantidad_actual or Decimal("0")) 
+                # Obtener lote disponible
+                lote = models.InsumoLote.objects.filter(
+                    insumo=insumo, bodega=ubicacion.bodega,
+                    cantidad_actual__gt=0, is_active=True
+                ).first()
+                
+                if not lote or lote.cantidad_actual < cantidad:
+                    messages.warning(request, f"No hay stock disponible de {insumo.nombre} en {ubicacion.bodega.nombre}.")
+                    continue
                 
                 models.Salida.objects.create(
                     insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
-                    cantidad=cant, 
-                    fecha_generada=fecha_salida, 
-                    usuario=request.user,
-                    tipo="USO_PRODUCCION", observaciones=observaciones,
+                    cantidad=cantidad, fecha=fecha, usuario=request.user,
+                    observaciones=cd.get("observaciones", ""),
                 )
                 
-                lote.cantidad_actual -= cant
+                lote.cantidad_actual -= cantidad
                 lote.save(update_fields=["cantidad_actual"])
+                
+                check_and_create_stock_alerts(insumo)
 
             messages.success(request, "✅ Salida(s) registrada(s) correctamente.")
             return redirect('inventario:listar_movimientos')
@@ -1569,14 +1473,13 @@ def registrar_salida_movimiento(request):
         messages.error(request, "Revisa los errores en el formulario antes de continuar.")
 
     if formset is None:
-        formset = SalidaLineaFormSetMovimiento()
+        formset = SalidaLineaFormSetMovimiento(initial=initial_data if initial_data else None)
 
     return render(request, "inventario/registrar_salida.html", {
         "formset": formset,
         "titulo": "Registrar Salida de Inventario",
+        "orden": orden_obj,
     })
-
-# --- EDITAR / ELIMINAR ENTRADAS Y SALIDAS ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
@@ -1890,9 +1793,8 @@ ESTADOS_ORDEN = ("PENDIENTE", "EN_CURSO", "CERRADA", "CANCELADA")
 
 @login_required
 @perfil_required(allow=("administrador", "Encargado"), readonly_for=("Bodeguero",))
-@login_required
-@perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
 def listar_ordenes(request):
+    """Lista las órdenes y permite actualizar su estado manualmente."""
     qs = OrdenInsumo.objects.all().select_related("usuario")
 
     # --- Búsqueda
@@ -1967,10 +1869,10 @@ def orden_cambiar_estado(request, pk):
 @login_required
 @perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
 @transaction.atomic
-@login_required
-@perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
-@transaction.atomic
 def crear_orden(request):
+    """
+    Crea una nueva orden con mínimo 1 ítem válido.
+    """
     orden = OrdenInsumo()  # Aún no guardada
     formset = OrdenInsumoDetalleCreateFormSet(request.POST or None, instance=orden)
 
@@ -2210,24 +2112,10 @@ def reporte_disponibilidad(request):
         ws = wb.active
         ws.title = "Disponibilidad"
 
-        # Título
-        title = f"Reporte de Disponibilidad de Insumos"
+        title = f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}"
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
-        title_cell = ws.cell(row=1, column=1, value=title)
-        title_cell.font = Font(size=14, bold=True, color="FFFFFF")
-        title_cell.alignment = Alignment(horizontal="center", vertical="center")
-        title_cell.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-        ws.row_dimensions[1].height = 25
-        
-        # Subtítulo con fecha
-        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=7)
-        subtitle_cell = ws.cell(row=2, column=1, value=f"Generado: {hoy.strftime('%d/%m/%Y')}")
-        subtitle_cell.font = Font(size=10, italic=True, color="666666")
-        subtitle_cell.alignment = Alignment(horizontal="right")
-        ws.row_dimensions[2].height = 15
-        
-        # Espacio
-        ws.row_dimensions[3].height = 5
+        ws.cell(row=1, column=1, value=title).font = Font(size=14, bold=True)
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
 
         headers = [
             "Categoría",
@@ -2238,97 +2126,58 @@ def reporte_disponibilidad(request):
             "Lotes con Stock",
             "Próx. Vencimiento",
         ]
-        header_row = 4
-        for col_idx, header in enumerate(headers, 1):
-            cell = ws.cell(row=header_row, column=col_idx, value=header)
-            cell.font = Font(bold=True, color="FFFFFF", size=11)
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        ws.row_dimensions[header_row].height = 20
+        ws.append(headers)
 
-        # Datos con estilos alternados
-        row_num = header_row + 1
-        for bloque_idx, bloque in enumerate(categorias):
-            for item_idx, i in enumerate(bloque["insumos"]):
-                # Alternar color cada dos filas
-                if (bloque_idx + item_idx) % 2 == 0:
-                    bg_color = 'D9E8F5'
-                else:
-                    bg_color = 'FFFFFF'
-                
-                data = [
-                    bloque["categoria"].nombre,
-                    i.nombre,
-                    str(i.unidad_medida),
-                    float(i.precio_unitario or 0),
-                    float(i.stock_total or 0),
-                    int(i.lotes_con_stock or 0),
-                    i.prox_vencimiento.strftime("%d/%m/%Y") if i.prox_vencimiento else "-",
-                ]
-                
-                for col_idx, value in enumerate(data, 1):
-                    cell = ws.cell(row=row_num, column=col_idx, value=value)
-                    cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
-                    cell.font = Font(size=10)
-                    
-                    # Alineación por tipo
-                    if col_idx in [1, 2, 3]:  # Texto izquierda
-                        cell.alignment = Alignment(horizontal="left", vertical="center")
-                    elif col_idx == 7:  # Fecha centro
-                        cell.alignment = Alignment(horizontal="center", vertical="center")
-                    else:  # Números derecha
-                        cell.alignment = Alignment(horizontal="right", vertical="center")
-                    
-                    # Formato de números
-                    if col_idx == 4:  # Precio unitario
-                        cell.number_format = '$ #,##0.00'
-                    elif col_idx == 5:  # Stock total
-                        cell.number_format = '#,##0.00'
-                    
-                    # Bordes
-                    thin_border = Border(
-                        left=Side(style='thin', color='B4C7E7'),
-                        right=Side(style='thin', color='B4C7E7'),
-                        top=Side(style='thin', color='B4C7E7'),
-                        bottom=Side(style='thin', color='B4C7E7'),
-                    )
-                    cell.border = thin_border
-                
-                ws.row_dimensions[row_num].height = 18
+        # Estilo encabezado (similar al PDF: fondo gris claro)
+        header_fill = PatternFill(
+            start_color="D9D9D9", end_color="D9D9D9", fill_type="solid"
+        )
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=2, column=col)
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal="center")
+            cell.fill = header_fill
+
+        # Datos
+        row_num = 3
+        for bloque in categorias:
+            for i in bloque["insumos"]:
+                ws.append(
+                    [
+                        bloque["categoria"].nombre,
+                        i.nombre,
+                        i.unidad_medida,
+                        float(i.precio_unitario or 0),
+                        float(i.stock_total or 0),
+                        int(i.lotes_con_stock or 0),
+                        (
+                            i.prox_vencimiento.isoformat()
+                            if i.prox_vencimiento
+                            else "—"
+                        ),
+                    ]
+                )
                 row_num += 1
 
         # Totales
         ws.append([])
-        row_num += 1
-        total_row = row_num
-        ws.cell(row=total_row, column=4, value="STOCK TOTAL:")
-        ws.cell(row=total_row, column=5, value=float(total_stock))
-        
-        for col_idx in range(1, 8):
-            cell = ws.cell(row=total_row, column=col_idx)
-            cell.font = Font(bold=True, color="FFFFFF", size=11)
-            cell.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-            cell.alignment = Alignment(horizontal="right" if col_idx in [4, 5] else "center", vertical="center")
-            if col_idx == 5:
-                cell.number_format = '#,##0.00'
-        
-        row_num += 1
-        total_valor_row = row_num
-        ws.cell(row=total_valor_row, column=4, value="VALOR TOTAL:")
-        ws.cell(row=total_valor_row, column=5, value=float(total_valor))
-        
-        for col_idx in range(1, 8):
-            cell = ws.cell(row=total_valor_row, column=col_idx)
-            cell.font = Font(bold=True, color="FFFFFF", size=11)
-            cell.fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-            cell.alignment = Alignment(horizontal="right" if col_idx in [4, 5] else "center", vertical="center")
-            if col_idx == 5:
-                cell.number_format = '$ #,##0.00'
+        ws.append(["", "", "", "TOTALES", float(total_stock), "", ""])
+        ws.append(["", "", "", "VALOR TOTAL", float(total_valor), "", ""])
 
-        # Ajustar ancho de columnas
-        col_widths = {1: 20, 2: 30, 3: 12, 4: 18, 5: 16, 6: 18, 7: 18}
-        for col, width in col_widths.items():
-            ws.column_dimensions[get_column_letter(col)].width = width
+        # Estilos y tamaños
+        col_widths = [18, 30, 10, 18, 16, 18, 18]
+        for idx, width in enumerate(col_widths, start=1):
+            ws.column_dimensions[get_column_letter(idx)].width = width
+
+        # Formatos numéricos
+        for row in ws.iter_rows(
+            min_row=3, min_col=4, max_col=5, max_row=ws.max_row
+        ):
+            for cell in row:
+                if cell.column == 4:
+                    cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
+                elif cell.column == 5:
+                    cell.number_format = "0.00"
 
         bio = BytesIO()
         wb.save(bio)
@@ -2351,142 +2200,93 @@ def reporte_disponibilidad(request):
         doc = SimpleDocTemplate(
             bio,
             pagesize=landscape(A4),
-            leftMargin=15,
-            rightMargin=15,
+            leftMargin=20,
+            rightMargin=20,
             topMargin=20,
-            bottomMargin=15,
+            bottomMargin=20,
             title="Reporte de Disponibilidad de Insumos",
         )
         styles = getSampleStyleSheet()
         story = []
 
-        # Título principal
-        title_style = styles.add(ParagraphStyle(
-            name='CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=16,
-            textColor=colors.HexColor('#1F4E78'),
-            spaceAfter=6,
-            alignment=1,  # CENTER
-            fontName='Helvetica-Bold',
-        ))
-        titulo = Paragraph("<b>Reporte de Disponibilidad de Insumos</b>", title_style)
-        story.append(titulo)
-
-        # Subtítulo con fecha
-        subtitle_style = styles.add(ParagraphStyle(
-            name='CustomSubtitle',
-            parent=styles['Normal'],
-            fontSize=9,
-            textColor=colors.HexColor('#666666'),
-            spaceAfter=12,
-            alignment=1,  # CENTER
-            fontName='Helvetica-Oblique',
-        ))
-        subtitle = Paragraph(f"Generado: {hoy.strftime('%d de %B de %Y')}", subtitle_style)
-        story.append(subtitle)
+        story.append(
+            Paragraph(
+                f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}",
+                styles["Title"],
+            )
+        )
+        story.append(Spacer(1, 8))
 
         table_head = [
             "Insumo",
             "Unidad",
-            "Precio Unit.",
+            "Precio Unitario",
             "Stock Total",
-            "Lotes Stock",
-            "Próx. Venc.",
+            "Lotes con Stock",
+            "Próx. Vencimiento",
         ]
 
         for bloque in categorias:
-            # Título de categoría
-            cat_style = styles.add(ParagraphStyle(
-                name=f'CatStyle_{bloque["categoria"].id}',
-                parent=styles['Heading3'],
-                fontSize=11,
-                textColor=colors.HexColor('#1F4E78'),
-                spaceAfter=6,
-                spaceBefore=8,
-                fontName='Helvetica-Bold',
-            ))
-            story.append(Paragraph(f"📦 {bloque['categoria'].nombre}", cat_style))
-            
+            story.append(
+                Paragraph(
+                    f"Categoría: {bloque['categoria'].nombre}",
+                    styles["Heading3"],
+                )
+            )
             data = [table_head]
             for i in bloque["insumos"]:
                 data.append(
                     [
                         i.nombre,
-                        str(i.unidad_medida),
-                        f"${(i.precio_unitario or 0):,.2f}",
+                        i.unidad_medida,
+                        f"{(i.precio_unitario or 0):,.0f}",
                         f"{(i.stock_total or 0):,.2f}",
                         int(i.lotes_con_stock or 0),
                         (
-                            i.prox_vencimiento.strftime("%d/%m/%Y")
+                            i.prox_vencimiento.strftime("%Y-%m-%d")
                             if i.prox_vencimiento
                             else "—"
                         ),
                     ]
                 )
-            
-            table_style = [
-                # Encabezado
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4472C4')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
-                ('TOPPADDING', (0, 0), (-1, 0), 10),
-                
-                # Cuerpo
-                ('ALIGN', (0, 1), (1, -1), 'LEFT'),
-                ('ALIGN', (2, 1), (5, -1), 'CENTER'),
-                ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('LEFTPADDING', (0, 1), (-1, -1), 6),
-                ('RIGHTPADDING', (0, 1), (-1, -1), 6),
-                ('TOPPADDING', (0, 1), (-1, -1), 4),
-                ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
-                
-                # Bordes
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#B4C7E7')),
-                
-                # Filas alternadas
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor('#D9E8F5'), colors.white]),
-            ]
-            
             t = Table(
-                data,
-                colWidths=[150, 60, 80, 80, 70, 80]
+                data, colWidths=[140, 60, 90, 90, 90, 110]
             )
-            t.setStyle(TableStyle(table_style))
+            t.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                        ("ALIGN", (2, 1), (-2, -1), "RIGHT"),
+                        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [colors.whitesmoke, colors.white],
+                        ),
+                    ]
+                )
+            )
             story.append(t)
-            story.append(Spacer(1, 12))
+            story.append(Spacer(1, 10))
 
         # Totales
-        story.append(Spacer(1, 10))
-        total_style = styles.add(ParagraphStyle(
-            name='TotalStyle',
-            parent=styles['Normal'],
-            fontSize=10,
-            fontName='Helvetica-Bold',
-            textColor=colors.HexColor('#1F4E78'),
-            spaceAfter=3,
-        ))
-        story.append(Paragraph(f"Stock Total: <b>{Decimal(total_stock):,.2f}</b> unidades", total_style))
-        story.append(Paragraph(f"Valor Total: <b>${Decimal(total_valor):,.2f}</b>", total_style))
-        
-        # Pie de página
-        story.append(Spacer(1, 15))
-        footer_style = styles.add(ParagraphStyle(
-            name='Footer',
-            parent=styles['Normal'],
-            fontSize=8,
-            textColor=colors.HexColor('#999999'),
-            alignment=2,  # RIGHT
-            fontName='Helvetica-Oblique',
-        ))
-        footer = Paragraph(f"Heladerías Sistema de Inventario | {hoy.strftime('%d/%m/%Y %H:%M')}", footer_style)
-        story.append(footer)
+        story.append(Spacer(1, 6))
+        story.append(
+            Paragraph(
+                f"<b>Stock total:</b> {Decimal(total_stock):,.2f}",
+                styles["Normal"],
+            )
+        )
+        story.append(
+            Paragraph(
+                f"<b>Precio total:</b> {Decimal(total_valor):,.0f}",
+                styles["Normal"],
+            )
+        )
 
         doc.build(story)
         pdf_value = bio.getvalue()
@@ -2534,7 +2334,272 @@ def reporte_disponibilidad(request):
             context,
             request=request,
         )
-        return JsonResponse({"html": html})
+        return JsonResponse({"ok": True, "html": html})
+
+    return render(request, "inventario/reporte_disponibilidad.html", context)
+    """
+    Reporte de disponibilidad de insumos con:
+    - Filtro por insumos (nombre) via checkboxes.
+    - Flags de columnas a mostrar.
+    - Lotes indentados por insumo (en HTML).
+    Export: CSV/XLSX/PDF (respetan filtro de insumos).
+    """
+    hoy = date.today()
+
+    # -------- flags de columnas (HTML) --------
+    # por defecto mostramos: stock_total, precio_unitario, prox_vencimiento, lotes
+    def _b(name, default=True):
+        """
+        Lee tanto 'show_*' (nuevo) como 'col_*' (legado) y devuelve bool.
+        """
+        raw = request.GET.get(name, None)
+        if raw is None and name.startswith("show_"):
+            raw = request.GET.get(name.replace("show_", "col_"), None)  # compat con col_*
+        if raw is None:
+            return default
+        return str(raw).lower() in ("1", "true", "on", "yes")
+
+    show_precio_unitario = _b("show_precio_unitario", True)
+    show_stock_total     = _b("show_stock_total", True)
+    show_prox_venc       = _b("show_prox_venc", True)
+    show_lotes           = _b("show_lotes", True)
+    show_categorias      = _b("show_categorias", False)
+    show_precio_acum     = _b("show_precio_acum", False)
+
+    # -------- selección por insumo (nombres) --------
+    selected_insumos = request.GET.getlist("insumo")   # lista de nombres exactos
+
+    # Base queryset de insumos (activos + categoría activa)
+    insumos_base = (
+        Insumo.objects.filter(is_active=True, categoria__is_active=True)
+        .select_related("categoria")
+    )
+
+    # Si vienen seleccionados, filtramos por nombre (case-insensitive)
+    if selected_insumos:
+        insumos_base = insumos_base.filter(nombre__in=selected_insumos)
+
+    # Prefetch de lotes activos para cada insumo (ordenados por fecha de expiración)
+    lotes_qs = (InsumoLote.objects
+                .filter(is_active=True)
+                .select_related("bodega")
+                .order_by("fecha_expiracion", "id"))
+
+    # Anotaciones de stock total, #lotes con stock, prox venc
+    insumos_qs = (
+        insumos_base
+        .annotate(
+            stock_total=Coalesce(
+                Sum(
+                    "lotes__cantidad_actual",
+                    filter=Q(lotes__is_active=True),
+                    output_field=DecimalField(max_digits=12, decimal_places=2),
+                ),
+                0,
+                output_field=DecimalField(max_digits=12, decimal_places=2),
+            ),
+            lotes_con_stock=Count(
+                "lotes",
+                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
+                distinct=True,
+            ),
+            prox_vencimiento=Min(
+                "lotes__fecha_expiracion",
+                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
+            ),
+        )
+        .prefetch_related(Prefetch("lotes", queryset=lotes_qs, to_attr="lotes_vis"))
+        .order_by("categoria__nombre", "nombre")
+    )
+
+    # Dataset para checkboxes (todos los nombres disponibles, ordenados)
+    all_insumo_names = list(
+        Insumo.objects.filter(is_active=True, categoria__is_active=True)
+        .order_by("nombre")
+        .values_list("nombre", flat=True)
+    )
+
+    # Agrupado por categoría (para HTML)
+    categorias = []
+    cat_actual = None
+    buffer = []
+    for i in insumos_qs:
+        if not cat_actual or i.categoria_id != cat_actual.id:
+            if buffer:
+                categorias.append({"categoria": cat_actual, "insumos": buffer})
+                buffer = []
+            cat_actual = i.categoria
+        # cálculo auxiliar para HTML
+        i.precio_acumulado = (i.stock_total or 0) * (i.precio_unitario or 0)
+        buffer.append(i)
+    if buffer:
+        categorias.append({"categoria": cat_actual, "insumos": buffer})
+
+    total_stock = sum((i.stock_total or 0) for i in insumos_qs)
+    total_valor = sum(((i.stock_total or 0) * (i.precio_unitario or 0)) for i in insumos_qs)
+
+    fmt = (request.GET.get("format") or "").lower()
+
+    # ------- EXPORTS (respetan filtro de insumos, mantienen columnas clásicas) -------
+    if fmt == "csv":
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Categoría", "Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"])
+        for bloque in categorias:
+            for i in bloque["insumos"]:
+                writer.writerow([
+                    bloque["categoria"].nombre if bloque["categoria"] else "",
+                    i.nombre,
+                    i.unidad_medida,
+                    f"{i.precio_unitario}",
+                    f"{i.stock_total:.2f}",
+                    i.lotes_con_stock,
+                    i.prox_vencimiento.isoformat() if i.prox_vencimiento else "—",
+                ])
+        writer.writerow([])
+        writer.writerow(["", "", "", "TOTALES", f"{Decimal(total_stock):.2f}", "", ""])
+        writer.writerow(["", "", "", "VALOR TOTAL", f"{Decimal(total_valor):.2f}", "", ""])
+        return response
+
+    # ---------- XLSX ----------
+    if fmt in ("xlsx", "excel"):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Disponibilidad"
+
+        title = f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}"
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
+        ws.cell(row=1, column=1, value=title).font = Font(size=14, bold=True)
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
+
+        headers = ["Categoría", "Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"]
+        ws.append(headers)
+        for col in range(1, len(headers) + 1):
+            ws.cell(row=2, column=col).font = Font(bold=True)
+            ws.cell(row=2, column=col).alignment = Alignment(horizontal="center")
+
+        for bloque in categorias:
+            for i in bloque["insumos"]:
+                ws.append([
+                    bloque["categoria"].nombre,
+                    i.nombre,
+                    i.unidad_medida,
+                    float(i.precio_unitario or 0),
+                    float(i.stock_total or 0),
+                    int(i.lotes_con_stock or 0),
+                    (i.prox_vencimiento.isoformat() if i.prox_vencimiento else "—"),
+                ])
+
+        # Totales
+        ws.append([])
+        ws.append(["", "", "", "TOTALES", float(total_stock), "", ""])
+        ws.append(["", "", "", "VALOR TOTAL", float(total_valor), "", ""])
+
+        # Estilos y tamaños
+        col_widths = [18, 30, 10, 16, 14, 16, 16]
+        for idx, width in enumerate(col_widths, start=1):
+            ws.column_dimensions[get_column_letter(idx)].width = width
+
+        # Formatos numéricos
+        for row in ws.iter_rows(min_row=3, min_col=4, max_col=5, max_row=ws.max_row):
+            for cell in row:
+                if cell.column == 4:
+                    cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE  # ajusta si deseas CLP personalizado
+                elif cell.column == 5:
+                    cell.number_format = "0.00"
+
+        bio = BytesIO()
+        wb.save(bio)
+        bio.seek(0)
+        response = HttpResponse(
+            bio.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.xlsx"'
+        return response
+
+    # ---------- PDF ----------
+    if fmt == "pdf":
+        bio = BytesIO()
+        doc = SimpleDocTemplate(
+            bio,
+            pagesize=landscape(A4),
+            leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20,
+            title="Reporte de Disponibilidad de Insumos",
+        )
+        styles = getSampleStyleSheet()
+        story = []
+
+        story.append(Paragraph(f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}", styles["Title"]))
+        story.append(Spacer(1, 8))
+
+        table_head = ["Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"]
+
+        for bloque in categorias:
+            story.append(Paragraph(f"Categoría: {bloque['categoria'].nombre}", styles["Heading3"]))
+            data = [table_head]
+            for i in bloque["insumos"]:
+                data.append([
+                    i.nombre,
+                    i.unidad_medida,
+                    f"{(i.precio_unitario or 0):,.0f}",
+                    f"{(i.stock_total or 0):,.2f}",
+                    int(i.lotes_con_stock or 0),
+                    (i.prox_vencimiento.strftime("%Y-%m-%d") if i.prox_vencimiento else "—"),
+                ])
+            t = Table(data, colWidths=[140, 60, 90, 90, 90, 110])
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+                ("TEXTCOLOR", (0,0), (-1,0), colors.black),
+                ("ALIGN", (2,1), (-2,-1), "RIGHT"),
+                ("ALIGN", (0,0), (-1,0), "CENTER"),
+                ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+                ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.whitesmoke, colors.white]),
+            ]))
+            story.append(t)
+            story.append(Spacer(1, 10))
+
+        # Totales
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(f"<b>Stock total:</b> {Decimal(total_stock):,.2f}", styles["Normal"]))
+        story.append(Paragraph(f"<b>Precio total:</b> {Decimal(total_valor):,.0f}", styles["Normal"]))
+
+        doc.build(story)
+        pdf_value = bio.getvalue()
+        bio.close()
+        response = HttpResponse(pdf_value, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.pdf"'
+        return response
+
+    # ---------- HTML (por defecto) ----------
+    colspan_lotes = 2 \
+    + int(show_categorias) \
+    + int(show_precio_unitario) \
+    + int(show_stock_total) \
+    + int(show_prox_venc) \
+    + int(show_precio_acum)
+
+    context = {
+        "categorias": categorias,
+        "total_stock": total_stock,
+        "total_valor": total_valor,
+        "hoy": hoy,
+        "titulo": "Reporte de Disponibilidad de Insumos",
+        # flags UI
+        "show_precio_unitario": show_precio_unitario,
+        "show_stock_total": show_stock_total,
+        "show_prox_venc": show_prox_venc,
+        "show_lotes": show_lotes,
+        "show_categorias": show_categorias,
+        "show_precio_acum": show_precio_acum,
+        # selección de insumos
+        "all_insumo_names": all_insumo_names,
+        "selected_insumos": set(selected_insumos),
+        "colspan_lotes": colspan_lotes,   # <- NUEVO
+        "request": request,
+    }
 
     return render(request, "inventario/reporte_disponibilidad.html", context)
 

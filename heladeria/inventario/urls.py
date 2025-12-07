@@ -1,5 +1,3 @@
-# heladeria/inventario/urls.py
-
 from django.urls import path
 from . import views
 
@@ -13,6 +11,7 @@ urlpatterns = [
     path('ajax/crear_unidad/', views.crear_unidad_medida_ajax, name='crear_unidad_medida_ajax'),
     path('ajax/editar_unidad/<int:pk>/', views.editar_unidad_medida_ajax, name='editar_unidad_medida_ajax'),
     path('ajax/eliminar_unidad/<int:pk>/', views.eliminar_unidad_medida_ajax, name='eliminar_unidad_medida_ajax'),
+    path('ajax/insumo/<int:insumo_id>/stock-info/', views.get_insumo_stock_info, name='get_insumo_stock_info'),
     
     # --- Alertas ---
     path('alertas/', views.listar_alertas, name='listar_alertas'),
@@ -24,11 +23,11 @@ urlpatterns = [
     path('lotes/exportar/', views.exportar_lotes, name='exportar_lotes'),
     path('lotes/', views.listar_insumos_lote, name='listar_lotes'),
 
-    # --- Creación de Movimientos (NUEVAS VISTAS SEPARADAS) ---
+    # --- Creación de Movimientos (VISTAS CORRECTAS) ---
     path("movimientos/entrada/", views.registrar_entrada, name="registrar_entrada"),
+    path("movimientos/entrada/desde-movimientos/", views.registrar_entrada_movimiento, name="registrar_entrada_movimiento"),
     path("movimientos/salida/", views.registrar_salida, name="registrar_salida"),
-    path("movimientos/entrada-movimiento/", views.registrar_entrada_movimiento, name="registrar_entrada_movimiento"),
-    path("movimientos/salida-movimiento/", views.registrar_salida_movimiento, name="registrar_salida_movimiento"),
+    path("movimientos/salida/desde-movimientos/", views.registrar_salida_movimiento, name="registrar_salida_movimiento"),
     
     # --- Edición y Eliminación de Movimientos ---
     path("movimientos/entrada/<int:pk>/editar/", views.editar_entrada, name="editar_entrada"),
@@ -63,7 +62,4 @@ urlpatterns = [
     path('proveedores/crear/', views.crear_proveedor, name='crear_proveedor'),
     path('proveedores/<int:pk>/editar/', views.editar_proveedor, name='editar_proveedor'),
     path('proveedores/<int:pk>/eliminar/', views.eliminar_proveedor, name='eliminar_proveedor'),
-    
-    # URL para AJAX que consulta stock y límites
-    path('ajax/insumo/<int:insumo_id>/stock-info/', views.get_insumo_stock_info, name='get_insumo_stock_info'),
 ]
