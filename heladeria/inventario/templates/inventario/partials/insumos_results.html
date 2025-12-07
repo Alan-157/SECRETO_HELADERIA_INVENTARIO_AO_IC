@@ -22,21 +22,21 @@
       <td class="text-center">
         {% if sa < sm %}
           <span class="badge bg-danger text-white" title="Bajo stock (menor al mínimo)">
-            {{ sa|floatformat:2 }}
+            {{ sa|floatformat:0 }}
           </span>
         {% elif sa > sx and sx > 0 %}
           <span class="badge bg-warning text-dark" title="Sobre stock (mayor al máximo)">
-            {{ sa|floatformat:2 }}
+            {{ sa|floatformat:0 }}
           </span>
         {% else %}
           <span class="badge bg-success text-white" title="Stock normal">
-            {{ sa|floatformat:2 }}
+            {{ sa|floatformat:0 }}
           </span>
         {% endif %}
       </td>
 
-      <td class="text-center">{{ sm|floatformat:2 }}</td>
-      <td class="text-center">{{ sx|floatformat:2 }}</td>
+      <td class="text-center">{{ sm|floatformat:0 }}</td>
+      <td class="text-center">{{ sx|floatformat:0 }}</td>
       <td>{{ insumo.unidad_medida }}</td>
 
       {# --- BOTONES DE ACCIÓN DE MOVIMIENTO (CORREGIDO) --- #}

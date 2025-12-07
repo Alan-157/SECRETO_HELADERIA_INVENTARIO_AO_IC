@@ -21,12 +21,12 @@
                     {% if insumo.stock_total > 0 %}
                         <div class="alert alert-danger mt-3">
                             <strong>🚫 ¡ERROR!</strong> No se puede eliminar. Este insumo tiene stock actual de 
-                            <strong>{{ insumo.stock_total|floatformat:2 }}</strong>. 
+                            <strong>{{ insumo.stock_total|floatformat:0 }}</strong>. 
                             Solo los insumos con stock cero pueden eliminarse.
                         </div>
                     {% else %}
                         <div class="alert alert-info mt-3">
-                            ✅ Stock actual: <strong>{{ insumo.stock_total|floatformat:2 }}</strong>. La eliminación está permitida.
+                            ✅ Stock actual: <strong>{{ insumo.stock_total|floatformat:0 }}</strong>. La eliminación está permitida.
                         </div>
                     {% endif %}
                 {% endif %}

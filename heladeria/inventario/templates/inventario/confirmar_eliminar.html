@@ -20,7 +20,7 @@
                     {% if insumo.stock_total > 0 %}
                         <div class="alert alert-warning">
                             <strong>¡Atención!</strong> Este insumo tiene un stock actual de 
-                            <strong>{{ insumo.stock_total|floatformat:2 }}</strong>. 
+                            <strong>{{ insumo.stock_total|floatformat:0 }}</strong>. 
                             La eliminación está bloqueada por esta razón.
                         </div>
                     {% else %}

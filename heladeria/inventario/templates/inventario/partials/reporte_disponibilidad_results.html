@@ -35,13 +35,13 @@
                             {% if show_precio_unitario %}
                               <div style="margin-bottom: 12px;">
                                 <div style="font-size: 0.75rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px;">Precio Unitario</div>
-                                <div style="font-size: 1.1rem; font-weight: 700; color: #d63031; margin-top: 4px; font-family: 'Courier New', monospace;">${{ i.precio_unitario|default:0|floatformat:2 }}</div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #d63031; margin-top: 4px; font-family: 'Courier New', monospace;">${{ i.precio_unitario|default:0|floatformat:0 }}</div>
                               </div>
                             {% endif %}
                             {% if show_stock_total %}
                               <div>
                                 <div style="font-size: 0.75rem; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.5px;">Stock Total</div>
-                                <div style="font-size: 1.1rem; font-weight: 700; color: #2d5f3f; margin-top: 4px; font-family: 'Courier New', monospace;">{{ i.stock_total|default:0|floatformat:2 }}</div>
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #2d5f3f; margin-top: 4px; font-family: 'Courier New', monospace;">{{ i.stock_total|default:0|floatformat:0 }}</div>
                               </div>
                             {% endif %}
                           </div>
@@ -92,7 +92,7 @@
                                     {% endif %}
                                   </td>
                                   <td class="text-end" style="padding: 10px; font-weight: 600; font-family: 'Courier New', monospace; color: #2d5f3f;">
-                                    {{ lote.cantidad_actual|default:0|floatformat:2 }}
+                                    {{ lote.cantidad_actual|default:0|floatformat:0 }}
                                   </td>
                                   <td style="padding: 10px;">{{ lote.bodega.nombre }}</td>
                                 </tr>
@@ -110,10 +110,10 @@
                   <td style="padding: 12px; font-weight: 600;">{{ i.nombre }}</td>
                   <td class="text-center" style="padding: 12px; font-size: 0.9rem; color: #666;">{{ i.unidad_medida }}</td>
                   {% if show_precio_unitario %}
-                    <td class="text-end" style="padding: 12px; font-family: 'Courier New', monospace;">${{ i.precio_unitario|default:0|floatformat:2 }}</td>
+                    <td class="text-end" style="padding: 12px; font-family: 'Courier New', monospace;">${{ i.precio_unitario|default:0|floatformat:0 }}</td>
                   {% endif %}
                   {% if show_stock_total %}
-                    <td class="text-end" style="padding: 12px; font-weight: 600; font-family: 'Courier New', monospace; color: #2d5f3f;">{{ i.stock_total|default:0|floatformat:2 }}</td>
+                    <td class="text-end" style="padding: 12px; font-weight: 600; font-family: 'Courier New', monospace; color: #2d5f3f;">{{ i.stock_total|default:0|floatformat:0 }}</td>
                   {% endif %}
                   {% if show_prox_venc %}
                     <td class="text-center" style="padding: 12px;">

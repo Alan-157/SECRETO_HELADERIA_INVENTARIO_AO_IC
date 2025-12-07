@@ -39,15 +39,15 @@
       </td>
 
       <td class="text-end">
-        {{ lote.cant_ini|default:lote.cantidad_inicial|floatformat:2 }}
+        {{ lote.cant_ini|default:lote.cantidad_inicial|floatformat:0 }}
       </td>
 
       <td class="text-end">
         {% with ca=lote.cant_act|default:lote.cantidad_actual|default:0 %}
           {% if ca <= 0 %}
-            <span class="badge bg-danger">0.00</span>
+            <span class="badge bg-danger">0</span>
           {% else %}
-            {{ ca|floatformat:2 }}
+            {{ ca|floatformat:0 }}
           {% endif %}
         {% endwith %}
       </td>
