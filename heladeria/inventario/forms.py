@@ -252,9 +252,12 @@ class EntradaLineaForm(forms.Form):
         ],
         widget=forms.NumberInput(attrs={
             "class": "form-control",
+            "type": "number",
             "step": "1",  # CRÍTICO: Indica al navegador que solo acepte números enteros
+            "min": "1",
             "max": "99999", # Máximo valor (5 dígitos)
-            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)", # JS para truncar a 5 dígitos
+            "maxlength": "5",  # Límite de 5 caracteres en el input
+            "oninput": "this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>5)this.value=this.value.slice(0,5)", # JS para aceptar solo números y truncar a 5 dígitos
         }),
     )
 
@@ -318,9 +321,12 @@ class SalidaLineaForm(forms.Form):
         ],
         widget=forms.NumberInput(attrs={
             "class": "form-control",
+            "type": "number",
             "step": "1", # CRÍTICO: Indica al navegador que solo acepte números enteros
+            "min": "1",
             "max": "99999",
-            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)",
+            "maxlength": "5",  # Límite de 5 caracteres en el input
+            "oninput": "this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>5)this.value=this.value.slice(0,5)",  # JS para aceptar solo números y truncar a 5 dígitos
         }),
     )
     
@@ -371,9 +377,12 @@ class EntradaForm(forms.ModelForm):
         ],
         widget=forms.NumberInput(attrs={
             "class": "form-control",
+            "type": "number",
             "step": "1",
+            "min": "1",
             "max": "99999",
-            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)" 
+            "maxlength": "5",
+            "oninput": "this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>5)this.value=this.value.slice(0,5)" 
         }),
     )
 
@@ -401,9 +410,12 @@ class SalidaForm(forms.ModelForm):
         ],
         widget=forms.NumberInput(attrs={
             "class": "form-control",
+            "type": "number",
             "step": "1",
+            "min": "1",
             "max": "99999",
-            "oninput": "if(this.value.length>5)this.value=this.value.slice(0,5)"
+            "maxlength": "5",
+            "oninput": "this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>5)this.value=this.value.slice(0,5)"
         }),
     )
 
