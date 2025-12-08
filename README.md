@@ -75,6 +75,7 @@ python manage.py seed_encargado
 python manage.py seed_bodeguero
 # Seed Inventario
 python manage.py seed_categorias
+python manage.py seed_unidadmedida
 python manage.py seed_insumos
 python manage.py seed_bodegas
 python manage.py seed_ubicaciones
@@ -82,6 +83,7 @@ python manage.py seed_lotes
 python manage.py seed_ordenes
 python manage.py seed_movimientos
 python manage.py seed_alertas
+python manage.py check_stock_alerts
 
 ## Ejecutar servidor local
 python manage.py runserver
