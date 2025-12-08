@@ -6,7 +6,6 @@
   <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
     <h3 class="mb-0">{{ titulo }}</h3>
 
-    <!-- Botón agregar fila -->
     <button type="button" id="add-row" class="btn btn-sm btn-outline-primary">
       + Agregar ítem
     </button>
@@ -17,6 +16,21 @@
       {% csrf_token %}
       {{ formset.management_form }}
 
+      <div class="mb-4 row">
+        <label for="{{ form.tipo_orden.id_for_label }}" class="col-sm-3 col-form-label fw-bold">Tipo de Operación:</label>
+        <div class="col-sm-9">
+          {{ form.tipo_orden }}
+          {% if form.tipo_orden.errors %}
+            <div class="text-danger small mt-1">{% for error in form.tipo_orden.errors %}{{ error }}{% endfor %}</div>
+          {% endif %}
+          {% if form.instance.pk %}
+            <small class="form-text text-muted">El tipo de orden no se puede cambiar después de su creación.</small>
+            {# Esto asegura que el valor se mantenga en el POST a pesar de estar 'disabled' #}
+            <input type="hidden" name="{{ form.tipo_orden.html_name }}" value="{{ form.tipo_orden.value }}">
+          {% endif %}
+        </div>
+      </div>
+      <hr>
       {% if formset.non_form_errors %}
       <div class="alert alert-danger">
         {% for error in formset.non_form_errors %}
@@ -52,7 +66,6 @@
                 {% endfor %}
               </td>
 
-              <!-- hidden fields de la fila -->
               {% for hidden in form.hidden_fields %}
                 {{ hidden }}
               {% endfor %}
@@ -80,7 +93,6 @@
   </div>
 </div>
 
-<!-- Template fila vacía -->
 <script type="text/template" id="empty-form-template">
   <tr class="form-row">
     <td>

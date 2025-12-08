@@ -12,6 +12,11 @@ TIPO_MOVIMIENTO_CHOICES = [
     ("AJUSTE", "Ajuste de Stock"),
 ]
 
+TIPO_ORDEN_CHOICES = [ 
+    ("ENTRADA", "Entrada de Insumos"),
+    ("SALIDA", "Salida de Insumos"),
+]
+
 ESTADO_ORDEN_CHOICES = [
     ("PENDIENTE", "Pendiente"),
     ("EN_CURSO", "En Curso"),
@@ -177,9 +182,18 @@ class OrdenInsumo(BaseModel):
     usuario = models.ForeignKey(UsuarioApp, on_delete=models.PROTECT, related_name="ordenes_creadas")
     fecha = models.DateField(auto_now_add=True)
     estado = models.CharField(max_length=50, choices=ESTADO_ORDEN_CHOICES, default="PENDIENTE")
+    
+    # NUEVO CAMPO: Define si la orden es de entrada o salida
+    tipo_orden = models.CharField(
+        max_length=40, 
+        choices=TIPO_ORDEN_CHOICES, 
+        default="ENTRADA",
+        verbose_name="Tipo de Orden"
+    )
 
     def __str__(self):
-        return f"Orden #{self.id} - {self.estado}"
+        # MODIFICADO: Incluir el tipo de orden
+        return f"Orden #{self.id} - {self.tipo_orden} - {self.estado}"
 
     # Cálculo automático del estado
     def recalc_estado(self):

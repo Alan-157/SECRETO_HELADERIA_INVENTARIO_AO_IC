@@ -17,12 +17,12 @@ from .models import (
     Insumo, Categoria, Bodega,
     Entrada, Salida, InsumoLote,
     OrdenInsumo, OrdenInsumoDetalle, UnidadMedida, AlertaInsumo, Proveedor,
-    ESTADO_ORDEN_CHOICES,              
+    ESTADO_ORDEN_CHOICES, TIPO_ORDEN_CHOICES            
 )
 from django.urls import reverse
 from .forms import (
     InsumoForm, CategoriaForm, SalidaLineaForm,EntradaLineaForm,EntradaLineaFormSet,SalidaLineaFormSet,
-    EntradaLineaFormSetMovimiento, SalidaLineaFormSetMovimiento,
+    EntradaLineaFormSetMovimiento, SalidaLineaFormSetMovimiento, OrdenInsumoForm,
     #MovimientoLineaFormSet, 
     BodegaForm, ProveedorForm,
     EntradaForm, SalidaForm, 
@@ -1150,10 +1150,35 @@ def registrar_entrada(request):
         return redirect('inventario:listar_movimientos')
 
     initial_data = []
+    orden_obj = None # <--- NUEVO: Variable para la orden
 
-    # --- LÓGICA DE PRE-CARGA (Insumo ID) ---
-    insumo_id = request.GET.get("insumo_id")
-    if insumo_id:
+    # --- LÓGICA DE PRE-CARGA (Orden ID) ---
+    orden_id = request.GET.get("orden")
+    if orden_id:
+        orden_obj = get_object_or_404(models.OrdenInsumo.objects.select_related('usuario'), id=orden_id)
+        # ⚠️ VALIDACIÓN CRÍTICA: Asegurar que sea una orden de ENTRADA
+        if orden_obj.tipo_orden != 'ENTRADA': 
+            messages.error(request, f"La orden #{orden_id} es de tipo '{orden_obj.tipo_orden}' y no puede atenderse como Entrada.")
+            return redirect('inventario:listar_ordenes')
+            
+        # Precargar solo los detalles que no están cerrados
+        for detalle in orden_obj.detalles.filter(cantidad_solicitada__gt=F('cantidad_atendida')): 
+            cantidad_restante = detalle.cantidad_solicitada - detalle.cantidad_atendida
+            
+            # Se convierte a entero/float para el campo IntegerField en el formulario
+            if cantidad_restante.to_integral_value() == cantidad_restante:
+                cantidad = int(cantidad_restante)
+            else:
+                cantidad = float(cantidad_restante)
+                
+            initial_data.append({
+                'insumo': detalle.insumo.id,
+                'cantidad': cantidad, 
+            })
+    
+    # --- LÓGICA DE PRE-CARGA (Insumo ID - Si NO HAY Orden) ---
+    elif request.GET.get("insumo_id"):
+        insumo_id = request.GET.get("insumo_id")
         try:
             insumo_obj = models.Insumo.objects.get(id=insumo_id)
             initial_data.append({
@@ -1165,6 +1190,16 @@ def registrar_entrada(request):
 
     if request.method == "POST":
         formset = EntradaLineaFormSet(request.POST)
+        
+        # Obtener la orden de la solicitud POST
+        orden_id_post = request.POST.get("orden_id")
+        orden_obj_post = None
+        if orden_id_post:
+            orden_obj_post = get_object_or_404(models.OrdenInsumo, id=orden_id_post)
+            if orden_obj_post.tipo_orden != 'ENTRADA':
+                messages.error(request, f"Error: La orden #{orden_id_post} es de tipo '{orden_obj_post.tipo_orden}'.")
+                return redirect('inventario:listar_ordenes')
+
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
             
@@ -1180,6 +1215,23 @@ def registrar_entrada(request):
                     messages.warning(request, "Datos incompletos en una línea de entrada. Se ignoró esta línea.")
                     continue
                 
+                # --- NUEVO: Encontrar el Detalle de la Orden ---
+                detalle_obj = None
+                if orden_obj_post:
+                    try:
+                        detalle_obj = orden_obj_post.detalles.get(insumo=insumo)
+                        # Opcional: Limitar la cantidad al restante en la orden si es atendida aquí
+                        cantidad_max = detalle_obj.cantidad_solicitada - detalle_obj.cantidad_atendida
+                        if cantidad > cantidad_max and cantidad_max > 0:
+                            cantidad = cantidad_max
+                        elif cantidad_max <= 0:
+                            continue # Ya está completa
+
+                    except models.OrdenInsumoDetalle.DoesNotExist:
+                        # Si no existe detalle, el movimiento de entrada no estará vinculado a la orden.
+                        pass
+                # --- FIN NUEVO: Encontrar el Detalle de la Orden ---
+
                 lote = models.InsumoLote.objects.create(
                     insumo=insumo,
                     bodega=ubicacion.bodega,
@@ -1195,12 +1247,23 @@ def registrar_entrada(request):
                     insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
                     cantidad=cantidad, fecha=fecha, usuario=request.user,
                     observaciones=cd.get("observaciones", ""),
+                    orden=orden_obj_post,     # <--- ENLACE A ORDEN
+                    detalle=detalle_obj,      # <--- ENLACE A DETALLE
                 )
                 
                 lote.cantidad_actual += cantidad
                 lote.save(update_fields=["cantidad_actual"])
                 
+                # --- NUEVO: Actualizar Detalle y Estado de Orden ---
+                if detalle_obj:
+                    detalle_obj.cantidad_atendida += cantidad
+                    detalle_obj.save(update_fields=["cantidad_atendida"])
+                
                 check_and_create_stock_alerts(insumo)
+            
+            if orden_obj_post:
+                orden_obj_post.recalc_estado()
+            # --- FIN NUEVO: Actualizar Detalle y Estado de Orden ---
 
             messages.success(request, "✅ Entrada(s) registrada(s) correctamente.")
             return redirect('inventario:listar_movimientos')
@@ -1208,7 +1271,7 @@ def registrar_entrada(request):
         messages.error(request, "Revisa los errores en el formulario antes de continuar.")
 
     else:
-        # Si hay precarga (insumo pasado por GET), no crear línea extra vacía
+        # Si hay precarga (insumo o orden pasados por GET), no crear línea extra vacía
         if initial_data:
             DynamicFormSet = formset_factory(EntradaLineaForm, extra=0, can_delete=True)
         else:
@@ -1218,6 +1281,7 @@ def registrar_entrada(request):
     return render(request, "inventario/registrar_entrada.html", {
         "formset": formset,
         "titulo": "Registrar Entrada de Inventario",
+        "orden": orden_obj, # <--- Pasar la orden al contexto
     })
 
 
@@ -1795,42 +1859,52 @@ ESTADOS_ORDEN = ("PENDIENTE", "EN_CURSO", "CERRADA", "CANCELADA")
 @perfil_required(allow=("administrador", "Encargado"), readonly_for=("Bodeguero",))
 def listar_ordenes(request):
     """Lista las órdenes y permite actualizar su estado manualmente."""
-    qs = OrdenInsumo.objects.all().select_related("usuario")
+    
+    # MODIFICADO: Se utiliza prefetch_related para optimizar la carga de detalles
+    qs = (
+        OrdenInsumo.objects.all()
+        .select_related("usuario")
+        .prefetch_related(
+            Prefetch(
+                "detalles",
+                queryset=OrdenInsumoDetalle.objects.select_related(
+                    "insumo__unidad_medida"
+                )
+            )
+        )
+    )
 
-    # --- Búsqueda
+    # --- Búsqueda (sin cambios)
     q = (request.GET.get("q") or "").strip()
     if q:
         qs = qs.filter(Q(usuario__name__icontains=q) | Q(usuario__email__icontains=q))
 
-    # --- Filtro por estado
+    # --- Filtro por estado (sin cambios)
     estado_f = request.GET.get("estado")
     if estado_f in ESTADOS_ORDEN:
         qs = qs.filter(estado=estado_f)
 
-    # --- Orden
+    # --- Orden (sin cambios)
     allowed_sort = {"id", "fecha", "estado", "usuario", "creado", "actualizado"}
     sort = request.GET.get("sort")
     if sort not in allowed_sort:
         sort = "fecha"
 
     sort_map = {
-        "id": "id",
-        "fecha": "fecha",
-        "estado": "estado",
-        "usuario": "usuario__name",
-        "creado": "created_at",
-        "actualizado": "updated_at",
+        "id": "id", "fecha": "fecha", "estado": "estado", "usuario": "usuario__name",
+        "creado": "created_at", "actualizado": "updated_at",
     }
 
+    # CORRECCIÓN CLAVE: El botón 'Nueva orden' se muestra si el usuario es Admin, Encargado, o Bodeguero.
     read_only = not (
         request.user.is_superuser
-        or user_has_role(request.user, "Administrador", "Admin", "Encargado")
+        or user_has_role(request.user, "Administrador", "Encargado", "Bodeguero") # <-- ¡BODEGUERO AÑADIDO AQUÍ!
     )
 
     return list_with_filters(
         request,
         qs,
-        search_fields=[],  # ya filtraste q arriba
+        search_fields=[],
         order_field=sort_map[sort],
         session_prefix="ordenes",
         context_key="ordenes",
@@ -1845,7 +1919,8 @@ def listar_ordenes(request):
             "estado": estado_f,
             "sort": sort,
             "ESTADOS_ORDEN": ESTADOS_ORDEN,
-            "read_only": read_only,
+            "ESTADO_ORDEN_CHOICES": ESTADO_ORDEN_CHOICES,
+            "read_only": read_only, # <--- Se pasa el valor actualizado
         },
     )
 
@@ -1867,20 +1942,30 @@ def orden_cambiar_estado(request, pk):
     return redirect("inventario:listar_ordenes")
 
 @login_required
-@perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
+@perfil_required(allow=("administrador", "Encargado", "Bodeguero")) # <-- El rol 'Bodeguero' está incluido aquí
 @transaction.atomic
 def crear_orden(request):
     """
     Crea una nueva orden con mínimo 1 ítem válido.
     """
     orden = OrdenInsumo()  # Aún no guardada
+    
+    # NUEVO: Formulario principal para el tipo de orden
+    form = OrdenInsumoForm(request.POST or None)
+    
     formset = OrdenInsumoDetalleCreateFormSet(request.POST or None, instance=orden)
 
     if request.method == "POST":
 
-        if formset.is_valid():
+        if form.is_valid() and formset.is_valid(): # <--- Validar ambos formularios
+            
+            # Guardar el formulario principal (Obtiene el tipo_orden)
+            orden = form.save(commit=False)
             orden.usuario = request.user
             orden.save()
+            
+            # Guardar los detalles con la instancia de orden guardada
+            formset.instance = orden
             formset.save()
 
             messages.success(request, "Orden creada correctamente.")
@@ -1893,6 +1978,7 @@ def crear_orden(request):
         "inventario/crear_orden.html",
         {
             "titulo": "Crear orden",
+            "form": form,      # <--- Pasar el formulario principal
             "formset": formset,
         }
     )
@@ -1906,13 +1992,25 @@ def editar_orden(request, pk):
     Edita una orden existente. Permite eliminar detalles y agregar nuevos.
     """
     orden = get_object_or_404(OrdenInsumo, pk=pk)
+    
+    # NUEVO: Formulario principal (el campo tipo_orden se deshabilita automáticamente)
+    form = OrdenInsumoForm(request.POST or None, instance=orden)
+    
     formset = OrdenInsumoDetalleEditFormSet(request.POST or None, instance=orden)
 
     if request.method == "POST":
 
-        if formset.is_valid():
+        # Validación: si la orden está CERRADA o CANCELADA, se prohíbe la edición de detalles
+        if orden.estado in ["CERRADA", "CANCELADA"]:
+            messages.error(request, f"La orden #{orden.pk} está {orden.estado} y no puede ser editada.")
+            return redirect("inventario:listar_ordenes")
+
+
+        if form.is_valid() and formset.is_valid():
+            
+            form.save() # Guarda el estado y actualiza updated_at
+
             formset.save()
-            orden.save()  # actualiza updated_at
 
             messages.success(request, f"Orden #{orden.pk} actualizada correctamente.")
             return redirect("inventario:listar_ordenes")
@@ -1923,7 +2021,8 @@ def editar_orden(request, pk):
         request,
         "inventario/crear_orden.html",
         {
-            "titulo": f"Editar orden #{orden.pk}",
+            "titulo": f"Editar orden #{orden.pk} ({orden.tipo_orden})", # MODIFICADO título
+            "form": form,      # <--- Pasar el formulario principal
             "formset": formset,
         }
     )

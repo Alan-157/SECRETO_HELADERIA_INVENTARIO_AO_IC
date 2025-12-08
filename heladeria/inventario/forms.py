@@ -18,12 +18,29 @@ from .models import (
     Salida,
     Ubicacion,
     UnidadMedida,
-    AlertaInsumo
+    AlertaInsumo,
+    TIPO_ORDEN_CHOICES,
 )
 
 
 TIPO_CHOICES = (("ENTRADA", "Entrada"), ("SALIDA", "Salida"))
 
+
+class OrdenInsumoForm(forms.ModelForm): 
+    tipo_orden = forms.ChoiceField(
+        choices=TIPO_ORDEN_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    
+    class Meta:
+        model = OrdenInsumo
+        fields = ("tipo_orden",) 
+        
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Si ya existe (edición), se deshabilita para mantener la consistencia
+        if self.instance.pk:
+            self.fields['tipo_orden'].widget.attrs['disabled'] = 'disabled'
 
 # ==========================================
 #  CATEGORÍAS
