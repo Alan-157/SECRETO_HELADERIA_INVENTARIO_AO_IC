@@ -2187,7 +2187,7 @@ def reporte_disponibilidad(request):
                     [
                         bloque["categoria"].nombre if bloque["categoria"] else "",
                         i.nombre,
-                        i.unidad_medida,
+                        str(i.unidad_medida), # Asegurar str() para CSV
                         f"{i.precio_unitario}",
                         f"{i.stock_total:.2f}",
                         i.lotes_con_stock,
@@ -2211,11 +2211,21 @@ def reporte_disponibilidad(request):
         ws = wb.active
         ws.title = "Disponibilidad"
 
+        # Define Fills and Fonts
+        HEADER_FILL = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type="solid") # Light Gray
+        ROW_ODD_FILL = PatternFill(start_color='F2F2F2', end_color='F2F2F2', fill_type="solid") # Very Light Gray
+        ROW_EVEN_FILL = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type="solid") # White
+        TOTAL_FILL = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type="solid") # Light Green (for totals)
+        BOLD_FONT = Font(bold=True)
+        
+        # --- TÍTULO ---
         title = f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}"
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
-        ws.cell(row=1, column=1, value=title).font = Font(size=14, bold=True)
-        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
-
+        title_cell = ws.cell(row=1, column=1, value=title)
+        title_cell.font = Font(size=14, bold=True, color='000000') # Black color
+        title_cell.alignment = Alignment(horizontal="center", vertical="center")
+        
+        # --- CABECERAS ---
         headers = [
             "Categoría",
             "Insumo",
@@ -2227,25 +2237,25 @@ def reporte_disponibilidad(request):
         ]
         ws.append(headers)
 
-        # Estilo encabezado (similar al PDF: fondo gris claro)
-        header_fill = PatternFill(
-            start_color="D9D9D9", end_color="D9D9D9", fill_type="solid"
-        )
-        for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=2, column=col)
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal="center")
-            cell.fill = header_fill
+        header_row = ws[2]
+        for cell in header_row:
+            cell.font = BOLD_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.fill = HEADER_FILL
 
-        # Datos
+        # --- DATOS Y ALTERNANCIA DE COLOR ---
         row_num = 3
         for bloque in categorias:
             for i in bloque["insumos"]:
+                
+                # Determine row style based on row_num parity
+                fill = ROW_ODD_FILL if (row_num % 2 == 1) else ROW_EVEN_FILL
+                
                 ws.append(
                     [
                         bloque["categoria"].nombre,
                         i.nombre,
-                        i.unidad_medida,
+                        str(i.unidad_medida), # CORREGIDO: Forzar a string
                         float(i.precio_unitario or 0),
                         float(i.stock_total or 0),
                         int(i.lotes_con_stock or 0),
@@ -2256,28 +2266,68 @@ def reporte_disponibilidad(request):
                         ),
                     ]
                 )
+                
+                # Apply styles to the newly added row
+                for col_idx in range(1, 8):
+                    cell = ws.cell(row=row_num, column=col_idx)
+                    cell.fill = fill
+                    
+                    # Align text columns left
+                    if col_idx in [1, 2, 3]:
+                        cell.alignment = Alignment(horizontal="left")
+                    # Align numbers right/center
+                    elif col_idx in [4, 5]:
+                        cell.alignment = Alignment(horizontal="right")
+                    elif col_idx in [6, 7]:
+                        cell.alignment = Alignment(horizontal="center")
+                
                 row_num += 1
 
-        # Totales
-        ws.append([])
-        ws.append(["", "", "", "TOTALES", float(total_stock), "", ""])
-        ws.append(["", "", "", "VALOR TOTAL", float(total_valor), "", ""])
+        # --- TOTALES ---
+        # 1. Add empty row for spacing
+        ws.append([]) 
+        total_stock_row_idx = ws.max_row + 1
 
-        # Estilos y tamaños
-        col_widths = [18, 30, 10, 18, 16, 18, 18]
+        # 2. Total Stock Row
+        ws.append(["", "", "", "TOTAL STOCK", float(total_stock), "", ""])
+        total_stock_row_idx = ws.max_row
+        
+        # 3. Total Value Row
+        ws.append(["", "", "", "VALOR TOTAL", float(total_valor), "", ""])
+        total_value_row_idx = ws.max_row
+
+        # Apply total styles (bold font and light green fill)
+        for row_idx in [total_stock_row_idx, total_value_row_idx]:
+            for col_idx in range(4, 6): # Columns D and E
+                cell = ws.cell(row=row_idx, column=col_idx)
+                cell.font = BOLD_FONT
+                cell.fill = TOTAL_FILL
+                cell.alignment = Alignment(horizontal="right")
+            
+            # Apply bold to the label column (C)
+            label_cell = ws.cell(row=row_idx, column=4)
+            label_cell.font = BOLD_FONT
+            label_cell.fill = TOTAL_FILL
+            label_cell.alignment = Alignment(horizontal="left")
+
+
+        # --- FORMATOS NUMÉRICOS (Aplicar a toda la columna D y E, incluyendo totales) ---
+        
+        # Curreny format for column D (Precio Unitario)
+        for row in ws.iter_rows(min_row=3, min_col=4, max_col=4, max_row=ws.max_row):
+            for cell in row:
+                cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE # e.g., $1,000.00
+                
+        # Decimal format for column E (Stock Total)
+        for row in ws.iter_rows(min_row=3, min_col=5, max_col=5, max_row=ws.max_row):
+            for cell in row:
+                cell.number_format = "0.00"
+
+        # --- ANCHO DE COLUMNAS ---
+        col_widths = [18, 30, 15, 18, 16, 18, 18] # Adjusted based on content
         for idx, width in enumerate(col_widths, start=1):
             ws.column_dimensions[get_column_letter(idx)].width = width
-
-        # Formatos numéricos
-        for row in ws.iter_rows(
-            min_row=3, min_col=4, max_col=5, max_row=ws.max_row
-        ):
-            for cell in row:
-                if cell.column == 4:
-                    cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE
-                elif cell.column == 5:
-                    cell.number_format = "0.00"
-
+            
         bio = BytesIO()
         wb.save(bio)
         bio.seek(0)
@@ -2337,7 +2387,7 @@ def reporte_disponibilidad(request):
                 data.append(
                     [
                         i.nombre,
-                        i.unidad_medida,
+                        str(i.unidad_medida), # Asegurar str() para PDF
                         f"{(i.precio_unitario or 0):,.0f}",
                         f"{(i.stock_total or 0):,.2f}",
                         int(i.lotes_con_stock or 0),
@@ -2434,271 +2484,6 @@ def reporte_disponibilidad(request):
             request=request,
         )
         return JsonResponse({"ok": True, "html": html})
-
-    return render(request, "inventario/reporte_disponibilidad.html", context)
-    """
-    Reporte de disponibilidad de insumos con:
-    - Filtro por insumos (nombre) via checkboxes.
-    - Flags de columnas a mostrar.
-    - Lotes indentados por insumo (en HTML).
-    Export: CSV/XLSX/PDF (respetan filtro de insumos).
-    """
-    hoy = date.today()
-
-    # -------- flags de columnas (HTML) --------
-    # por defecto mostramos: stock_total, precio_unitario, prox_vencimiento, lotes
-    def _b(name, default=True):
-        """
-        Lee tanto 'show_*' (nuevo) como 'col_*' (legado) y devuelve bool.
-        """
-        raw = request.GET.get(name, None)
-        if raw is None and name.startswith("show_"):
-            raw = request.GET.get(name.replace("show_", "col_"), None)  # compat con col_*
-        if raw is None:
-            return default
-        return str(raw).lower() in ("1", "true", "on", "yes")
-
-    show_precio_unitario = _b("show_precio_unitario", True)
-    show_stock_total     = _b("show_stock_total", True)
-    show_prox_venc       = _b("show_prox_venc", True)
-    show_lotes           = _b("show_lotes", True)
-    show_categorias      = _b("show_categorias", False)
-    show_precio_acum     = _b("show_precio_acum", False)
-
-    # -------- selección por insumo (nombres) --------
-    selected_insumos = request.GET.getlist("insumo")   # lista de nombres exactos
-
-    # Base queryset de insumos (activos + categoría activa)
-    insumos_base = (
-        Insumo.objects.filter(is_active=True, categoria__is_active=True)
-        .select_related("categoria")
-    )
-
-    # Si vienen seleccionados, filtramos por nombre (case-insensitive)
-    if selected_insumos:
-        insumos_base = insumos_base.filter(nombre__in=selected_insumos)
-
-    # Prefetch de lotes activos para cada insumo (ordenados por fecha de expiración)
-    lotes_qs = (InsumoLote.objects
-                .filter(is_active=True)
-                .select_related("bodega")
-                .order_by("fecha_expiracion", "id"))
-
-    # Anotaciones de stock total, #lotes con stock, prox venc
-    insumos_qs = (
-        insumos_base
-        .annotate(
-            stock_total=Coalesce(
-                Sum(
-                    "lotes__cantidad_actual",
-                    filter=Q(lotes__is_active=True),
-                    output_field=DecimalField(max_digits=12, decimal_places=2),
-                ),
-                0,
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            ),
-            lotes_con_stock=Count(
-                "lotes",
-                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
-                distinct=True,
-            ),
-            prox_vencimiento=Min(
-                "lotes__fecha_expiracion",
-                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
-            ),
-        )
-        .prefetch_related(Prefetch("lotes", queryset=lotes_qs, to_attr="lotes_vis"))
-        .order_by("categoria__nombre", "nombre")
-    )
-
-    # Dataset para checkboxes (todos los nombres disponibles, ordenados)
-    all_insumo_names = list(
-        Insumo.objects.filter(is_active=True, categoria__is_active=True)
-        .order_by("nombre")
-        .values_list("nombre", flat=True)
-    )
-
-    # Agrupado por categoría (para HTML)
-    categorias = []
-    cat_actual = None
-    buffer = []
-    for i in insumos_qs:
-        if not cat_actual or i.categoria_id != cat_actual.id:
-            if buffer:
-                categorias.append({"categoria": cat_actual, "insumos": buffer})
-                buffer = []
-            cat_actual = i.categoria
-        # cálculo auxiliar para HTML
-        i.precio_acumulado = (i.stock_total or 0) * (i.precio_unitario or 0)
-        buffer.append(i)
-    if buffer:
-        categorias.append({"categoria": cat_actual, "insumos": buffer})
-
-    total_stock = sum((i.stock_total or 0) for i in insumos_qs)
-    total_valor = sum(((i.stock_total or 0) * (i.precio_unitario or 0)) for i in insumos_qs)
-
-    fmt = (request.GET.get("format") or "").lower()
-
-    # ------- EXPORTS (respetan filtro de insumos, mantienen columnas clásicas) -------
-    if fmt == "csv":
-        response = HttpResponse(content_type="text/csv; charset=utf-8")
-        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.csv"'
-        writer = csv.writer(response)
-        writer.writerow(["Categoría", "Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"])
-        for bloque in categorias:
-            for i in bloque["insumos"]:
-                writer.writerow([
-                    bloque["categoria"].nombre if bloque["categoria"] else "",
-                    i.nombre,
-                    i.unidad_medida,
-                    f"{i.precio_unitario}",
-                    f"{i.stock_total:.2f}",
-                    i.lotes_con_stock,
-                    i.prox_vencimiento.isoformat() if i.prox_vencimiento else "—",
-                ])
-        writer.writerow([])
-        writer.writerow(["", "", "", "TOTALES", f"{Decimal(total_stock):.2f}", "", ""])
-        writer.writerow(["", "", "", "VALOR TOTAL", f"{Decimal(total_valor):.2f}", "", ""])
-        return response
-
-    # ---------- XLSX ----------
-    if fmt in ("xlsx", "excel"):
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Disponibilidad"
-
-        title = f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}"
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=7)
-        ws.cell(row=1, column=1, value=title).font = Font(size=14, bold=True)
-        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
-
-        headers = ["Categoría", "Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"]
-        ws.append(headers)
-        for col in range(1, len(headers) + 1):
-            ws.cell(row=2, column=col).font = Font(bold=True)
-            ws.cell(row=2, column=col).alignment = Alignment(horizontal="center")
-
-        for bloque in categorias:
-            for i in bloque["insumos"]:
-                ws.append([
-                    bloque["categoria"].nombre,
-                    i.nombre,
-                    i.unidad_medida,
-                    float(i.precio_unitario or 0),
-                    float(i.stock_total or 0),
-                    int(i.lotes_con_stock or 0),
-                    (i.prox_vencimiento.isoformat() if i.prox_vencimiento else "—"),
-                ])
-
-        # Totales
-        ws.append([])
-        ws.append(["", "", "", "TOTALES", float(total_stock), "", ""])
-        ws.append(["", "", "", "VALOR TOTAL", float(total_valor), "", ""])
-
-        # Estilos y tamaños
-        col_widths = [18, 30, 10, 16, 14, 16, 16]
-        for idx, width in enumerate(col_widths, start=1):
-            ws.column_dimensions[get_column_letter(idx)].width = width
-
-        # Formatos numéricos
-        for row in ws.iter_rows(min_row=3, min_col=4, max_col=5, max_row=ws.max_row):
-            for cell in row:
-                if cell.column == 4:
-                    cell.number_format = numbers.FORMAT_CURRENCY_USD_SIMPLE  # ajusta si deseas CLP personalizado
-                elif cell.column == 5:
-                    cell.number_format = "0.00"
-
-        bio = BytesIO()
-        wb.save(bio)
-        bio.seek(0)
-        response = HttpResponse(
-            bio.getvalue(),
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.xlsx"'
-        return response
-
-    # ---------- PDF ----------
-    if fmt == "pdf":
-        bio = BytesIO()
-        doc = SimpleDocTemplate(
-            bio,
-            pagesize=landscape(A4),
-            leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20,
-            title="Reporte de Disponibilidad de Insumos",
-        )
-        styles = getSampleStyleSheet()
-        story = []
-
-        story.append(Paragraph(f"Reporte de Disponibilidad de Insumos - {hoy.isoformat()}", styles["Title"]))
-        story.append(Spacer(1, 8))
-
-        table_head = ["Insumo", "Unidad", "Precio Unitario", "Stock Total", "Lotes con Stock", "Próx. Vencimiento"]
-
-        for bloque in categorias:
-            story.append(Paragraph(f"Categoría: {bloque['categoria'].nombre}", styles["Heading3"]))
-            data = [table_head]
-            for i in bloque["insumos"]:
-                data.append([
-                    i.nombre,
-                    i.unidad_medida,
-                    f"{(i.precio_unitario or 0):,.0f}",
-                    f"{(i.stock_total or 0):,.2f}",
-                    int(i.lotes_con_stock or 0),
-                    (i.prox_vencimiento.strftime("%Y-%m-%d") if i.prox_vencimiento else "—"),
-                ])
-            t = Table(data, colWidths=[140, 60, 90, 90, 90, 110])
-            t.setStyle(TableStyle([
-                ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-                ("TEXTCOLOR", (0,0), (-1,0), colors.black),
-                ("ALIGN", (2,1), (-2,-1), "RIGHT"),
-                ("ALIGN", (0,0), (-1,0), "CENTER"),
-                ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-                ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.whitesmoke, colors.white]),
-            ]))
-            story.append(t)
-            story.append(Spacer(1, 10))
-
-        # Totales
-        story.append(Spacer(1, 6))
-        story.append(Paragraph(f"<b>Stock total:</b> {Decimal(total_stock):,.2f}", styles["Normal"]))
-        story.append(Paragraph(f"<b>Precio total:</b> {Decimal(total_valor):,.0f}", styles["Normal"]))
-
-        doc.build(story)
-        pdf_value = bio.getvalue()
-        bio.close()
-        response = HttpResponse(pdf_value, content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="reporte_disponibilidad_{hoy.isoformat()}.pdf"'
-        return response
-
-    # ---------- HTML (por defecto) ----------
-    colspan_lotes = 2 \
-    + int(show_categorias) \
-    + int(show_precio_unitario) \
-    + int(show_stock_total) \
-    + int(show_prox_venc) \
-    + int(show_precio_acum)
-
-    context = {
-        "categorias": categorias,
-        "total_stock": total_stock,
-        "total_valor": total_valor,
-        "hoy": hoy,
-        "titulo": "Reporte de Disponibilidad de Insumos",
-        # flags UI
-        "show_precio_unitario": show_precio_unitario,
-        "show_stock_total": show_stock_total,
-        "show_prox_venc": show_prox_venc,
-        "show_lotes": show_lotes,
-        "show_categorias": show_categorias,
-        "show_precio_acum": show_precio_acum,
-        # selección de insumos
-        "all_insumo_names": all_insumo_names,
-        "selected_insumos": set(selected_insumos),
-        "colspan_lotes": colspan_lotes,   # <- NUEVO
-        "request": request,
-    }
 
     return render(request, "inventario/reporte_disponibilidad.html", context)
 
