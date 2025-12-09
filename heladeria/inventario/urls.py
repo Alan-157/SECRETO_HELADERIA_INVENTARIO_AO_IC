@@ -20,8 +20,14 @@ urlpatterns = [
     
     # --- Listados Varios ---
     path('movimientos/', views.listar_movimientos, name='listar_movimientos'),
+
+    # --- Lotes (Agrupados y Reordenados: Específico a General) ---
+    path('lotes/crear/', views.crear_lote, name='crear_lote'),
     path('lotes/exportar/', views.exportar_lotes, name='exportar_lotes'),
-    path('lotes/', views.listar_insumos_lote, name='listar_lotes'),
+    path('lotes/<int:pk>/detalle/', views.ver_detalle_lote, name='ver_detalle_lote'),
+    path('lotes/<int:pk>/editar/', views.editar_lote, name='editar_lote'),
+    path('lotes/<int:pk>/eliminar/', views.eliminar_lote, name='eliminar_lote'),
+    path('lotes/', views.listar_insumos_lote, name='listar_lotes'), # <-- Al final del grupo de lotes
 
     # --- Creación de Movimientos (VISTAS CORRECTAS) ---
     path("movimientos/entrada/", views.registrar_entrada, name="registrar_entrada"),

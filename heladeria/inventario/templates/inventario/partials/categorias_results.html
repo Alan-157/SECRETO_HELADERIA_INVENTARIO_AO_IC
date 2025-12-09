@@ -17,13 +17,17 @@
                class="btn btn-sm btn-warning">
               Editar
             </a>
+            
             <form method="post"
                   action="{% url 'inventario:eliminar_categoria' c.id %}"
                   class="d-inline">
               {% csrf_token %}
-              <button type="submit"
+              <button type="button"  {# Cambiado a type="button" #}
                       class="btn btn-sm btn-danger"
-                      data-delete-categoria="1">
+                      data-confirm-delete="true" 
+                      data-objeto-nombre="{{ c.nombre }}"
+                      data-objeto-tipo="Categoría"
+                      title="Eliminar {{ c.nombre }}">
                 Eliminar
               </button>
             </form>

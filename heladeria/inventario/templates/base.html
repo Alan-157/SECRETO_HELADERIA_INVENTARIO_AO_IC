@@ -35,24 +35,30 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    // Confirmación SweetAlert2 para eliminar
-    document.querySelectorAll("[data-delete-form]").forEach((btn) => {
+    
+    // Lógica para botones de eliminación que requieren confirmación (Categorías, Órdenes, etc.)
+    document.querySelectorAll("[data-confirm-delete='true']").forEach((btn) => {
         btn.addEventListener("click", function (e) {
             e.preventDefault();
+            
             const form = this.closest("form");
+            // Obtener información para la alerta
+            const nombre = this.getAttribute('data-objeto-nombre') || "este elemento";
+            const tipo = this.getAttribute('data-objeto-tipo') || "elemento";
 
             Swal.fire({
-                title: "¿Estás seguro?",
-                text: "Esta acción no se puede deshacer.",
+                title: `¿Estás seguro de eliminar ${tipo} «${nombre}»?`,
+                text: "Esta acción marcará el elemento como inactivo y no se puede deshacer.",
                 icon: "warning",
                 showCancelButton: true,
-                confirmButtonColor: "#A41C2D",
+                confirmButtonColor: "#A41C2D", 
                 cancelButtonColor: "#6c757d",
                 confirmButtonText: "Sí, eliminar",
                 cancelButtonText: "Cancelar"
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // Si es AJAX, se maneja la respuesta
+                    
+                    // Si el formulario tiene el atributo data-ajax="true", se envía con AJAX
                     if (form.dataset.ajax === "true") {
                         fetch(form.action, {
                             method: "POST",
@@ -70,10 +76,51 @@ document.addEventListener("DOMContentLoaded", function () {
                             Swal.fire("Error", "No se pudo eliminar el elemento.", "error");
                         });
                     } else {
-                        // Envío normal del formulario (no AJAX)
+                        // Envío normal del formulario (POST a la vista de eliminación)
                         form.submit();
                     }
                 }
+            });
+        });
+    });
+    
+    // Lógica para el antiguo data-delete-form (Dejada para compatibilidad con el código anterior)
+    document.querySelectorAll("[data-delete-form]").forEach((btn) => {
+        btn.addEventListener("click", function (e) {
+            e.preventDefault();
+            const form = this.closest("form"); 
+
+            Swal.fire({
+                 title: "¿Estás seguro?",
+                 text: "Esta acción no se puede deshacer.",
+                 icon: "warning",
+                 showCancelButton: true,
+                 confirmButtonColor: "#A41C2D",
+                 cancelButtonColor: "#6c757d",
+                 confirmButtonText: "Sí, eliminar",
+                 cancelButtonText: "Cancelar"
+            }).then((result) => {
+                 if (result.isConfirmed) {
+                     if (form.dataset.ajax === "true") {
+                          fetch(form.action, {
+                              method: "POST",
+                              headers: {
+                                  "X-CSRFToken": form.querySelector("[name=csrfmiddlewaretoken]").value,
+                                  "X-Requested-With": "XMLHttpRequest",
+                              },
+                          })
+                          .then(res => res.json())
+                          .then(data => {
+                              Swal.fire("Eliminado", data.message || "El elemento fue eliminado.", "success")
+                                  .then(() => location.reload());
+                          })
+                          .catch(() => {
+                              Swal.fire("Error", "No se pudo eliminar el elemento.", "error");
+                          });
+                      } else {
+                          form.submit();
+                      }
+                 }
             });
         });
     });

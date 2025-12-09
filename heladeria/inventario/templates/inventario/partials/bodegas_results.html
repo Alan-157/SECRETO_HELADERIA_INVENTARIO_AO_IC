@@ -12,27 +12,29 @@
         <td class="fw-semibold">{{ b.nombre }}</td>
         <td>{{ b.direccion }}</td>
         <td class="text-end">
-          {% if not read_only %}
-            <a class="btn btn-sm btn-warning"
-               href="{% url 'inventario:editar_bodega' b.id %}">
-              Editar
-            </a>
-
-            <form method="post"
-                  action="{% url 'inventario:eliminar_bodega' b.id %}"
-                  class="d-inline">
-              {% csrf_token %}
-              <button type="submit"
-                      class="btn btn-sm btn-danger"
-                      data-delete-bodega="1">
-                Eliminar
-              </button>
-            </form>
-
-          {% else %}
-            <span class="text-muted">Solo lectura</span>
-          {% endif %}
-        </td>
+    {% if not read_only %}
+      <a href="{% url 'inventario:editar_bodega' b.id %}"
+         class="btn btn-sm btn-warning">
+        Editar
+      </a>
+      
+      <form method="post"
+            action="{% url 'inventario:eliminar_bodega' b.id %}"
+            class="d-inline">
+        {% csrf_token %}
+        <button type="button"  {# Cambiado a type="button" #}
+                class="btn btn-sm btn-danger"
+                data-confirm-delete="true" 
+                data-objeto-nombre="{{ b.nombre }}"
+                data-objeto-tipo="Bodega"
+                title="Eliminar {{ b.nombre }}">
+          Eliminar
+        </button>
+      </form>
+    {% else %}
+      <span class="text-muted">Solo lectura</span>
+    {% endif %}
+  </td>
       </tr>
     {% empty %}
       <tr>

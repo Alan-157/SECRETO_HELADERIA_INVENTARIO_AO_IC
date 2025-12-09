@@ -12,6 +12,7 @@ from django.forms import ModelForm, inlineformset_factory, formset_factory
 from django.views.decorators.http import require_POST
 from accounts.services import user_has_role
 from django.contrib.auth.decorators import login_required
+from django.db.models import Prefetch
 from .services import check_and_create_stock_alerts
 from .models import (
     Insumo, Categoria, Bodega,
@@ -22,7 +23,7 @@ from .models import (
 from django.urls import reverse
 from .forms import (
     InsumoForm, CategoriaForm, SalidaLineaForm,EntradaLineaForm,EntradaLineaFormSet,SalidaLineaFormSet,
-    EntradaLineaFormSetMovimiento, SalidaLineaFormSetMovimiento, OrdenInsumoForm,
+    EntradaLineaFormSetMovimiento, SalidaLineaFormSetMovimiento, OrdenInsumoForm, InsumoLoteMetadataForm,
     #MovimientoLineaFormSet, 
     BodegaForm, ProveedorForm,
     EntradaForm, SalidaForm, 
@@ -880,6 +881,96 @@ def listar_insumos_lote(request):
         },
     )
 
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+def crear_lote(request):
+    """
+    Redirige a registrar_entrada ya que los lotes deben crearse con stock inicial.
+    """
+    messages.warning(request, "Los lotes de insumos deben crearse a través del registro de una Entrada para iniciar el stock correctamente.")
+    return redirect(reverse('inventario:registrar_entrada'))
+
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+def editar_lote(request, pk):
+    lote = get_object_or_404(models.InsumoLote.objects.select_related('insumo'), pk=pk)
+    
+    # ⚠️ Regla: Bloquear edición si la cantidad actual es cero o negativa
+    # Esto evita problemas al modificar una fecha de expiración de un lote "agotado" si se quiere eliminar después.
+    if lote.cantidad_actual <= Decimal("0.00") and lote.is_active:
+        messages.error(request, f"No se pueden editar los metadatos del Lote #{pk} porque su stock es cero y ya fue utilizado.")
+        return redirect(reverse('inventario:listar_lotes'))
+        
+    form = InsumoLoteMetadataForm(request.POST or None, instance=lote)
+
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, f"📝 Metadatos del Lote #{pk} de {lote.insumo.nombre} actualizados.")
+        return redirect(reverse('inventario:listar_lotes')) 
+
+    # Se usará una plantilla genérica llamada 'lote_form.html'
+    return render(request, 'inventario/lote_form.html', {
+        'form': form,
+        'titulo': f'Editar Lote #{pk}',
+        'lote': lote,
+    })
+
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+def eliminar_lote(request, pk):
+    lote = get_object_or_404(models.InsumoLote.objects.select_related('insumo'), pk=pk)
+    
+    # Regla: No se puede eliminar si tiene stock actual > 0
+    if lote.cantidad_actual > Decimal("0.00"):
+        messages.error(request, f"🚫 No se puede eliminar el Lote #{pk} porque tiene stock activo ({lote.cantidad_actual}). Debe registrar una salida para agotarlo primero.")
+        return redirect(reverse('inventario:listar_lotes'))
+
+    if request.method == "POST":
+        lote.is_active = False # Soft delete
+        lote.save(update_fields=["is_active"])
+        messages.success(request, f"🗑️ Lote #{pk} de {lote.insumo.nombre} desactivado.")
+        return redirect(reverse('inventario:listar_lotes'))
+
+    # Reutilizar plantilla de confirmación genérica
+    return render(
+        request,
+        "inventario/confirmar_eliminar.html",
+        {
+            "titulo": f"Eliminar Lote «{lote.id} - {lote.insumo.nombre}»",
+            "obj": lote,
+            "tipo": "lote",
+            "cancel_url": reverse("inventario:listar_lotes"),
+            "extra_message": f"El stock actual es {lote.cantidad_actual}. Solo puede eliminarse si es cero. Al confirmar, se marcará como inactivo."
+        }
+    )
+    
+@login_required
+@perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
+def ver_detalle_lote(request, pk):
+    lote = get_object_or_404(
+        models.InsumoLote.objects.select_related(
+            'insumo__unidad_medida', 
+            'bodega', 
+            'proveedor', 
+            'usuario'
+        ), 
+        pk=pk
+    )
+    
+    # Obtener los movimientos asociados para el detalle
+    entradas = models.Entrada.objects.filter(insumo_lote=lote).order_by('-fecha')
+    salidas = models.Salida.objects.filter(insumo_lote=lote).order_by('-fecha_generada')
+
+    return render(request, 'inventario/ver_detalle_lote.html', {
+        'titulo': f'Detalle Lote #{pk}',
+        'lote': lote,
+        'entradas': entradas,
+        'salidas': salidas,
+    })
+
 # --- CATEGORÍAS ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"), readonly_for=("Bodeguero",))
@@ -897,7 +988,8 @@ def listar_categorias(request):
 
     q = (request.GET.get("q") or "").strip()
 
-    categorias = Categoria.objects.all().order_by(
+    # CORRECCIÓN CLAVE: FILTRAR POR is_active=True
+    categorias = Categoria.objects.filter(is_active=True).order_by(
         "nombre" if order == "asc" else "-nombre"
     )
     if q:
@@ -973,29 +1065,40 @@ def editar_categoria(request, categoria_id):
 
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
 def eliminar_categoria(request, categoria_id):
-    # Solo Admin realmente elimina/desactiva
-    if not user_has_role(request.user, "Administrador"):
-        messages.error(request, "No tienes permisos para eliminar categorías.")
-        return redirect("inventario:listar_categorias")
+    """Elimina (soft delete) una categoría, solo si no tiene insumos activos."""
+    
+    # Utilizamos models.Categoria para asegurar la referencia correcta
+    categoria = get_object_or_404(models.Categoria, pk=categoria_id) 
 
-    categoria = get_object_or_404(Categoria, id=categoria_id)
-
-    # Regla: si tiene insumos activos, no se puede eliminar
-    tiene_insumos = Insumo.objects.filter(categoria=categoria, is_active=True).exists()
     if request.method == "POST":
-        if tiene_insumos:
-            messages.error(request, "No se puede eliminar la categoría: tiene insumos activos.")
-            return redirect("inventario:listar_categorias")
-        categoria.is_active = False
-        categoria.save(update_fields=["is_active"])
-        messages.success(request, f"Categoría '{categoria.nombre}' eliminada.")
-        return redirect("inventario:listar_categorias")
+        
+        # 1. Verificar si hay insumos activos relacionados (usando la relación inversa 'insumos')
+        # Esto verifica si existe ALGÚN insumo activo que dependa de esta categoría.
+        if categoria.insumos.filter(is_active=True).exists():
+            messages.error(
+                request,
+                f"🚫 No se puede eliminar la categoría '{categoria.nombre}' porque tiene insumos activos asociados. Desactive primero los insumos vinculados."
+            )
+            return redirect('inventario:listar_categorias')
 
+        # 2. Realizar la eliminación suave (soft delete)
+        categoria.is_active = False
+        categoria.save(update_fields=['is_active'])
+        messages.success(request, f"🗑️ Categoría '{categoria.nombre}' desactivada correctamente.")
+        return redirect('inventario:listar_categorias')
+
+    # Si es GET, se dirige a la plantilla de confirmación
     return render(
         request,
-        "confirmar_eliminar.html",
-        {"titulo": f"Eliminar Categoría «{categoria.nombre}»", "cancel_url": reverse("inventario:listar_categorias")}
+        "inventario/confirmar_eliminar.html", # Usamos la plantilla genérica
+        {
+            "titulo": f"Eliminar Categoría «{categoria.nombre}»",
+            "obj": categoria,
+            "tipo": "categoría",
+            "cancel_url": reverse("inventario:listar_categorias"),
+        }
     )
 
 '''
@@ -1202,6 +1305,12 @@ def registrar_entrada(request):
 
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            if not lineas:
+                messages.warning(request, "No se ingresó ninguna línea válida para registrar.")
+                return render(request, "inventario/registrar_entrada.html", {
+                    "formset": formset,
+                    "titulo": "Registrar Entrada de Inventario",
+                })
             
             for cd in lineas:
                 insumo = cd.get("insumo")
@@ -1300,12 +1409,33 @@ def registrar_salida(request):
     # --- LÓGICA DE PRE-CARGA (Orden ID) ---
     orden_id = request.GET.get("orden")
     if orden_id:
+        # 1. Obtener la orden
         orden_obj = get_object_or_404(models.OrdenInsumo, id=orden_id)
-        for detalle in orden_obj.detalles.all():
-            initial_data.append({
-                'insumo': detalle.insumo.id,
-                'cantidad': detalle.cantidad_solicitada,
-            })
+        
+        # 2. Filtrar solo los detalles pendientes (solicitada > atendida)
+        # Se usa select_related('insumo') para cargar el objeto Insumo y obtener el ID fácilmente.
+        detalles_pendientes = orden_obj.detalles.filter(
+            cantidad_solicitada__gt=F('cantidad_atendida')
+        ).select_related('insumo')
+
+        for detalle in detalles_pendientes:
+            
+            # Calcular la cantidad que falta por atender
+            cantidad_restante = detalle.cantidad_solicitada - detalle.cantidad_atendida
+            
+            # 3. Conversión de Decimal a Integer (CRÍTICO: evita TypeError)
+            if cantidad_restante.to_integral_value() == cantidad_restante:
+                cantidad_inicial = int(cantidad_restante)
+            else:
+                # Si hay fracción, truncamos al entero más cercano
+                cantidad_inicial = int(cantidad_restante.to_integral_value())
+
+            # 4. Añadir solo si la cantidad inicial es positiva
+            if cantidad_inicial > 0:
+                initial_data.append({
+                    'insumo': detalle.insumo.id, # <-- ID del Insumo
+                    'cantidad': cantidad_inicial, 
+                })
     
     # --- LÓGICA DE PRE-CARGA (Insumo ID - Si NO HAY Orden) ---
     elif request.GET.get("insumo_id"):
@@ -1321,32 +1451,47 @@ def registrar_salida(request):
 
     if request.method == "POST":
         formset = SalidaLineaFormSet(request.POST)
+        
+        # Recuperar orden si se envió el ID oculto (por si no se usó GET)
+        orden_id_post = request.POST.get("orden_id")
+        orden_obj_post = orden_obj
+        if not orden_obj_post and orden_id_post:
+             orden_obj_post = get_object_or_404(models.OrdenInsumo, id=orden_id_post)
+
+
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            
+            # CRÍTICO: Bloquear el éxito si no hay líneas válidas que procesar
+            if not lineas:
+                messages.warning(request, "No se ingresó ninguna línea válida para registrar.")
+                return render(request, "inventario/registrar_salida.html", {
+                    "formset": formset,
+                    "titulo": "Registrar Salida de Inventario",
+                    "orden": orden_obj, 
+                })
             
             for cd in lineas:
                 insumo = cd.get("insumo")
                 ubicacion = cd.get("ubicacion")
-                cantidad = cd.get("cantidad")
+                cantidad = cd.get("cantidad") # Esto ya es Decimal
                 fecha_salida = cd.get("fecha")
                 lote = cd.get("insumo_lote") 
                 observaciones = cd.get("observaciones", "")
 
-                if lote is None or insumo is None or cantidad is None or ubicacion is None or fecha_salida is None:
-                    messages.warning(request, "Datos incompletos en una línea de salida. Se ignoró esta línea.")
-                    continue
-                
-                if cantidad <= Decimal("0"):
-                    messages.warning(request, f"Cantidad inválida para {insumo.nombre}. Se ignoró esta línea.")
+                if lote is None or insumo is None or cantidad is None or ubicacion is None or fecha_salida is None or cantidad <= Decimal("0"):
+                    messages.warning(request, f"Datos incompletos o cantidad inválida en línea para {insumo.nombre if insumo else 'un insumo'}. Se ignoró.")
                     continue 
                 
                 detalle_obj = None
-                if orden_obj:
+                if orden_obj_post:
                     try:
-                        detalle_obj = orden_obj.detalles.get(insumo=insumo)
+                        # Buscamos el detalle de la orden para este insumo
+                        detalle_obj = orden_obj_post.detalles.get(insumo=insumo)
                     except models.OrdenInsumoDetalle.DoesNotExist:
                         pass 
 
+                # Aseguramos que la cantidad a salir no exceda el stock actual del lote
                 cant = min(cantidad, lote.cantidad_actual or Decimal("0")) 
                 
                 models.Salida.objects.create(
@@ -1355,19 +1500,22 @@ def registrar_salida(request):
                     fecha_generada=fecha_salida, 
                     usuario=request.user,
                     tipo="USO_PRODUCCION", observaciones=observaciones,
-                    orden=orden_obj,          
+                    orden=orden_obj_post,          
                     detalle=detalle_obj,      
                 )
                 
+                # Actualizar stock del lote
                 lote.cantidad_actual -= cant
                 lote.save(update_fields=["cantidad_actual"])
                 
+                # Actualizar detalle de la orden
                 if detalle_obj:
                     detalle_obj.cantidad_atendida += cant
                     detalle_obj.save(update_fields=["cantidad_atendida"])
 
-            if orden_obj:
-                orden_obj.recalc_estado()
+            # Recalcular el estado de la orden al finalizar el loop de movimientos
+            if orden_obj_post:
+                orden_obj_post.recalc_estado()
                 
             messages.success(request, "Salida(s) registrada(s) correctamente.")
             return redirect('inventario:listar_movimientos')
@@ -1377,15 +1525,17 @@ def registrar_salida(request):
     else:
         # Evitar línea extra cuando se precarga desde insumo u orden
         if initial_data:
-            DynamicFormSet = formset_factory(SalidaLineaForm, extra=0, can_delete=True)
+            # Usar extra=0 para que solo salgan las líneas precargadas
+            DynamicFormSet = formset_factory(SalidaLineaForm, extra=0, can_delete=True) 
         else:
+            # Usar extra=1 si no hay precarga, para dar un campo inicial al usuario
             DynamicFormSet = SalidaLineaFormSet
         formset = DynamicFormSet(initial=initial_data if initial_data else None)
 
     return render(request, "inventario/registrar_salida.html", {
         "formset": formset,
         "titulo": "Registrar Salida de Inventario",
-        "orden": orden_obj,
+        "orden": orden_obj, # Pasa la orden al contexto para la plantilla
     })
 
 
@@ -1421,6 +1571,14 @@ def registrar_entrada_movimiento(request):
         formset = EntradaLineaFormSetMovimiento(request.POST)
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            
+            # CRÍTICO: Bloquear el éxito si no hay líneas válidas que procesar
+            if not lineas:
+                messages.warning(request, "No se ingresó ninguna línea válida para registrar.")
+                return render(request, "inventario/registrar_entrada.html", {
+                    "formset": formset,
+                    "titulo": "Registrar Entrada de Inventario",
+                })
             
             for cd in lineas:
                 insumo = cd.get("insumo")
@@ -1500,6 +1658,15 @@ def registrar_salida_movimiento(request):
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
             
+            # CRÍTICO: Bloquear el éxito si no hay líneas válidas que procesar
+            if not lineas:
+                messages.warning(request, "No se ingresó ninguna línea válida para registrar.")
+                return render(request, "inventario/registrar_salida.html", {
+                    "formset": formset,
+                    "titulo": "Registrar Salida de Inventario",
+                    "orden": orden_obj, 
+                })
+            
             for cd in lineas:
                 insumo = cd.get("insumo")
                 ubicacion = cd.get("ubicacion")
@@ -1544,6 +1711,7 @@ def registrar_salida_movimiento(request):
         "titulo": "Registrar Salida de Inventario",
         "orden": orden_obj,
     })
+    
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
@@ -1745,9 +1913,7 @@ def listar_movimientos(request):
 # --- Bodegas
 @login_required
 @perfil_required(
-    allow=("administrador", "Encargado"),   # puede entrar Admin y Encargado
-    readonly_for=("Encargado",)             # Encargado = solo lectura
-)
+    allow=("administrador", "Encargado"))  # puede entrar Admin y Encargado            # Encargado = solo lectura)
 def listar_bodegas(request):
     qs = Bodega.objects.filter(is_active=True)
 

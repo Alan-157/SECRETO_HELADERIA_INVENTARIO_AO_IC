@@ -20,20 +20,23 @@
             </a>
 
             <a href="{% url 'inventario:editar_orden' orden.id %}"
-                class="btn btn-sm btn-outline-secondary">
-                Editar
-            </a>
+                    class="btn btn-sm btn-outline-secondary">
+                    Editar
+                </a>
 
-            <form method="post"
-                action="{% url 'inventario:eliminar_orden' orden.id %}"
-                class="d-inline">
-                {% csrf_token %}
-                <button type="submit"
-                        class="btn btn-sm btn-danger"
-                        data-delete-orden="1">
-                    Eliminar
-                </button>
-            </form>
+                <form method="post"
+                    action="{% url 'inventario:eliminar_orden' orden.id %}"
+                    class="d-inline">
+                    {% csrf_token %}
+                    <button type="button"  {# Cambiado a type="button" #}
+                            class="btn btn-sm btn-danger"
+                            data-confirm-delete="true" 
+                            data-objeto-nombre="Orden #{{ orden.id }}"
+                            data-objeto-tipo="Orden"
+                            title="Eliminar Orden #{{ orden.id }}">
+                        Eliminar
+                    </button>
+                </form>
 
             {# Cambio de estado por AJAX #}
             <form method="post"

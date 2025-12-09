@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 d-flex justify-content-between align-items-center mb-3">
+        <h3>{{ titulo }}</h3>
+        <a href="{% url 'inventario:listar_lotes' %}" class="btn btn-secondary">
+            ← Volver al Listado
+        </a>
+    </div>
+
+    {# --- TARJETA DE DETALLE DEL LOTE --- #}
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Información General</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Insumo:</strong> {{ lote.insumo.nombre }} ({{ lote.insumo.unidad_medida.nombre_largo }})
+                </div>
+                <div class="mb-3">
+                    <strong>Categoría:</strong> {{ lote.insumo.categoria.nombre }}
+                </div>
+                <div class="mb-3">
+                    <strong>Bodega:</strong> {{ lote.bodega.nombre }}
+                </div>
+                <div class="mb-3">
+                    <strong>Proveedor:</strong> {{ lote.proveedor.nombre_empresa|default:"N/A" }}
+                </div>
+                <div class="mb-3">
+                    <strong>Stock Actual:</strong> 
+                    <span class="fs-4 text-primary">
+                        {{ lote.cantidad_actual|floatformat:2 }} {{ lote.insumo.unidad_medida.nombre_corto }}
+                    </span>
+                    <span class="badge bg-{{ 'danger' if lote.cantidad_actual <= 0 else 'success' }}">
+                        {{ 'Agotado' if lote.cantidad_actual <= 0 else 'En Stock' }}
+                    </span>
+                </div>
+                <div class="mb-3">
+                    <strong>Fecha de Ingreso:</strong> {{ lote.fecha_ingreso }}
+                </div>
+                <div class="mb-3">
+                    <strong>Fecha de Expiración:</strong> {{ lote.fecha_expiracion|default:"N/A" }}
+                </div>
+                <div class="mb-3">
+                    <strong>Creado por:</strong> {{ lote.usuario.name|default:lote.usuario.email }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- RESUMEN DE STOCK --- #}
+    <div class="col-lg-6 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-info text-dark">
+                <h5 class="mb-0">Resumen de Movimientos</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Cantidad Inicial:</strong> {{ lote.cantidad_inicial|floatformat:2 }}</p>
+                <p><strong>Total Entradas (Inicial + Posteriores):</strong> {{ lote.cantidad_inicial|floatformat:2 }}</p>
+                <p><strong>Total Salidas:</strong> {{ salidas|length }} movimientos</p>
+                <p><strong>Última Actualización:</strong> {{ lote.updated_at|date:"Y-m-d H:i" }}</p>
+                
+                <hr>
+                
+                <a href="{% url 'inventario:editar_lote' lote.pk %}" class="btn btn-sm btn-outline-primary">
+                    Editar Metadatos
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {# --- TABLA DE ENTRADAS --- #}
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                Movimientos de Entrada ({% if entradas %}{{ entradas|length }}{% else %}0{% endif %})
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Fecha</th>
+                                <th>Ubicación</th>
+                                <th class="text-end">Cantidad</th>
+                                <th>Usuario</th>
+                                <th>Observaciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entrada in entradas %}
+                            <tr>
+                                <td>{{ entrada.pk }}</td>
+                                <td>{{ entrada.fecha }}</td>
+                                <td>{{ entrada.ubicacion.nombre }} ({{ entrada.ubicacion.bodega.nombre }})</td>
+                                <td class="text-end text-success">+{{ entrada.cantidad|floatformat:2 }}</td>
+                                <td>{{ entrada.usuario.name|default:entrada.usuario.email }}</td>
+                                <td>{{ entrada.observaciones|default:"—" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">No hay movimientos de entrada registrados para este lote.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# --- TABLA DE SALIDAS --- #}
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-danger text-white">
+                Movimientos de Salida ({% if salidas %}{{ salidas|length }}{% else %}0{% endif %})
+            </div>
+            <div class="card-body p-0">
+                 <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Fecha</th>
+                                <th>Ubicación</th>
+                                <th class="text-end">Cantidad</th>
+                                <th>Tipo</th>
+                                <th>Usuario</th>
+                                <th>Observaciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for salida in salidas %}
+                            <tr>
+                                <td>{{ salida.pk }}</td>
+                                <td>{{ salida.fecha_generada }}</td>
+                                <td>{{ salida.ubicacion.nombre }} ({{ salida.ubicacion.bodega.nombre }})</td>
+                                <td class="text-end text-danger">-{{ salida.cantidad|floatformat:2 }}</td>
+                                <td>{{ salida.tipo }}</td>
+                                <td>{{ salida.usuario.name|default:salida.usuario.email }}</td>
+                                <td>{{ salida.observaciones|default:"—" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted">No hay movimientos de salida registrados para este lote.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

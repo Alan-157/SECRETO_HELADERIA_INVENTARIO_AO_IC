@@ -42,6 +42,20 @@ class OrdenInsumoForm(forms.ModelForm):
         if self.instance.pk:
             self.fields['tipo_orden'].widget.attrs['disabled'] = 'disabled'
 
+class InsumoLoteMetadataForm(forms.ModelForm):
+    """
+    Formulario diseñado para editar solo los metadatos de un lote existente.
+    Excluye campos de stock inicial, actual e insumo.
+    """
+    class Meta:
+        model = InsumoLote
+        # Solo permite editar proveedor y fecha de expiración.
+        fields = ("proveedor", "fecha_expiracion")
+        widgets = {
+            "proveedor": forms.Select(attrs={"class": "form-select"}),
+            "fecha_expiracion": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
+        }
+
 # ==========================================
 #  CATEGORÍAS
 # ==========================================
