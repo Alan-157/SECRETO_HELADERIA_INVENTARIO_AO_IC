@@ -47,6 +47,8 @@ urlpatterns = [
     path("ordenes/<int:pk>/editar/", views.editar_orden, name="editar_orden"),
     path("ordenes/<int:pk>/eliminar/", views.eliminar_orden, name="eliminar_orden"),
     path("ordenes/<int:pk>/estado/", views.orden_cambiar_estado, name="orden_cambiar_estado"),
+    path('ordenes/<int:pk>/atender/entrada/', views.registrar_entrada_orden, name='registrar_entrada_orden'),
+    path('ordenes/<int:pk>/atender/salida/', views.registrar_salida_orden, name='registrar_salida_orden'),
 
     # --- CRUD de Categorías ---
     path('categorias/', views.listar_categorias, name='listar_categorias'),

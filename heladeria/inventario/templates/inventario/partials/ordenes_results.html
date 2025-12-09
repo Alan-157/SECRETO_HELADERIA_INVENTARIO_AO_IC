@@ -4,6 +4,7 @@
     <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <span class="fw-bold fs-5">Orden #{{ orden.id }}</span>
+            <span class="badge bg-secondary ms-2">{{ orden.tipo_orden }}</span> {# Muestra el tipo de orden #}
             <small class="text-muted ms-2">
                 Creada por: {{ orden.usuario.name|default:orden.usuario.email }}
             </small>
@@ -13,11 +14,24 @@
         {% if not read_only %}
         <div class="d-flex align-items-center gap-2">
             
-            {# CORREGIDO: Enlace a REGISTRAR SALIDA (Surtir Orden) #}
-            <a href="{% url 'inventario:registrar_salida' %}?orden={{ orden.id }}"
-                class="btn btn-sm btn-warning" title="Registrar la salida de stock para surtir esta orden">
-                <i class="bi bi-box-arrow-up"></i> Atender
-            </a>
+            {# LÓGICA CORREGIDA PARA EL BOTÓN ATENDER SEGÚN TIPO DE ORDEN #}
+            {% if orden.estado != 'CERRADA' and orden.estado != 'CANCELADA' %}
+                
+                {% if orden.tipo_orden == 'ENTRADA' %}
+                    {# Botón para Orden de ENTRADA: USA LA VISTA DEDICADA #}
+                    <a href="{% url 'inventario:registrar_entrada_orden' pk=orden.id %}"
+                        class="btn btn-sm btn-success" title="Registrar la entrada de stock para surtir esta orden">
+                        <i class="bi bi-box-arrow-in-down"></i> Atender Entrada
+                    </a>
+                {% elif orden.tipo_orden == 'SALIDA' %}
+                    {# Botón para Orden de SALIDA: Usa la vista dedicada registrar_salida_orden #}
+                    <a href="{% url 'inventario:registrar_salida_orden' pk=orden.id %}"
+                        class="btn btn-sm btn-warning" title="Registrar la salida de stock para surtir esta orden">
+                        <i class="bi bi-box-arrow-up"></i> Atender Salida
+                    </a>
+                {% endif %}
+            {% endif %}
+            {# FIN LÓGICA BOTÓN ATENDER #}
 
             <a href="{% url 'inventario:editar_orden' orden.id %}"
                     class="btn btn-sm btn-outline-secondary">
@@ -69,7 +83,8 @@
                 <thead>
                     <tr>
                         <th>Insumo</th>
-                        <th class="text-end">Cantidad</th>
+                        <th class="text-end">Cantidad Solicitada</th>
+                        <th class="text-end">Cantidad Atendida</th>
                         <th>Unidad</th>
                     </tr>
                 </thead>
@@ -77,12 +92,13 @@
                     {% for d in orden.detalles.all %}
                     <tr>
                         <td>{{ d.insumo.nombre }}</td>
-                        <td class="text-end">{{ d.cantidad_solicitada|floatformat:0 }}</td>
+                        <td class="text-end">{{ d.cantidad_solicitada|floatformat:2 }}</td>
+                        <td class="text-end">{{ d.cantidad_atendida|floatformat:2 }}</td>
                         <td>{{ d.insumo.unidad_medida }}</td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="3" class="text-center text-muted">
+                        <td colspan="4" class="text-center text-muted">
                             Esta orden no tiene detalles.
                         </td>
                     </tr>

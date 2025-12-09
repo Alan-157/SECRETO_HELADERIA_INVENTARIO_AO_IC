@@ -1253,34 +1253,9 @@ def registrar_entrada(request):
         return redirect('inventario:listar_movimientos')
 
     initial_data = []
-    orden_obj = None # <--- NUEVO: Variable para la orden
-
-    # --- LÓGICA DE PRE-CARGA (Orden ID) ---
-    orden_id = request.GET.get("orden")
-    if orden_id:
-        orden_obj = get_object_or_404(models.OrdenInsumo.objects.select_related('usuario'), id=orden_id)
-        # ⚠️ VALIDACIÓN CRÍTICA: Asegurar que sea una orden de ENTRADA
-        if orden_obj.tipo_orden != 'ENTRADA': 
-            messages.error(request, f"La orden #{orden_id} es de tipo '{orden_obj.tipo_orden}' y no puede atenderse como Entrada.")
-            return redirect('inventario:listar_ordenes')
-            
-        # Precargar solo los detalles que no están cerrados
-        for detalle in orden_obj.detalles.filter(cantidad_solicitada__gt=F('cantidad_atendida')): 
-            cantidad_restante = detalle.cantidad_solicitada - detalle.cantidad_atendida
-            
-            # Se convierte a entero/float para el campo IntegerField en el formulario
-            if cantidad_restante.to_integral_value() == cantidad_restante:
-                cantidad = int(cantidad_restante)
-            else:
-                cantidad = float(cantidad_restante)
-                
-            initial_data.append({
-                'insumo': detalle.insumo.id,
-                'cantidad': cantidad, 
-            })
     
-    # --- LÓGICA DE PRE-CARGA (Insumo ID - Si NO HAY Orden) ---
-    elif request.GET.get("insumo_id"):
+    # --- LÓGICA DE PRE-CARGA (Insumo ID - SÓLO para registros directos) ---
+    if request.GET.get("insumo_id"):
         insumo_id = request.GET.get("insumo_id")
         try:
             insumo_obj = models.Insumo.objects.get(id=insumo_id)
@@ -1294,14 +1269,10 @@ def registrar_entrada(request):
     if request.method == "POST":
         formset = EntradaLineaFormSet(request.POST)
         
-        # Obtener la orden de la solicitud POST
-        orden_id_post = request.POST.get("orden_id")
-        orden_obj_post = None
-        if orden_id_post:
-            orden_obj_post = get_object_or_404(models.OrdenInsumo, id=orden_id_post)
-            if orden_obj_post.tipo_orden != 'ENTRADA':
-                messages.error(request, f"Error: La orden #{orden_id_post} es de tipo '{orden_obj_post.tipo_orden}'.")
-                return redirect('inventario:listar_ordenes')
+        # Ignorar orden_id ya que esta vista es solo para registros directos
+        orden_obj_post = None 
+        
+        # ... (Mantener la lógica de POST igual que la versión anterior de Entrada) ...
 
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
@@ -1324,22 +1295,8 @@ def registrar_entrada(request):
                     messages.warning(request, "Datos incompletos en una línea de entrada. Se ignoró esta línea.")
                     continue
                 
-                # --- NUEVO: Encontrar el Detalle de la Orden ---
+                # En esta vista no hay detalle/orden
                 detalle_obj = None
-                if orden_obj_post:
-                    try:
-                        detalle_obj = orden_obj_post.detalles.get(insumo=insumo)
-                        # Opcional: Limitar la cantidad al restante en la orden si es atendida aquí
-                        cantidad_max = detalle_obj.cantidad_solicitada - detalle_obj.cantidad_atendida
-                        if cantidad > cantidad_max and cantidad_max > 0:
-                            cantidad = cantidad_max
-                        elif cantidad_max <= 0:
-                            continue # Ya está completa
-
-                    except models.OrdenInsumoDetalle.DoesNotExist:
-                        # Si no existe detalle, el movimiento de entrada no estará vinculado a la orden.
-                        pass
-                # --- FIN NUEVO: Encontrar el Detalle de la Orden ---
 
                 lote = models.InsumoLote.objects.create(
                     insumo=insumo,
@@ -1356,23 +1313,14 @@ def registrar_entrada(request):
                     insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
                     cantidad=cantidad, fecha=fecha, usuario=request.user,
                     observaciones=cd.get("observaciones", ""),
-                    orden=orden_obj_post,     # <--- ENLACE A ORDEN
-                    detalle=detalle_obj,      # <--- ENLACE A DETALLE
+                    orden=orden_obj_post,     
+                    detalle=detalle_obj,      
                 )
                 
                 lote.cantidad_actual += cantidad
                 lote.save(update_fields=["cantidad_actual"])
                 
-                # --- NUEVO: Actualizar Detalle y Estado de Orden ---
-                if detalle_obj:
-                    detalle_obj.cantidad_atendida += cantidad
-                    detalle_obj.save(update_fields=["cantidad_atendida"])
-                
                 check_and_create_stock_alerts(insumo)
-            
-            if orden_obj_post:
-                orden_obj_post.recalc_estado()
-            # --- FIN NUEVO: Actualizar Detalle y Estado de Orden ---
 
             messages.success(request, "✅ Entrada(s) registrada(s) correctamente.")
             return redirect('inventario:listar_movimientos')
@@ -1380,7 +1328,7 @@ def registrar_entrada(request):
         messages.error(request, "Revisa los errores en el formulario antes de continuar.")
 
     else:
-        # Si hay precarga (insumo o orden pasados por GET), no crear línea extra vacía
+        # Si hay precarga (insumo), no crear línea extra vacía
         if initial_data:
             DynamicFormSet = formset_factory(EntradaLineaForm, extra=0, can_delete=True)
         else:
@@ -1390,8 +1338,9 @@ def registrar_entrada(request):
     return render(request, "inventario/registrar_entrada.html", {
         "formset": formset,
         "titulo": "Registrar Entrada de Inventario",
-        "orden": orden_obj, # <--- Pasar la orden al contexto
+        "orden": None, # <--- Siempre None en la vista genérica
     })
+
 
 
 # --- REGISTRAR MOVIMIENTO (SALIDA DEDICADA) ---
@@ -1423,18 +1372,14 @@ def registrar_salida(request):
             # Calcular la cantidad que falta por atender
             cantidad_restante = detalle.cantidad_solicitada - detalle.cantidad_atendida
             
-            # 3. Conversión de Decimal a Integer (CRÍTICO: evita TypeError)
-            if cantidad_restante.to_integral_value() == cantidad_restante:
-                cantidad_inicial = int(cantidad_restante)
-            else:
-                # Si hay fracción, truncamos al entero más cercano
-                cantidad_inicial = int(cantidad_restante.to_integral_value())
+            # ✅ CÓDIGO CORREGIDO: Usamos la cantidad restante (Decimal) directamente para el initial data
+            cantidad_inicial = cantidad_restante
 
             # 4. Añadir solo si la cantidad inicial es positiva
-            if cantidad_inicial > 0:
+            if cantidad_inicial > Decimal("0.00"): # Se usa Decimal para comparar
                 initial_data.append({
                     'insumo': detalle.insumo.id, # <-- ID del Insumo
-                    'cantidad': cantidad_inicial, 
+                    'cantidad': cantidad_inicial, # <-- Se pasa como Decimal
                 })
     
     # --- LÓGICA DE PRE-CARGA (Insumo ID - Si NO HAY Orden) ---
@@ -1711,6 +1656,286 @@ def registrar_salida_movimiento(request):
         "titulo": "Registrar Salida de Inventario",
         "orden": orden_obj,
     })
+    
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+def registrar_entrada_orden(request, pk):
+    """
+    Vista dedicada a atender completamente una Orden de Insumo de tipo ENTRADA.
+    Sigue la lógica de registrar_salida_orden para la precarga robusta.
+    """
+    from decimal import Decimal
+    from django.forms import formset_factory 
+    from django.db.models import F
+    from datetime import date, timedelta
+    from .forms import EntradaLineaForm, EntradaLineaFormSet # Aseguramos importación
+    
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para registrar entradas de orden.")
+        return redirect('inventario:listar_ordenes')
+
+    orden_obj = get_object_or_404(models.OrdenInsumo, id=pk)
+
+    # ⚠️ VALIDACIÓN CRÍTICA: Solo para órdenes de ENTRADA
+    if orden_obj.tipo_orden != 'ENTRADA':
+        messages.error(request, f"La orden #{orden_obj.id} es de tipo '{orden_obj.tipo_orden}'. Solo las órdenes de ENTRADA pueden atenderse aquí.")
+        return redirect('inventario:listar_ordenes')
+
+    # --- OBTENER DEFAULTS para campos obligatorios (Ubicación/Proveedor/Fecha) ---
+    default_ubicacion = models.Ubicacion.objects.filter(is_active=True).first()
+    default_proveedor = models.Proveedor.objects.filter(is_active=True).first()
+    
+    if not default_ubicacion or not default_proveedor:
+         messages.error(request, "Error de Configuración: No hay ubicaciones o proveedores activos para precargar la entrada. Debe crear al menos uno.")
+         return redirect('inventario:listar_ordenes')
+    
+    default_ubicacion_id = default_ubicacion.id
+    default_proveedor_id = default_proveedor.id
+    
+    hoy = date.today()
+    fecha_exp_default = hoy + timedelta(days=365) # Fecha de expiración por defecto
+    
+    initial_data = []
+
+    # --- LÓGICA DE PRE-CARGA (GET) ---
+    if request.method == "GET":
+        # Precargar solo los detalles que no están cerrados
+        for detalle in orden_obj.detalles.filter(cantidad_solicitada__gt=F('cantidad_atendida')): 
+            
+            # CHECK: Asegurar que el Insumo de la orden está ACTIVO
+            insumo_activo = models.Insumo.objects.filter(id=detalle.insumo.id, is_active=True).exists()
+            
+            if not insumo_activo:
+                messages.warning(request, f"El insumo '{detalle.insumo.nombre}' fue omitido: no está activo en el catálogo.")
+                continue
+
+            cantidad_restante = detalle.cantidad_solicitada - detalle.cantidad_atendida
+            
+            # 🔥 CORRECCIÓN FINAL: Convertir el Decimal a float (o str) para FormSet robusto
+            cantidad_inicial = float(cantidad_restante)
+            
+            # CRÍTICO: Convertir TODOS los IDs a STRING para evitar fallos con múltiples líneas
+            initial_data.append({
+                'insumo': str(detalle.insumo.id),                      
+                'cantidad': cantidad_inicial,                          # <-- Ahora es float
+                'ubicacion': str(default_ubicacion_id),                
+                'proveedor': str(default_proveedor_id),                
+                'fecha': hoy.isoformat(),                              
+                'fecha_expiracion': fecha_exp_default.isoformat(),     
+            })
+        
+    if request.method == "POST":
+        formset = EntradaLineaFormSet(request.POST) 
+        orden_obj_post = orden_obj 
+
+        if formset.is_valid():
+            lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            
+            if not lineas:
+                messages.warning(request, "No se ingresó ninguna línea válida para registrar.")
+                # Si falla, redirigimos para reiniciar la precarga y mostrar el mensaje de advertencia.
+                return redirect('inventario:registrar_entrada_orden', pk=pk)
+            
+            for cd in lineas:
+                insumo = cd.get("insumo")
+                ubicacion = cd.get("ubicacion")
+                cantidad = cd.get("cantidad")
+                fecha = cd.get("fecha")
+                proveedor = cd.get("proveedor")
+                fecha_exp = cd.get("fecha_expiracion")
+                
+                if not all([insumo, ubicacion, cantidad, fecha, proveedor, fecha_exp]):
+                    messages.warning(request, "Datos incompletos en una línea de entrada. Se ignoró esta línea.")
+                    continue
+                
+                detalle_obj = None
+                try:
+                    detalle_obj = orden_obj_post.detalles.get(insumo=insumo)
+                    cantidad_max = detalle_obj.cantidad_solicitada - detalle_obj.cantidad_atendida
+                    if cantidad > cantidad_max and cantidad_max > Decimal("0"):
+                        cantidad = cantidad_max
+                    elif cantidad_max <= Decimal("0"):
+                        continue
+
+                except models.OrdenInsumoDetalle.DoesNotExist:
+                    messages.error(request, f"El insumo {insumo.nombre} no es parte de la Orden #{pk}. Abortando operación para evitar inconsistencias.")
+                    raise Exception("Insumo no encontrado en la orden.")
+
+                lote = models.InsumoLote.objects.create(
+                    insumo=insumo,
+                    bodega=ubicacion.bodega,
+                    proveedor=proveedor,
+                    fecha_ingreso=fecha,
+                    fecha_expiracion=fecha_exp,
+                    cantidad_inicial=cantidad,
+                    cantidad_actual=Decimal("0.00"),
+                    usuario=request.user,
+                )
+
+                models.Entrada.objects.create(
+                    insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
+                    cantidad=cantidad, fecha=fecha, usuario=request.user,
+                    observaciones=cd.get("observaciones", ""),
+                    orden=orden_obj_post,     
+                    detalle=detalle_obj,      
+                )
+                
+                lote.cantidad_actual += cantidad
+                lote.save(update_fields=["cantidad_actual"])
+                
+                if detalle_obj:
+                    detalle_obj.cantidad_atendida += cantidad
+                    detalle_obj.save(update_fields=["cantidad_atendida"])
+                
+                models.check_and_create_stock_alerts(insumo)
+
+            orden_obj_post.recalc_estado()
+                
+            messages.success(request, f"✅ Orden de Entrada #{pk} atendida correctamente. Movimiento(s) registrado(s).")
+            return redirect('inventario:listar_ordenes')
+
+        messages.error(request, "Revisa los errores en el formulario antes de continuar.")
+
+    # --- LÓGICA RENDER (GET/Fallo POST) ---
+    DynamicFormSet = formset_factory(EntradaLineaForm, extra=0, can_delete=True) 
+
+    if request.method == "POST" and formset.errors:
+        # Si el POST falla, el formset ya contiene los errores
+        pass 
+    else:
+        # Si es GET, inicializamos desde initial_data (que contiene las líneas precargadas)
+        formset = DynamicFormSet(initial=initial_data if initial_data else None)
+
+    return render(request, "inventario/registrar_entrada.html", {
+        "formset": formset,
+        "titulo": f"Atender Orden de Entrada #{pk}",
+        "orden": orden_obj, 
+    })
+    
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@transaction.atomic
+def registrar_salida_orden(request, pk):
+    if not user_has_role(request.user, "Administrador", "Encargado"):
+        messages.error(request, "No tienes permisos para registrar salidas de orden.")
+        return redirect('inventario:listar_ordenes')
+
+    initial_data = []
+    orden_obj = get_object_or_404(models.OrdenInsumo, id=pk)
+
+    # ⚠️ VALIDACIÓN CRÍTICA: Solo para órdenes de SALIDA
+    if orden_obj.tipo_orden != 'SALIDA':
+        messages.error(request, f"La orden #{orden_obj.id} es de tipo '{orden_obj.tipo_orden}'. Solo las órdenes de SALIDA pueden atenderse aquí.")
+        return redirect('inventario:listar_ordenes')
+
+    # --- LÓGICA DE PRE-CARGA (GET) ---
+    if request.method == "GET":
+        # Filtrar solo los detalles pendientes (solicitada > atendida)
+        detalles_pendientes = orden_obj.detalles.filter(
+            cantidad_solicitada__gt=F('cantidad_atendida')
+        ).select_related('insumo')
+
+        for detalle in detalles_pendientes:
+            cantidad_restante = detalle.cantidad_solicitada - detalle.cantidad_atendida
+            
+            # Usamos la cantidad restante (Decimal) directamente para el initial data
+            cantidad_inicial = cantidad_restante
+
+            # Añadir solo si la cantidad inicial es positiva
+            if cantidad_inicial > Decimal("0.00"):
+                initial_data.append({
+                    'insumo': detalle.insumo.id, 
+                    'cantidad': cantidad_inicial, 
+                })
+        
+    if request.method == "POST":
+        # Usamos el formset con los datos POST
+        formset = SalidaLineaFormSet(request.POST) 
+        orden_obj_post = orden_obj # La orden ya fue verificada
+
+        if formset.is_valid():
+            lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
+            
+            if not lineas:
+                messages.warning(request, "No se ingresó ninguna línea válida para registrar.")
+                # Si el POST falla sin líneas válidas, volvemos a mostrar el formulario con extra=0
+                DynamicFormSet = formset_factory(SalidaLineaForm, extra=0, can_delete=True)
+                formset = DynamicFormSet(initial=initial_data if initial_data else None)
+                return render(request, "inventario/registrar_salida.html", {
+                    "formset": formset,
+                    "titulo": f"Atender Orden de Salida #{pk}",
+                    "orden": orden_obj, 
+                })
+            
+            for cd in lineas:
+                insumo = cd.get("insumo")
+                ubicacion = cd.get("ubicacion")
+                cantidad = cd.get("cantidad")
+                fecha_salida = cd.get("fecha")
+                lote = cd.get("insumo_lote") 
+                observaciones = cd.get("observaciones", "")
+
+                if lote is None or insumo is None or cantidad is None or ubicacion is None or fecha_salida is None or cantidad <= Decimal("0"):
+                    messages.warning(request, f"Datos incompletos o cantidad inválida en línea para {insumo.nombre if insumo else 'un insumo'}. Se ignoró.")
+                    continue 
+                
+                # --- ENCONTRAR DETALLE Y VINCULAR ---
+                detalle_obj = None
+                try:
+                    # Buscamos el detalle de la orden para este insumo
+                    detalle_obj = orden_obj_post.detalles.get(insumo=insumo)
+                except models.OrdenInsumoDetalle.DoesNotExist:
+                    messages.error(request, f"El insumo {insumo.nombre} no es parte de la Orden #{pk}. Abortando operación para evitar inconsistencias.")
+                    # Si el insumo no estaba en la orden original, elevamos una excepción para abortar la transacción atómica
+                    raise Exception("Insumo no encontrado en la orden.")
+                
+                # Aseguramos que la cantidad a salir no exceda el stock actual del lote
+                cant = min(cantidad, lote.cantidad_actual or Decimal("0")) 
+                
+                models.Salida.objects.create(
+                    insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
+                    cantidad=cant, 
+                    fecha_generada=fecha_salida, 
+                    usuario=request.user,
+                    tipo="USO_PRODUCCION", observaciones=observaciones,
+                    orden=orden_obj_post,          
+                    detalle=detalle_obj,      
+                )
+                
+                # Actualizar stock del lote
+                lote.cantidad_actual -= cant
+                lote.save(update_fields=["cantidad_actual"])
+                
+                # Actualizar detalle de la orden
+                if detalle_obj:
+                    detalle_obj.cantidad_atendida += cant
+                    detalle_obj.save(update_fields=["cantidad_atendida"])
+                
+                # Recalcular alertas
+                check_and_create_stock_alerts(insumo)
+
+
+            # Recalcular el estado de la orden al finalizar el loop de movimientos
+            orden_obj_post.recalc_estado()
+                
+            messages.success(request, f"✅ Orden de Salida #{pk} atendida correctamente. Movimiento(s) registrado(s).")
+            return redirect('inventario:listar_ordenes')
+
+        messages.error(request, "Revisa los errores en el formulario antes de continuar.")
+
+    # --- LÓGICA RENDER (GET/Fallo POST) ---
+    # Usamos extra=0 en ambos casos para evitar que se añadan líneas no relacionadas con la orden.
+    DynamicFormSet = formset_factory(SalidaLineaForm, extra=0, can_delete=True) 
+
+    formset = DynamicFormSet(initial=initial_data if initial_data else None)
+
+    return render(request, "inventario/registrar_salida.html", {
+        "formset": formset,
+        "titulo": f"Atender Orden de Salida #{pk}",
+        "orden": orden_obj, # Pasa la orden al contexto
+    })
+    
     
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))

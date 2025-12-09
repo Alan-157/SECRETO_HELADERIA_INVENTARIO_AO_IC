@@ -13,6 +13,16 @@
             </div>
 
             <div class="card-body">
+                {# NUEVO: Mostrar información de la orden si existe precarga #}
+                {% if orden %}
+                    <div class="alert alert-info">
+                        Atendiendo Orden de Salida <strong>#{{ orden.id }}</strong> (Tipo: {{ orden.tipo_orden }}). Los insumos pendientes han sido precargados.
+                        {% if orden.estado == 'PENDIENTE' %}
+                        <p class="mb-0 mt-1 small">Recuerde que esta salida **vinculará** los movimientos a la orden y actualizará su estado.</p>
+                        {% endif %}
+                        <input type="hidden" name="orden_id" value="{{ orden.id }}">
+                    </div>
+                {% endif %}
                 <form method="post" novalidate>
                     {% csrf_token %}
                     {{ formset.management_form }}
@@ -28,10 +38,18 @@
                             </ul>
                         </div>
                     {% endif %}
+                    
+                    {# 1. FORMULARIO DE PLANTILLA OCULTO PARA CLONAR #}
+                    <div id="empty-form-template-salida" style="display: none;">
+                        {# Se usa formset.empty_form que ya tiene los QuerySets llenos #}
+                        {% include "inventario/partials/salida_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
+                    </div>
 
                     <div id="formset-body-salida">
                         {% for f in formset %}
                             {% include "inventario/partials/salida_linea_form.html" with form=f prefix=forloop.counter0 %}
+                        {% empty %}
+                            {# Se mostrará vacío o se llenará con la plantilla si el 'extra' es 1 #}
                         {% endfor %}
                     </div>
 
@@ -60,13 +78,14 @@
         const hasFormErrors = card.classList.contains('border-danger'); 
         if (hasFormErrors) return; 
 
+        // Se corrigieron los nombres de las constantes de estado
         switch(status) {
             case 'OK':
                 card.classList.add('border-success');
                 break;
-            case 'BAJO STOCK':
-            case 'EXCESO':
-            case 'SIN STOCK':
+            case 'BAJO_STOCK': 
+            case 'STOCK_EXCESIVO': 
+            case 'SIN_STOCK': 
                 card.classList.add('border-danger');
                 break;
             default:
@@ -100,11 +119,12 @@
                 })
                 .then(data => {
                     if (data.success) {
+                        // Se corrigió toFixed(0) a toFixed(2) para mejor precisión visual
                         stockDisplay.innerHTML = `
                             <div class="alert alert-sm alert-stock p-2 mt-2" data-status="${data.status}" role="alert">
                                 ${data.mensaje_ayuda}
                                 <hr class="my-1">
-                                <small>Stock actual: <b>${data.stock_actual.toFixed(0)} ${data.unidad_medida}</b>. Maximo: ${data.stock_maximo.toFixed(0)}.</small>
+                                <small>Stock actual: <b>${data.stock_actual.toFixed(2)} ${data.unidad_medida}</b>. Maximo: ${data.stock_maximo.toFixed(2)}.</small>
                             </div>
                         `;
                         updateCardBorder(formRow, data.status);
@@ -119,7 +139,11 @@
                 });
         };
         
-        fetchStockInfo(); 
+        // Ejecutar al cargar si el campo ya tiene un valor (ej. precarga de orden)
+        if (insumoSelect.value) {
+            fetchStockInfo();
+        }
+        
         insumoSelect.addEventListener('change', fetchStockInfo);
     }
 
@@ -127,83 +151,62 @@
         const formsetBody = document.getElementById('formset-body-salida');
         const addLineBtn = document.getElementById('add-line-salida');
         const totalForms = document.getElementById('id_form-TOTAL_FORMS');
+        // SE CLONA EL NODO DOM EN LUGAR DE USAR UNA CADENA DE TEXTO ESTÁTICA
+        const emptyFormTpl = document.getElementById('empty-form-template-salida'); 
 
-        document.querySelectorAll('.movimiento-card').forEach(setupStockInfoListener);
+        // 1. Configurar listeners de stock para las líneas existentes (precargadas)
+        document.querySelectorAll('#formset-body-salida .movimiento-card').forEach(setupStockInfoListener);
         
-        const emptyFormTpl = `
-            <div class="card mb-3 movimiento-card border-secondary js-movement-line">
-                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 text-danger">Nueva Linea de Salida</h6>
-                    <div class="delete-controls">
-                        <input type="hidden" name="form-__prefix__-id" id="id_form-form-__prefix__-id">
-                        <input type="hidden" name="form-__prefix__-DELETE" id="id_form-form-__prefix__-DELETE">
-                        <button type="button" class="btn btn-sm btn-outline-danger del-line" title="Eliminar linea">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="row g-3 mb-4 p-3 border rounded bg-light-subtle">
-                        <div class="col-md-6">
-                            <label class="form-label required small">Insumo</label>
-                            <select name="form-__prefix__-insumo" id="id_form-__prefix__-insumo" class="form-select form-select-sm" required>
-                                <option value="">Seleccione un insumo</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label required small">Ubicacion</label>
-                            <select name="form-__prefix__-ubicacion" id="id_form-__prefix__-ubicacion" class="form-select form-select-sm" required>
-                                <option value="">Seleccione una ubicacion</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label required small">Lote</label>
-                            <select name="form-__prefix__-insumo_lote" id="id_form-__prefix__-insumo_lote" class="form-select form-select-sm" required>
-                                <option value="">Seleccione un lote</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label required small">Cantidad</label>
-                            <input type="number" name="form-__prefix__-cantidad" id="id_form-__prefix__-cantidad" class="form-control form-control-sm" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label required small">Fecha</label>
-                            <input type="date" name="form-__prefix__-fecha" id="id_form-__prefix__-fecha" class="form-control form-control-sm" required>
-                        </div>
-                    </div>
-                    <div class="row g-3">
-                        <div class="col-md-12">
-                            <label class="form-label small">Observaciones</label>
-                            <textarea name="form-__prefix__-observaciones" id="id_form-__prefix__-observaciones" class="form-control form-control-sm" rows="2"></textarea>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
+        // 2. Función para manejar la adición de nuevas líneas
         addLineBtn.addEventListener('click', function() {
             const index = parseInt(totalForms.value, 10);
-            const newFormHtml = emptyFormTpl.replace(/__prefix__/g, index);
+            
+            // Clonar el contenido HTML de la plantilla oculta
+            let newFormHtml = emptyFormTpl.innerHTML.replace(/__prefix__/g, index);
             
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = newFormHtml.trim();
-            const newRow = tempDiv.firstChild;
+            const newRow = tempDiv.firstElementChild; // Tomamos el primer hijo (la card)
+
+            // Limpiar valores por defecto
+            const qtyInput = newRow.querySelector('[name$="-cantidad"]');
+            if (qtyInput) qtyInput.value = '';
+            
+            // Quitar las clases de borde de éxito/error y poner la default
+            newRow.classList.remove('border-success', 'border-warning', 'border-danger');
+            newRow.classList.add('border-secondary');
             
             formsetBody.appendChild(newRow);
             totalForms.value = index + 1;
             
+            // Re-vincular el listener de stock a la nueva línea
             setupStockInfoListener(newRow); 
         });
 
+        // 3. Manejo de eliminación (adaptado a los selectores usados en los parciales)
         formsetBody.addEventListener('click', (e) => {
             const delBtn = e.target.closest('.del-line');
+            const markDelBtn = e.target.closest('.mark-delete-line');
+            let row;
+            let deleteInput;
+            
             if (delBtn) {
-                const row = delBtn.closest('.movimiento-card');
-                const deleteInput = row.querySelector('[name$="-DELETE"]');
+                row = delBtn.closest('.movimiento-card');
+                deleteInput = row.querySelector('[name$="-DELETE"]');
                 
                 if (deleteInput) {
                     deleteInput.checked = true;
                     row.style.display = 'none';
+                }
+            } else if (markDelBtn) {
+                row = markDelBtn.closest('.movimiento-card');
+                deleteInput = row.querySelector('[name$="-DELETE"]');
+                
+                if (deleteInput) {
+                    deleteInput.checked = true;
+                    row.classList.add('border-danger');
+                    row.style.opacity = '0.5';
+                    markDelBtn.style.display = 'none'; 
                 }
             }
         });
@@ -213,9 +216,9 @@
 <style>
     .alert-sm { padding: 0.5rem; margin-bottom: 0; font-size: 0.875rem; }
     .alert-sm .my-1 { margin-top: 0.25rem !important; margin-bottom: 0.25rem !important; border-top: 1px solid #dcdcdc; }
-    .alert-stock[data-status="SIN STOCK"] { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
-    .alert-stock[data-status="BAJO STOCK"] { background-color: #fff3cd; color: #856404; border-color: #ffeeba; }
-    .alert-stock[data-status="EXCESO"] { background-color: #cce5ff; color: #004085; border-color: #b8daff; }
+    .alert-stock[data-status="SIN_STOCK"] { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
+    .alert-stock[data-status="BAJO_STOCK"] { background-color: #fff3cd; color: #856404; border-color: #ffeeba; }
+    .alert-stock[data-status="STOCK_EXCESIVO"] { background-color: #cce5ff; color: #004085; border-color: #b8daff; }
     .alert-stock[data-status="OK"] { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
 </style>
 {% endblock extra_js %}
