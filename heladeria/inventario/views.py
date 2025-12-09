@@ -1003,7 +1003,8 @@ def listar_categorias(request):
 
     read_only = not (
         request.user.is_superuser
-        or user_has_role(request.user, "Administrador", "Admin", "Encargado")
+        # 🔥 CORREGIDO: Incluye Encargado en la lista de roles con permisos de escritura
+        or user_has_role(request.user, "Administrador", "Encargado")
     )
 
     context = {
@@ -1033,7 +1034,7 @@ def listar_categorias(request):
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 def crear_categoria(request):
-    if not user_has_role(request.user, "administrador"):
+    if not user_has_role(request.user, "administrador","encargado" ):
         messages.error(request, "No tienes permisos.")
         return redirect('inventario:listar_categorias')
 
@@ -1048,8 +1049,7 @@ def crear_categoria(request):
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
 def editar_categoria(request, categoria_id):
-    """Permite editar una categoría solo a Administradores."""
-    if not user_has_role(request.user, "Administrador"):
+    if not user_has_role(request.user, "Administrador","encargado"):
         messages.error(request, "No tienes permisos para editar categorías.")
         return redirect('inventario:listar_categorias')
 
@@ -2138,7 +2138,7 @@ def listar_movimientos(request):
 # --- Bodegas
 @login_required
 @perfil_required(
-    allow=("administrador", "Encargado"))  # puede entrar Admin y Encargado            # Encargado = solo lectura)
+    allow=("administrador", "Encargado"))
 def listar_bodegas(request):
     qs = Bodega.objects.filter(is_active=True)
 
@@ -2163,7 +2163,7 @@ def listar_bodegas(request):
         "direccion": "direccion",
     }
 
-    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador"))
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Encargado"))
 
     return list_with_filters(
         request,
@@ -2199,7 +2199,7 @@ DetalleFormSet = inlineformset_factory(
 )
 
 @login_required
-@perfil_required(allow=("administrador",))
+@perfil_required(allow=("administrador","encargado"))
 def crear_bodega(request):
     form = BodegaForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -2209,7 +2209,7 @@ def crear_bodega(request):
     return render(request, "inventario/bodega_form.html", {"form": form, "titulo": "Nueva Bodega"})
 
 @login_required
-@perfil_required(allow=("administrador",))
+@perfil_required(allow=("administrador","encargado"))
 def editar_bodega(request, pk):
     obj = get_object_or_404(Bodega, pk=pk, is_active=True)
     form = BodegaForm(request.POST or None, instance=obj)
