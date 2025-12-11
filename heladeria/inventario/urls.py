@@ -20,6 +20,9 @@ urlpatterns = [
     
     # --- Listados Varios ---
     path('movimientos/', views.listar_movimientos, name='listar_movimientos'),
+    # --- API JSON Movimientos ---
+    path('api/movimientos/entradas/', views.api_movimientos_entradas, name='api_movimientos_entradas'),
+    path('api/movimientos/salidas/', views.api_movimientos_salidas, name='api_movimientos_salidas'),
 
     # --- Lotes (Agrupados y Reordenados: Específico a General) ---
     path('lotes/crear/', views.crear_lote, name='crear_lote'),

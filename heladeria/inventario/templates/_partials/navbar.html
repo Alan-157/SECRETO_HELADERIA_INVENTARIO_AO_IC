@@ -45,7 +45,7 @@
                     <li><a class="dropdown-item" href="{% url 'accounts:usuarios_list' %}">Usuarios</a></li>
                     <li><a class="dropdown-item" href="{% url 'accounts:perfiles_list' %}">Perfiles</a></li>
                     <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="{% url 'inventario:listar_proveedores' %}">Proveedores</a></li> {# <-- NUEVO LINK #}
+                    <li><a class="dropdown-item" href="{% url 'inventario:listar_proveedores' %}">Proveedores</a></li>
                   </ul>
                 </li>
               {% endif %}
@@ -54,7 +54,7 @@
 
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle text-white d-flex align-items-center" href="#" id="navbarDropdown" role="button"
-               data-bs-toggle="dropdown" aria-expanded="false">
+              data-bs-toggle="dropdown" aria-expanded="false">
               {# Avatar o icono de perfil #}
               {% if user.avatar %}
                   <img src="{{ user.avatar.url }}" alt="Avatar" class="user-avatar-small me-2">

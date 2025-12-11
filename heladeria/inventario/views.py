@@ -43,6 +43,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from datetime import date,timedelta
 import csv
 from django.http import HttpResponse
+from django.views.decorators.http import require_GET
 
 from functools import reduce
 import operator
@@ -1245,6 +1246,204 @@ def registrar_movimiento(request):
     })'''
 
 @login_required
+@perfil_required(allow=("administrador", "Encargado")) 
+def listar_movimientos(request):
+    titulo = "Movimientos de Inventario"
+    q = (request.GET.get("q") or "").strip()
+    # Tamaño de página configurable y persistente por sesión
+    allowed_pp = {"10", "20", "50"}
+    per_page_get = request.GET.get("per_page")
+    if per_page_get in allowed_pp:
+        request.session["per_page_movs"] = int(per_page_get)
+    per_page = request.session.get("per_page_movs", 20)
+    
+    # Determinar qué pestaña se está solicitando (por GET o por defecto 'entradas')
+    pestaña_activa = request.GET.get("tab", "entradas")
+
+    # 1. Definición de QuerySets base
+    entradas_qs = (
+        Entrada.objects.select_related("insumo", "insumo_lote", "ubicacion")
+        .only("id", "fecha", "cantidad", "observaciones", "insumo__nombre", "ubicacion__nombre", "insumo_lote__fecha_expiracion", "usuario__name", "usuario__email")
+        .order_by("-fecha")
+    )
+    salidas_qs  = (
+        Salida.objects.select_related("insumo", "insumo_lote", "ubicacion")
+        .only("id", "fecha_generada", "cantidad", "tipo", "observaciones", "insumo__nombre", "ubicacion__nombre", "insumo_lote__id", "usuario__name", "usuario__email")
+        .order_by("-fecha_generada")
+    )
+
+    # 2. Aplicación de filtros de búsqueda (q)
+    if q:
+        entradas_qs = entradas_qs.filter(
+            Q(insumo__nombre__icontains=q) | Q(ubicacion__nombre__icontains=q) | Q(observaciones__icontains=q)
+        )
+        salidas_qs = salidas_qs.filter(
+            Q(insumo__nombre__icontains=q) | Q(ubicacion__nombre__icontains=q)
+        )
+
+    # Inicialización de variables de contexto
+    entradas = None
+    salidas = None
+    
+    # 3. Paginación Condicional (para la carga inicial o AJAX)
+    if pestaña_activa == "salidas":
+        page_s = request.GET.get("page_s")
+        p_s = Paginator(salidas_qs, per_page)
+        salidas = p_s.get_page(page_s)
+        # Para evitar el COUNT(*) de entradas en la carga inicial si se solicita Salidas
+        entradas = Paginator(Entrada.objects.none(), 1).get_page(1)
+        
+    else: # pestaña_activa == "entradas" o carga inicial
+        page_e = request.GET.get("page_e")
+        p_e = Paginator(entradas_qs, per_page)
+        entradas = p_e.get_page(page_e)
+        # Para evitar el COUNT(*) de salidas en la carga inicial o si solo se ven entradas
+        salidas = Paginator(Salida.objects.none(), 1).get_page(1)
+    
+    # 4. Contexto común
+    can_manage = request.user.is_superuser or user_has_role(request.user, "administrador", "encargado")
+    context = {
+        "titulo": titulo,
+        "entradas": entradas,
+        "salidas": salidas,
+        "can_manage": can_manage,
+        "q": q,
+        "pestaña_activa": pestaña_activa,
+        "per_page": per_page,
+        "is_salida_active": pestaña_activa == "salidas",
+    }
+
+    # 5. RESPUESTA AJAX (Para paginación o cambio de pestaña)
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        if pestaña_activa == "salidas":
+            html = render_to_string(
+                "inventario/partials/salidas_table.html",
+                {"movimientos": salidas, "q": q, "page_param": "page_s", "can_manage": can_manage},
+                request=request,
+            )
+        else:
+            html = render_to_string(
+                "inventario/partials/entradas_table.html",
+                {"movimientos": entradas, "q": q, "page_param": "page_e", "can_manage": can_manage},
+                request=request,
+            )
+        
+        # Devolvemos un JSON que contiene solo el HTML renderizado
+        return JsonResponse({"html": html})
+
+
+    # 6. RESPUESTA NORMAL (Carga inicial de la página completa)
+    return render(request, "inventario/listar_movimientos.html", context)
+
+
+# --- API JSON Paginada: Movimientos ---
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@require_GET
+def api_movimientos_entradas(request):
+    """Devuelve JSON paginado de entradas con filtros básicos."""
+    q = (request.GET.get("q") or "").strip()
+    try:
+        per_page = int(request.GET.get("per_page", 20))
+    except ValueError:
+        per_page = 20
+    if per_page not in (10, 20, 50):
+        per_page = 20
+    page_e = request.GET.get("page_e")
+
+    qs = (
+        Entrada.objects.select_related("insumo", "insumo_lote", "ubicacion", "usuario")
+        .only(
+            "id", "fecha", "cantidad", "observaciones",
+            "insumo__nombre", "ubicacion__nombre", "insumo_lote__fecha_expiracion",
+            "usuario__name", "usuario__email"
+        )
+        .order_by("-fecha")
+    )
+    if q:
+        qs = qs.filter(
+            Q(insumo__nombre__icontains=q) | Q(ubicacion__nombre__icontains=q) | Q(observaciones__icontains=q)
+        )
+
+    paginator = Paginator(qs, per_page)
+    page_obj = paginator.get_page(page_e)
+
+    data = [
+        {
+            "id": e.id,
+            "fecha": e.fecha.isoformat() if e.fecha else None,
+            "insumo": e.insumo.nombre,
+            "cantidad": float(e.cantidad),
+            "ubicacion": e.ubicacion.nombre,
+            "fecha_expiracion": (e.insumo_lote.fecha_expiracion.isoformat() if e.insumo_lote and e.insumo_lote.fecha_expiracion else None),
+            "usuario": (e.usuario.name or e.usuario.email) if hasattr(e, "usuario") else None,
+        }
+        for e in page_obj
+    ]
+
+    return JsonResponse({
+        "results": data,
+        "page": page_obj.number,
+        "pages": paginator.num_pages,
+        "count": paginator.count,
+        "per_page": per_page,
+    })
+
+
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
+@require_GET
+def api_movimientos_salidas(request):
+    """Devuelve JSON paginado de salidas con filtros básicos."""
+    q = (request.GET.get("q") or "").strip()
+    try:
+        per_page = int(request.GET.get("per_page", 20))
+    except ValueError:
+        per_page = 20
+    if per_page not in (10, 20, 50):
+        per_page = 20
+    page_s = request.GET.get("page_s")
+
+    qs = (
+        Salida.objects.select_related("insumo", "insumo_lote", "ubicacion", "usuario")
+        .only(
+            "id", "fecha_generada", "cantidad", "tipo", "observaciones",
+            "insumo__nombre", "ubicacion__nombre", "insumo_lote__id",
+            "usuario__name", "usuario__email"
+        )
+        .order_by("-fecha_generada")
+    )
+    if q:
+        qs = qs.filter(
+            Q(insumo__nombre__icontains=q) | Q(ubicacion__nombre__icontains=q) | Q(observaciones__icontains=q)
+        )
+
+    paginator = Paginator(qs, per_page)
+    page_obj = paginator.get_page(page_s)
+
+    data = [
+        {
+            "id": s.id,
+            "fecha_generada": s.fecha_generada.isoformat() if s.fecha_generada else None,
+            "insumo": s.insumo.nombre,
+            "cantidad": float(s.cantidad),
+            "ubicacion": s.ubicacion.nombre,
+            "lote_id": (s.insumo_lote.id if s.insumo_lote else None),
+            "tipo": s.tipo,
+            "usuario": (s.usuario.name or s.usuario.email) if hasattr(s, "usuario") else None,
+        }
+        for s in page_obj
+    ]
+
+    return JsonResponse({
+        "results": data,
+        "page": page_obj.number,
+        "pages": paginator.num_pages,
+        "count": paginator.count,
+        "per_page": per_page,
+    })
+
+@login_required
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def registrar_entrada(request):
@@ -2098,40 +2297,7 @@ def eliminar_salida(request, pk):
 
     return render(request, "inventario/confirmar_eliminar.html", {"obj": salida, "tipo": "salida"})
 
-# --- LISTAR MOVIMIENTOS (ENTRADAS Y SALIDAS) ---
-@login_required
-@perfil_required(allow=("administrador", "Encargado")) 
-def listar_movimientos(request):
-    titulo = "Movimientos de Inventario"
-    q = (request.GET.get("q") or "").strip()
-
-    entradas_qs = Entrada.objects.select_related("insumo", "insumo_lote", "ubicacion").order_by("-fecha")
-    salidas_qs  = Salida.objects.select_related("insumo", "insumo_lote", "ubicacion").order_by("-fecha_generada")
-
-    if q:
-        entradas_qs = entradas_qs.filter(
-            Q(insumo__nombre__icontains=q) | Q(ubicacion__nombre__icontains=q) | Q(observaciones__icontains=q)
-        )
-        salidas_qs = salidas_qs.filter(
-            Q(insumo__nombre__icontains=q) | Q(ubicacion__nombre__icontains=q)
-        )
-
-    p_e = Paginator(entradas_qs, 20)
-    p_s = Paginator(salidas_qs, 20)
-    page_e = request.GET.get("page_e")
-    page_s = request.GET.get("page_s")
-    entradas = p_e.get_page(page_e)
-    salidas  = p_s.get_page(page_s)
-
-    can_manage = request.user.is_superuser or user_has_role(request.user, "administrador", "encargado")
-
-    return render(request, "inventario/listar_movimientos.html", {
-        "titulo": titulo,
-        "entradas": entradas,
-        "salidas": salidas,
-        "can_manage": can_manage,
-        "q": q,
-    })
+# (Eliminada la definición duplicada de listar_movimientos para utilizar la versión con AJAX y carga por pestaña)
 
 
 

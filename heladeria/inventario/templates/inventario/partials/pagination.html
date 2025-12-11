@@ -1,0 +1,42 @@
+{% if page_obj.paginator.num_pages > 1 %}
+<nav aria-label="Navegación de páginas">
+  <ul class="pagination pagination-sm justify-content-center mb-0">
+    {# Botón Anterior #}
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?{{ page_param }}={{ page_obj.previous_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}">
+          «
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">«</span></li>
+    {% endif %}
+
+    {# Números de página (ventana corta) #}
+    {% for num in page_obj.paginator.page_range %}
+      {% if num >= page_obj.number|add:-2 and num <= page_obj.number|add:2 %}
+        {% if num == page_obj.number %}
+          <li class="page-item active" aria-current="page">
+            <span class="page-link">{{ num }}</span>
+          </li>
+        {% else %}
+          <li class="page-item">
+            <a class="page-link" href="?{{ page_param }}={{ num }}{% if q %}&q={{ q|urlencode }}{% endif %}">{{ num }}</a>
+          </li>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+
+    {# Botón Siguiente #}
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?{{ page_param }}={{ page_obj.next_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}">
+          »
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">»</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}

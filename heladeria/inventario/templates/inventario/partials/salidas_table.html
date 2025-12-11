@@ -53,5 +53,6 @@
 
 {# Lógica de Paginación para Salidas #}
 {% if movimientos.has_other_pages %}
-  {% include "inventario/partials/pagination.html" with page_obj=movimientos %}
+  {# 🔥 CORRECCIÓN: Pasar el query 'q' y el parámetro de página 'page_s' (page_param) #}
+  {% include "inventario/partials/pagination.html" with page_obj=movimientos q=q page_param=page_param %}
 {% endif %}
