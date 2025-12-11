@@ -2,6 +2,7 @@
 
 from django.shortcuts import render, redirect
 from django.contrib import messages
+from django.contrib.auth.views import LoginView
 from .forms import RegisterForm, UserProfileEditForm# Importa el formulario que creaste
 from django.contrib.auth import login # Opcional: si quieres loguear al usuario inmediatamente después del registro
 from django.views.decorators.http import require_http_methods
@@ -16,6 +17,31 @@ from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
 
 # NOTA: La vista de login (LoginView) no está aquí, está en urls.py
+
+class CustomLoginView(LoginView):
+    """
+    Personaliza la vista de Login para añadir mensajes de éxito y error.
+    """
+    template_name = 'accounts/login.html' # Asegura que apunte a tu template de login
+
+    # Maneja el inicio de sesión exitoso
+    def form_valid(self, form):
+        # 1. Llama a la implementación base para iniciar sesión
+        response = super().form_valid(form)
+        
+        # 2. Añade el mensaje de éxito
+        # Usamos .name si tu modelo UsuarioApp tiene ese campo, si no, usa .email
+        messages.success(self.request, f"✅ ¡Inicio de sesión autorizado! Bienvenido, {self.request.user.name}.") 
+        
+        return response
+
+    # Maneja el inicio de sesión denegado (credenciales inválidas)
+    def form_invalid(self, form):
+        # 1. Añade el mensaje de denegación
+        messages.error(self.request, "❌ Inicio de sesión denegado: Usuario o contraseña incorrectos.")
+        
+        # 2. Llama a la implementación base para re-renderizar el formulario
+        return super().form_invalid(form)
 
 def register_view(request):
     """

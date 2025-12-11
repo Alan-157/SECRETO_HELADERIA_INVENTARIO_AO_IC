@@ -7,6 +7,9 @@
     <div class="col-md-6 col-lg-4">
         <h3 class="text-center mb-4">Ingresar a Secreto Inventario</h3>
         
+        {# Mantenemos el include de mensajes.html para que el JS los detecte #}
+        {% include 'inventario/partials/messages.html' %} 
+
         {% if form.non_field_errors %}
         <div class="alert alert-danger py-2">{{ form.non_field_errors }}</div>
         {% endif %}
@@ -43,3 +46,49 @@
     </div>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+    // Script para interceptar los mensajes de Django y mostrarlos con SweetAlert2
+    document.addEventListener('DOMContentLoaded', function() {
+        {% if messages %}
+            {% for message in messages %}
+                
+                let iconType;
+                let titleText;
+                
+                // Mapeo de tags de Django a SweetAlert2
+                if ("{{ message.tags }}" === "success") {
+                    iconType = 'success';
+                    titleText = '✅ Autorizado';
+                } else if ("{{ message.tags }}" === "error") {
+                    iconType = 'error';
+                    titleText = '❌ Denegado';
+                } else {
+                    iconType = 'info';
+                    titleText = 'Mensaje';
+                }
+
+                // Aseguramos que SweetAlert2 esté disponible
+                if (typeof Swal !== 'undefined' || typeof swal !== 'undefined') {
+                    
+                    // Utilizamos la función Swal.fire para disparar el modal/toast
+                    Swal.fire({
+                        icon: iconType,
+                        title: titleText,
+                        // Usamos el mensaje completo de Django
+                        text: "{{ message|safe }}", 
+                        timer: 3000, 
+                        showConfirmButton: false,
+                        position: 'top-end', // Toast en la esquina superior
+                        toast: true
+                    });
+                }
+            {% endfor %}
+            // Opcional: Limpiamos los mensajes estáticos una vez que se han mostrado con SweetAlert
+            // Es buena práctica si messages.html los renderiza en un contenedor que podemos ocultar
+            document.querySelectorAll('.alert').forEach(alert => alert.remove());
+        {% endif %}
+    });
+</script>
+{% endblock extra_js %}

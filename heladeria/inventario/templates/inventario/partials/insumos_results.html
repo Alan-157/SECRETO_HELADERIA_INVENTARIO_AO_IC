@@ -43,11 +43,11 @@
       <td class="text-center">
         {% if not read_only %}
           <a href="{% url 'inventario:registrar_entrada' %}?insumo_id={{ insumo.id }}" 
-             class="btn btn-sm btn-success me-1" title="Registrar Entrada">
+            class="btn btn-sm btn-success me-1" title="Registrar Entrada">
             <i class="bi bi-plus-circle"></i> Entrada
           </a>
           <a href="{% url 'inventario:registrar_salida' %}?insumo_id={{ insumo.id }}" 
-             class="btn btn-sm btn-danger" title="Registrar Salida">
+            class="btn btn-sm btn-danger" title="Registrar Salida">
             <i class="bi bi-dash-circle"></i> Salida
           </a>
         {% else %}
@@ -85,7 +85,7 @@
     {% if insumos.has_previous %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ insumos.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+          href="?page={{ insumos.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
           « Anterior
         </a>
       </li>
@@ -100,7 +100,7 @@
     {% if insumos.has_next %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ insumos.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+          href="?page={{ insumos.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
           Siguiente »
         </a>
       </li>
