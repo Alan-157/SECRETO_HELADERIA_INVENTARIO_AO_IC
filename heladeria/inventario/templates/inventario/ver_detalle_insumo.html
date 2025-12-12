@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ titulo }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3>{{ titulo }}</h3>
+        <a href="{% url 'inventario:listar_insumos' %}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Volver al listado
+        </a>
+    </div>
+
+    <div class="row">
+        <!-- Información Principal del Insumo -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-info-circle"></i> Información General</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless mb-0">
+                        <tr>
+                            <th style="width: 40%;">Nombre:</th>
+                            <td><strong>{{ insumo.nombre }}</strong></td>
+                        </tr>
+                        <tr>
+                            <th>Categoría:</th>
+                            <td><span class="badge bg-secondary">{{ insumo.categoria.nombre }}</span></td>
+                        </tr>
+                        <tr>
+                            <th>Unidad de Medida:</th>
+                            <td>{{ insumo.unidad_medida }}</td>
+                        </tr>
+                        <tr>
+                            <th>Descripción:</th>
+                            <td>{{ insumo.descripcion|default:"Sin descripción" }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información de Stock -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-box-seam"></i> Stock e Inventario</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-borderless mb-0">
+                        <tr>
+                            <th style="width: 40%;">Stock Actual:</th>
+                            <td>
+                                {% with sa=insumo.stock_actual|default:0 sm=insumo.stock_minimo|default:0 sx=insumo.stock_maximo|default:0 %}
+                                {% if sa < sm %}
+                                    <span class="badge bg-danger fs-6">{{ sa|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</span>
+                                    <small class="text-danger d-block">⚠️ Bajo stock</small>
+                                {% elif sa > sx and sx > 0 %}
+                                    <span class="badge bg-warning text-dark fs-6">{{ sa|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</span>
+                                    <small class="text-warning d-block">⚠️ Sobre stock</small>
+                                {% else %}
+                                    <span class="badge bg-success fs-6">{{ sa|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</span>
+                                    <small class="text-success d-block">✓ Stock normal</small>
+                                {% endif %}
+                                {% endwith %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Stock Mínimo:</th>
+                            <td>{{ insumo.stock_minimo|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</td>
+                        </tr>
+                        <tr>
+                            <th>Stock Máximo:</th>
+                            <td>{{ insumo.stock_maximo|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</td>
+                        </tr>
+                        <tr>
+                            <th>Lotes Activos:</th>
+                            <td><span class="badge bg-info">{{ lotes.count }}</span></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertas Activas -->
+    {% if alertas_activas %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-warning">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle-fill"></i> Alertas Activas ({{ alertas_activas.count }})</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        {% for alerta in alertas_activas %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="badge bg-{% if alerta.tipo == 'SIN_STOCK' %}danger{% elif alerta.tipo == 'BAJO_STOCK' %}warning{% elif alerta.tipo == 'STOCK_EXCESIVO' %}info{% else %}secondary{% endif %} me-2">
+                                        {{ alerta.get_tipo_display }}
+                                    </span>
+                                    {{ alerta.mensaje }}
+                                </div>
+                                <small class="text-muted">{{ alerta.fecha }}</small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Lotes Activos -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-boxes"></i> Lotes Activos ({{ lotes.count }})</h5>
+                </div>
+                <div class="card-body">
+                    {% if lotes %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>ID Lote</th>
+                                    <th>Bodega</th>
+                                    <th class="text-center">Cantidad</th>
+                                    <th>Fecha Ingreso</th>
+                                    <th>Fecha Expiración</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for lote in lotes %}
+                                <tr>
+                                    <td><strong>#{{ lote.id }}</strong></td>
+                                    <td>{{ lote.bodega.nombre|default:"Sin bodega" }}</td>
+                                    <td class="text-center">{{ lote.cantidad_actual|floatformat:2 }}</td>
+                                    <td>{{ lote.fecha_ingreso|date:"d/m/Y" }}</td>
+                                    <td>
+                                        {% if lote.fecha_expiracion %}
+                                            {{ lote.fecha_expiracion|date:"d/m/Y" }}
+                                        {% else %}
+                                            <span class="text-muted">Sin expiración</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-3">No hay lotes activos para este insumo.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Últimos Movimientos -->
+    <div class="row mb-4">
+        <!-- Entradas Recientes -->
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-arrow-down-circle"></i> Últimas Entradas</h5>
+                </div>
+                <div class="card-body">
+                    {% if entradas_recientes %}
+                    <div class="list-group list-group-flush">
+                        {% for entrada in entradas_recientes %}
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong>{{ entrada.cantidad|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        {{ entrada.ubicacion.nombre|default:"Sin ubicación" }}
+                                        {% if entrada.observaciones %}
+                                        <br>{{ entrada.observaciones|truncatewords:10 }}
+                                        {% endif %}
+                                    </small>
+                                </div>
+                                <div class="text-end">
+                                    <small class="text-muted">{{ entrada.fecha|date:"d/m/Y" }}</small>
+                                    {% if entrada.usuario %}
+                                    <br><small class="text-muted">{{ entrada.usuario.name|default:entrada.usuario.email }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-3">Sin entradas recientes</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Salidas Recientes -->
+        <div class="col-md-6 mb-3">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-arrow-up-circle"></i> Últimas Salidas</h5>
+                </div>
+                <div class="card-body">
+                    {% if salidas_recientes %}
+                    <div class="list-group list-group-flush">
+                        {% for salida in salidas_recientes %}
+                        <div class="list-group-item px-0">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <strong>{{ salida.cantidad|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        Tipo: {{ salida.get_tipo_display }}
+                                        {% if salida.observaciones %}
+                                        <br>{{ salida.observaciones|truncatewords:10 }}
+                                        {% endif %}
+                                    </small>
+                                </div>
+                                <div class="text-end">
+                                    <small class="text-muted">{{ salida.fecha_generada|date:"d/m/Y" }}</small>
+                                    {% if salida.usuario %}
+                                    <br><small class="text-muted">{{ salida.usuario.name|default:salida.usuario.email }}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-3">Sin salidas recientes</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Acciones Rápidas -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Acciones Rápidas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a href="{% url 'inventario:registrar_entrada' %}?insumo_id={{ insumo.id }}" 
+                           class="btn btn-success">
+                            <i class="bi bi-plus-circle"></i> Registrar Entrada
+                        </a>
+                        <a href="{% url 'inventario:registrar_salida' %}?insumo_id={{ insumo.id }}" 
+                           class="btn btn-danger">
+                            <i class="bi bi-dash-circle"></i> Registrar Salida
+                        </a>
+                        <a href="{% url 'inventario:editar_insumo' insumo.id %}" 
+                           class="btn btn-warning">
+                            <i class="bi bi-pencil"></i> Editar Insumo
+                        </a>
+                        <a href="{% url 'inventario:listar_lotes' %}?q={{ insumo.nombre|urlencode }}" 
+                           class="btn btn-info">
+                            <i class="bi bi-boxes"></i> Ver Todos los Lotes
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

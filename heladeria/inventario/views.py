@@ -170,11 +170,14 @@ def dashboard_view(request):
 def listar_alertas(request):
     """
     Listado de alertas con filtros y paginación.
-    Permite ver el historial de alertas (inactivas).
+    Permite ver el historial de alertas (inactivas) y filtrar por tipo.
     """
     
     # NUEVO: Filtro para mostrar todas (activas e inactivas)
     mostrar_inactivas = request.GET.get("mostrar_inactivas", "0") == "1"
+    
+    # NUEVO: Filtro por tipo de alerta
+    tipo_filtro = request.GET.get("tipo", "")
     
     qs = (
         models.AlertaInsumo.objects.all()
@@ -183,6 +186,10 @@ def listar_alertas(request):
     if not mostrar_inactivas:
         # Si no se pide el historial, se filtra por activas (comportamiento por defecto)
         qs = qs.filter(is_active=True)
+    
+    # Aplicar filtro por tipo si se seleccionó
+    if tipo_filtro:
+        qs = qs.filter(tipo=tipo_filtro)
     
     qs = qs.select_related("insumo").order_by("-fecha", "-created_at")
 
@@ -207,6 +214,8 @@ def listar_alertas(request):
             "titulo": "Alertas de Inventario",
             "read_only": read_only,
             "mostrar_inactivas": mostrar_inactivas, # <--- Se pasa al contexto para el botón de historial
+            "tipo_filtro": tipo_filtro,  # <--- Pasar el filtro seleccionado
+            "tipos_alerta": models.AlertaInsumo._meta.get_field("tipo").choices,  # <--- Pasar las opciones de tipo
         },
     )
     
@@ -464,6 +473,50 @@ def eliminar_insumo(request, insumo_id):
         "inventario/confirmar_eliminar.html", # Ruta corregida previamente
         {"titulo": f"Eliminar Insumo «{insumo.nombre}»", "cancel_url": reverse("inventario:listar_insumos"), "insumo": insumo}
     )
+
+
+# --- VER DETALLE DE INSUMO ---
+@login_required
+def ver_detalle_insumo(request, insumo_id):
+    """Vista para ver los detalles completos de un insumo."""
+    insumo = get_object_or_404(
+        Insumo.objects.select_related('categoria', 'unidad_medida')
+        .annotate(
+            stock_actual=Coalesce(Sum('lotes__cantidad_actual', filter=Q(lotes__is_active=True)), 0, output_field=DecimalField())
+        ),
+        id=insumo_id
+    )
+    
+    # Obtener lotes activos del insumo
+    lotes = InsumoLote.objects.filter(
+        insumo=insumo, 
+        is_active=True,
+        cantidad_actual__gt=0
+    ).select_related('bodega', 'proveedor').order_by('-fecha_ingreso')
+    
+    # Obtener últimos movimientos (entradas y salidas)
+    entradas_recientes = Entrada.objects.filter(
+        insumo=insumo
+    ).select_related('ubicacion', 'usuario').order_by('-fecha')[:5]
+    
+    salidas_recientes = Salida.objects.filter(
+        insumo=insumo
+    ).select_related('ubicacion', 'usuario').order_by('-fecha_generada')[:5]
+    
+    # Obtener alertas activas
+    alertas_activas = insumo.alertas.filter(is_active=True).order_by('-fecha')
+    
+    context = {
+        'insumo': insumo,
+        'lotes': lotes,
+        'entradas_recientes': entradas_recientes,
+        'salidas_recientes': salidas_recientes,
+        'alertas_activas': alertas_activas,
+        'titulo': f'Detalles de {insumo.nombre}',
+    }
+    
+    return render(request, 'inventario/ver_detalle_insumo.html', context)
+
 
 # --- VISTA AJAX (NUEVA: Creación de Unidad de Medida) ---
 @login_required
@@ -3163,3 +3216,47 @@ def eliminar_proveedor(request, pk):
         "inventario/confirmar_eliminar.html",
         {"titulo": f"Desactivar Proveedor «{proveedor.nombre_empresa}»", "cancel_url": reverse("inventario:listar_proveedores"), "obj": proveedor}
     )
+
+
+# ============================================================================
+# Vista de Configuración de Alertas
+# ============================================================================
+
+from django.contrib.admin.views.decorators import staff_member_required
+from .alertas_config import (
+    alertas_activadas, 
+    activar_alertas, 
+    desactivar_alertas,
+    get_estado_alertas
+)
+
+@staff_member_required
+def configurar_alertas(request):
+    """Vista para configurar alertas usando cache"""
+    context = get_estado_alertas()
+    
+    if request.method == 'POST':
+        nuevo_estado = request.POST.get('alertas_activas') == 'on'
+        
+        if nuevo_estado:
+            activar_alertas()
+            messages.success(request, "✓ Alertas activadas exitosamente")
+        else:
+            desactivar_alertas()
+            messages.info(request, "✓ Alertas desactivadas exitosamente")
+        
+        # Si es AJAX, devolver JSON
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            return JsonResponse({
+                'success': True, 
+                'estado': nuevo_estado,
+                'mensaje': "Alertas " + ("activadas" if nuevo_estado else "desactivadas")
+            })
+        
+        return redirect('configurar_alertas')
+    
+    # Si es GET y es AJAX, devolver JSON con el estado actual
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse(context)
+    
+    return render(request, 'inventario/configurar_alertas_CACHE.html', context)

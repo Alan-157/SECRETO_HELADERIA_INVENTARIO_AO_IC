@@ -37,7 +37,11 @@
             <span class="badge bg-dark">Revisada</span>
         {% endif %}
       </td>
-      <td>{{ alerta.insumo.nombre }}</td>
+      <td>
+        <a href="{% url 'inventario:ver_detalle_insumo' alerta.insumo.id %}" class="text-decoration-none fw-bold">
+          {{ alerta.insumo.nombre }}
+        </a>
+      </td>
       <td>{{ alerta.mensaje }}</td>
       <td>{{ alerta.fecha|date:"d M Y" }}</td>
       <td class="text-center">

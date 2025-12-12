@@ -8,6 +8,7 @@
       <th class="text-center">Stock Máximo</th>
       <th>Unidad</th>
       <th class="text-center">Acciones Movimiento</th> {# <-- Columna AÑADIDA/CORREGIDA #}
+      <th class="text-center">Ver</th>
       <th class="text-end">Administración</th>
     </tr>
   </thead>
@@ -55,6 +56,15 @@
         {% endif %}
       </td>
 
+      {# --- Botón Ver Detalles --- #}
+      <td class="text-center">
+        <a href="{% url 'inventario:ver_detalle_insumo' insumo.id %}" 
+           class="btn btn-sm btn-info" 
+           title="Ver detalles del insumo">
+          <i class="bi bi-eye"></i> Detalles
+        </a>
+      </td>
+
       {# --- Columna de Administración Original --- #}
       <td class="text-end">
         {% if not read_only %}
@@ -74,7 +84,7 @@
     </tr>
     {% endwith %}
     {% empty %}
-    <tr><td colspan="8" class="text-center text-muted py-3">Sin resultados</td></tr>
+    <tr><td colspan="9" class="text-center text-muted py-3">Sin resultados</td></tr>
     {% endfor %}
   </tbody>
 </table>

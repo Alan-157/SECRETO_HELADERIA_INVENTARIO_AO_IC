@@ -71,6 +71,55 @@
               <li><a class="dropdown-item" href="{% url 'accounts:profile_edit' %}">Editar Perfil</a></li> 
               <li><a class="dropdown-item" href="{% url 'accounts:password_change' %}">Cambiar Contraseña</a></li>
               <li><hr class="dropdown-divider"></li>
+              
+              {# Switch de Alertas #}
+              {% if user.is_superuser or user.active_asignacion.perfil.nombre|lower == 'administrador' %}
+              <li>
+                <form method="post" action="{% url 'inventario:configurar_alertas' %}" class="d-inline w-100" id="formAlertasNavbar">
+                  {% csrf_token %}
+                  <div class="dropdown-item d-flex align-items-center justify-content-between" style="cursor: pointer; padding: 0.5rem 1rem;">
+                    <span>
+                      <i class="bi bi-bell-fill me-2"></i>
+                      <strong>Alertas</strong>
+                    </span>
+                    <div class="form-check form-switch" style="margin: 0;">
+                      <input class="form-check-input" 
+                             type="checkbox" 
+                             role="switch"
+                             id="alertasNavbar" 
+                             name="alertas_activas"
+                             data-confirm-alertas
+                             style="width: 2em; height: 1.2em; cursor: pointer;"
+                             data-navbar-alertas="true">
+                    </div>
+                  </div>
+                </form>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              
+              <script>
+              // Script para cargar el estado de alertas en el navbar
+              document.addEventListener('DOMContentLoaded', function() {
+                  const switchNavbar = document.querySelector('[data-navbar-alertas]');
+                  if (switchNavbar) {
+                      fetch('{% url "inventario:configurar_alertas" %}', {
+                          headers: {
+                              'X-Requested-With': 'XMLHttpRequest',
+                              'Accept': 'application/json'
+                          }
+                      })
+                      .then(response => response.json())
+                      .then(data => {
+                          if (data && typeof data.alertas_activas !== 'undefined') {
+                              switchNavbar.checked = data.alertas_activas;
+                          }
+                      })
+                      .catch(error => console.log('Estado de alertas cargado del cache'));
+                  }
+              });
+              </script>
+              {% endif %}
+              
               <li>
                 <form action="{% url 'accounts:logout' %}" method="post" class="d-inline">
                   {% csrf_token %}

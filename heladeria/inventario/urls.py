@@ -6,6 +6,7 @@ urlpatterns = [
     # --- CRUD de Insumos & AJAX Unidades de Medida ---
     path('insumos/', views.listar_insumos, name='listar_insumos'),
     path('insumos/crear/', views.crear_insumo, name='crear_insumo'),
+    path('insumos/<int:insumo_id>/detalle/', views.ver_detalle_insumo, name='ver_detalle_insumo'),
     path('insumos/editar/<int:insumo_id>/', views.editar_insumo, name='editar_insumo'),
     path('insumos/eliminar/<int:insumo_id>/', views.eliminar_insumo, name='eliminar_insumo'),
     path('ajax/crear_unidad/', views.crear_unidad_medida_ajax, name='crear_unidad_medida_ajax'),
@@ -67,6 +68,9 @@ urlpatterns = [
 
     # --- Reportes ---
     path('reportes/disponibilidad/', views.reporte_disponibilidad, name='reporte_disponibilidad'),
+    
+    # --- Configuración de Alertas ---
+    path('configuracion/alertas/', views.configurar_alertas, name='configurar_alertas'),
     
     # Proovedorees
     path('proveedores/', views.listar_proveedores, name='listar_proveedores'),

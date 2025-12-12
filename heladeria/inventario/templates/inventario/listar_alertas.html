@@ -47,6 +47,16 @@
             </div>
         </div>
 
+        {# NUEVO: FILTRO POR TIPO DE ALERTA #}
+        <div class="col-md-2">
+            <select name="tipo" id="tipo-select" class="form-select">
+                <option value="">Todos los tipos</option>
+                {% for value, label in tipos_alerta %}
+                    <option value="{{ value }}" {% if tipo_filtro == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
         {# SELECT DE ORDEN #}
         <div class="col-md-2">
             <select name="order" id="order-select" class="form-select">
@@ -84,6 +94,23 @@
     </form>
     {# FIN DEL FORMULARIO #}
 
+    {# MOSTRAR FILTRO ACTIVO #}
+    {% if tipo_filtro %}
+    <div class="alert alert-info d-flex justify-content-between align-items-center mb-3" role="alert">
+        <div>
+            <strong>Filtro activo:</strong>
+            {% for value, label in tipos_alerta %}
+                {% if value == tipo_filtro %}
+                    <span class="badge bg-primary ms-2">{{ label }}</span>
+                {% endif %}
+            {% endfor %}
+        </div>
+        <a href="?{% if q %}q={{ q|urlencode }}&{% endif %}{% if mostrar_inactivas %}mostrar_inactivas=1&{% endif %}" class="btn btn-sm btn-outline-info">
+            <i class="bi bi-x"></i> Limpiar filtro
+        </a>
+    </div>
+    {% endif %}
+
     <div id="results">
         {% include "inventario/partials/alertas_results.html" %}
     </div>
@@ -92,6 +119,69 @@
 {% endblock %}
 
 {% block extra_js %}
-{# Se asume que el script AJAX ya está en tu base.html o en un partial de JS #}
-{# Si necesitas el script completo para filtros, puedes usar el del listar_insumos #}
+<script>
+(function(){
+    const form = document.getElementById('filters-form');
+    const results = document.getElementById('results');
+    if (!form || !results) return;
+
+    const pageInput = document.getElementById('page-input');
+    const tipoSelect = document.getElementById('tipo-select');
+    const sortSelect = document.getElementById('sort-select');
+    const orderSelect = document.getElementById('order-select');
+    const perPageSelect = document.getElementById('per-page-select');
+
+    const buildURL = () => {
+        const params = new URLSearchParams(new FormData(form));
+        return `${location.pathname}?${params.toString()}`;
+    };
+
+    async function loadAjax(url){
+        try {
+            const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            results.innerHTML = data.html;
+            history.replaceState({}, '', url);
+        } catch (err) {
+            console.error('Error AJAX alertas:', err);
+        }
+    }
+
+    const debounce = (fn, ms = 300) => {
+        let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+    };
+
+    // Envío del formulario (Aplicar filtros)
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (pageInput) pageInput.value = '1';
+        loadAjax(buildURL());
+    });
+
+    // Búsqueda mientras escribe
+    const qInput = form.querySelector('input[name="q"]');
+    qInput?.addEventListener('input', debounce(() => {
+        if (pageInput) pageInput.value = '1';
+        loadAjax(buildURL());
+    }));
+
+    // Cambios en filtros (tipo, sort, order, per_page)
+    [tipoSelect, sortSelect, orderSelect, perPageSelect].forEach(el => {
+        if (!el) return;
+        el.addEventListener('change', () => {
+            if (pageInput) pageInput.value = '1';
+            loadAjax(buildURL());
+        });
+    });
+
+    // Paginación por AJAX (links con data-ajax-link en el partial)
+    results.addEventListener('click', (e) => {
+        const a = e.target.closest('a[data-ajax-link]');
+        if (!a) return;
+        e.preventDefault();
+        loadAjax(a.href);
+    });
+})();
+</script>
 {% endblock %}

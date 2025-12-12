@@ -99,14 +99,35 @@ document.addEventListener('DOMContentLoaded', function() {
                 }).then((result) => {
                     if (result.isConfirmed) {
                         this.checked = false;
-                        if (form) form.submit();
+                        if (form) {
+                            // Enviar AJAX en lugar de formulario normal
+                            enviarFormularioAlertasAJAX(form);
+                        }
                     } else {
                         this.checked = true;
                     }
                 });
             } else {
-                // Si están activando, enviar directamente
-                if (form) form.submit();
+                // Si están activando, pedir confirmación también
+                Swal.fire({
+                    title: '¿Activar alertas de stock?',
+                    html: '<p>Se reanudarán la generación automática de alertas en el sistema.</p>',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Sí, activar',
+                    cancelButtonText: 'Cancelar',
+                    reverseButtons: true,
+                    ...SwalConfig
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        this.checked = true;
+                        if (form) {
+                            enviarFormularioAlertasAJAX(form);
+                        }
+                    } else {
+                        this.checked = false;
+                    }
+                });
             }
         });
     });
@@ -132,6 +153,36 @@ function confirmarEliminacion(opciones = {}) {
     };
     
     return Swal.fire(config);
+}
+
+/**
+ * Enviar formulario de alertas via AJAX sin recargar página
+ */
+function enviarFormularioAlertasAJAX(form) {
+    const formData = new FormData(form);
+    const estadoAlerta = formData.get('alertas_activas') ? 'activadas' : 'desactivadas';
+    
+    fetch(form.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            mostrarToast(`✓ Alertas ${estadoAlerta} exitosamente`, 'success');
+            // Actualizar el estado del switch en otros lugares si es necesario
+            document.querySelectorAll('[data-confirm-alertas]').forEach(elem => {
+                elem.checked = data.estado;
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        mostrarToast('❌ Error al actualizar alertas', 'error');
+    });
 }
 
 /**
