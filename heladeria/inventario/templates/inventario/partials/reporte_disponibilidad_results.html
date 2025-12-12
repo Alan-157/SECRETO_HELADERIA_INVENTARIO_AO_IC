@@ -1,6 +1,12 @@
 <div class="card border-0 shadow-sm">
   <div class="card-body p-0">
-    {% if categorias and categorias|length %}
+    {% if not has_selection %}
+      <div class="text-center text-muted py-5" style="background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+        <div style="font-size: 3rem; margin-bottom: 12px;">🍦</div>
+        <div style="font-weight: 600; font-size: 1.1rem;">Selecciona al menos un insumo</div>
+        <div style="font-size: 0.9rem; margin-top: 6px;">Elige los insumos en el panel izquierdo para cargar el reporte.</div>
+      </div>
+    {% elif categorias and categorias|length %}
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0" style="border-collapse: collapse;">
           <tbody>

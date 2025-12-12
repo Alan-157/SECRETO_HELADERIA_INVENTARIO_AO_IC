@@ -2642,6 +2642,7 @@ def reporte_disponibilidad(request):
 
     # -------- selección por insumo (nombres) --------
     selected_insumos = request.GET.getlist("insumo")   # lista de nombres exactos
+    has_selection = bool(selected_insumos)
 
     # Base queryset de insumos (activos + categoría activa)
     insumos_base = (
@@ -2650,7 +2651,7 @@ def reporte_disponibilidad(request):
     )
 
     # Si vienen seleccionados, filtramos por nombre (case-insensitive)
-    if selected_insumos:
+    if has_selection:
         insumos_base = insumos_base.filter(nombre__in=selected_insumos)
 
     # Prefetch de lotes activos para cada insumo (ordenados por fecha de expiración)
@@ -2662,31 +2663,34 @@ def reporte_disponibilidad(request):
     )
 
     # Anotaciones de stock total, #lotes con stock, prox venc
-    insumos_qs = (
-        insumos_base
-        .annotate(
-            stock_total=Coalesce(
-                Sum(
-                    "lotes__cantidad_actual",
-                    filter=Q(lotes__is_active=True),
+    if has_selection:
+        insumos_qs = (
+            insumos_base
+            .annotate(
+                stock_total=Coalesce(
+                    Sum(
+                        "lotes__cantidad_actual",
+                        filter=Q(lotes__is_active=True),
+                        output_field=DecimalField(max_digits=12, decimal_places=2),
+                    ),
+                    0,
                     output_field=DecimalField(max_digits=12, decimal_places=2),
                 ),
-                0,
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            ),
-            lotes_con_stock=Count(
-                "lotes",
-                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
-                distinct=True,
-            ),
-            prox_vencimiento=Min(
-                "lotes__fecha_expiracion",
-                filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
-            ),
+                lotes_con_stock=Count(
+                    "lotes",
+                    filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
+                    distinct=True,
+                ),
+                prox_vencimiento=Min(
+                    "lotes__fecha_expiracion",
+                    filter=Q(lotes__is_active=True, lotes__cantidad_actual__gt=0),
+                ),
+            )
+            .prefetch_related(Prefetch("lotes", queryset=lotes_qs, to_attr="lotes_vis"))
+            .order_by("categoria__nombre", "nombre")
         )
-        .prefetch_related(Prefetch("lotes", queryset=lotes_qs, to_attr="lotes_vis"))
-        .order_by("categoria__nombre", "nombre")
-    )
+    else:
+        insumos_qs = insumos_base.none()
 
     # Dataset para checkboxes (todos los nombres disponibles, ordenados)
     all_insumo_names = list(
@@ -3019,6 +3023,7 @@ def reporte_disponibilidad(request):
         "total_valor": total_valor,
         "hoy": hoy,
         "titulo": "Reporte de Disponibilidad de Insumos",
+        "has_selection": has_selection,
         # flags UI
         "show_precio_unitario": show_precio_unitario,
         "show_stock_total": show_stock_total,
