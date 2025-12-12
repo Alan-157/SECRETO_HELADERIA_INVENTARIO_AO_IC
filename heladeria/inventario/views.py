@@ -1834,7 +1834,7 @@ def registrar_salida_movimiento(request):
                 
                 models.Salida.objects.create(
                     insumo=insumo, insumo_lote=lote, ubicacion=ubicacion,
-                    cantidad=cantidad, fecha=fecha, usuario=request.user,
+                    cantidad=cantidad, fecha_generada=fecha, usuario=request.user,
                     observaciones=cd.get("observaciones", ""),
                 )
                 

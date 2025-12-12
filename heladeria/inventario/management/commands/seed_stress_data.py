@@ -4,6 +4,7 @@ import random
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Sum
 
 from inventario.models import (
     Categoria,
@@ -353,14 +354,32 @@ class Command(BaseCommand):
         batch = []
         creados_total = 0
         hoy = date.today()
+        
+        # Rastrear stock actual por insumo para respetar límites
+        stock_por_insumo = {}
+        for insumo in insumos:
+            stock_actual = InsumoLote.objects.filter(
+                insumo=insumo, is_active=True
+            ).aggregate(total=Sum('cantidad_actual'))['total'] or Decimal('0')
+            stock_por_insumo[insumo.id] = stock_actual
 
         for i in range(cantidad):
             insumo = random.choice(insumos)
             bodega = random.choice(bodegas)
             proveedor = random.choice(proveedores) if proveedores else None
 
-            cant_inicial = Decimal(random.randint(50, 500))
-            cant_actual = Decimal(random.randint(0, int(cant_inicial)))
+            # Respetar el stock_maximo del insumo
+            stock_actual = stock_por_insumo.get(insumo.id, Decimal('0'))
+            espacio_disponible = max(Decimal('0'), insumo.stock_maximo - stock_actual)
+            
+            # Usar una cantidad aleatoria pero dentro del límite
+            if espacio_disponible > 0:
+                cant_inicial = Decimal(random.randint(10, min(100, int(espacio_disponible))))
+                cant_actual = Decimal(random.randint(0, int(cant_inicial)))
+            else:
+                # Si el insumo ya está en su máximo, usar cantidad mínima
+                cant_inicial = Decimal(random.randint(1, 10))
+                cant_actual = Decimal('0')
 
             lote = InsumoLote(
                 insumo=insumo,
@@ -372,6 +391,9 @@ class Command(BaseCommand):
                 fecha_expiracion=hoy + timedelta(days=random.randint(30, 365)) if random.random() > 0.2 else None,
             )
             batch.append(lote)
+            
+            # Actualizar el rastreador de stock para respetar los límites en próximas iteraciones
+            stock_por_insumo[insumo.id] = stock_actual + cant_actual
 
             if len(batch) >= chunk_size:
                 InsumoLote.objects.bulk_create(batch, ignore_conflicts=True)
