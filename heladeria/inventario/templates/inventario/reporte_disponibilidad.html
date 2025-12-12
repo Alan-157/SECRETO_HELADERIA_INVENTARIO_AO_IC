@@ -20,6 +20,7 @@
           </div>
 
           <form id="filtros-form" class="row g-3" method="get" action="">
+            {% csrf_token %}
 
             <!-- INSUMOS -->
             <div class="col-12 col-lg-6">
@@ -403,17 +404,69 @@
     submitAjax();
   });
 
-  // --------- EXPORTAR (respeta filtros actuales y SIN duplicar "format") ---------
+  // --------- EXPORTAR (POST con JSON para evitar límite de campos) ---------
   exportBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      const fd = new FormData(form);
-      fd.delete('format');
-      const params = new URLSearchParams();
-      for (const [k, v] of fd.entries()) {
-        if (v !== null && v !== '') params.append(k, v);
-      }
-      params.append('format', btn.dataset.format);
-      window.location.href = `${location.pathname}?${params.toString()}`;
+      // Recopilar insumos seleccionados
+      const selectedInsumos = [];
+      form.querySelectorAll('input[name="insumo"]:checked').forEach(chk => {
+        selectedInsumos.push(chk.value);
+      });
+
+      // Recopilar opciones de columnas
+      const data = {
+        insumos: selectedInsumos,
+        show_precio_unitario: document.getElementById('show_precio_unitario')?.checked || false,
+        show_stock_total: document.getElementById('show_stock_total')?.checked || false,
+        show_prox_venc: document.getElementById('show_prox_venc')?.checked || false,
+        show_lotes: document.getElementById('show_lotes')?.checked || false,
+        show_categorias: document.getElementById('show_categorias')?.checked || false,
+        show_precio_acum: document.getElementById('show_precio_acum')?.checked || false,
+        format: btn.dataset.format
+      };
+
+      // Enviar como JSON vía POST
+      fetch(location.pathname, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''
+        },
+        body: JSON.stringify(data)
+      })
+      .then(response => {
+        // Para exportaciones, esperamos un archivo
+        if (response.headers.get('content-type')?.includes('application/pdf') ||
+            response.headers.get('content-type')?.includes('spreadsheet') ||
+            response.headers.get('content-type')?.includes('csv')) {
+          return response.blob().then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            // Determinar nombre del archivo según formato
+            const today = new Date().toISOString().split('T')[0];
+            let filename = `reporte_disponibilidad_${today}`;
+            if (btn.dataset.format === 'pdf') {
+              a.download = `${filename}.pdf`;
+            } else if (btn.dataset.format === 'xlsx') {
+              a.download = `${filename}.xlsx`;
+            } else if (btn.dataset.format === 'csv') {
+              a.download = `${filename}.csv`;
+            }
+            
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+          });
+        }
+        return response;
+      })
+      .catch(err => {
+        console.error('Error al exportar reporte:', err);
+        alert('Error al exportar. Intenta de nuevo.');
+      });
     });
   });
 })();

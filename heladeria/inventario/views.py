@@ -1,4 +1,5 @@
 from decimal import Decimal
+import json
 from django.shortcuts import render, redirect, get_object_or_404
 from accounts.decorators import perfil_required
 from accounts.services import user_has_role
@@ -9,7 +10,7 @@ from django.db.models import Sum, Q, DecimalField, Count, Min, F, Prefetch
 from django.db.models.functions import Coalesce
 from django.core.paginator import Paginator
 from django.forms import ModelForm, inlineformset_factory, formset_factory
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from accounts.services import user_has_role
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
@@ -1987,7 +1988,7 @@ def registrar_entrada_orden(request, pk):
                     detalle_obj.cantidad_atendida += cantidad
                     detalle_obj.save(update_fields=["cantidad_atendida"])
                 
-                models.check_and_create_stock_alerts(insumo)
+                check_and_create_stock_alerts(insumo)
 
             orden_obj_post.recalc_estado()
                 
@@ -2609,6 +2610,7 @@ def eliminar_orden(request, pk):
 # --- REPORTES ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"))
+@require_http_methods(["GET", "POST"])
 def reporte_disponibilidad(request):
     """
     Reporte de disponibilidad de insumos con:
@@ -2617,31 +2619,53 @@ def reporte_disponibilidad(request):
     - Lotes indentados por insumo (en HTML).
     - Export: CSV/XLSX/PDF (respetan filtro de insumos).
     - Soporte AJAX para actualizar solo la tabla.
+    - Acepta GET para navegación normal y POST para exportación (usa JSON para evitar límite de campos).
     """
     hoy = date.today()
 
-    # -------- flags de columnas (HTML) --------
-    # por defecto mostramos: stock_total, precio_unitario, prox_vencimiento, lotes
-    def _b(name, default=True):
-        """
-        Lee tanto 'show_*' (nuevo) como 'col_*' (legado) y devuelve bool.
-        """
-        raw = request.GET.get(name, None)
-        if raw is None and name.startswith("show_"):
-            raw = request.GET.get(name.replace("show_", "col_"), None)  # compat con col_*
-        if raw is None:
-            return default
-        return str(raw).lower() in ("1", "true", "on", "yes")
+    # Para POST, leer datos de JSON en el cuerpo (evita límite de 1000 campos)
+    # Para GET, usar parámetros normales
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            selected_insumos = body.get('insumos', [])
+            show_precio_unitario = body.get('show_precio_unitario', True)
+            show_stock_total = body.get('show_stock_total', True)
+            show_prox_venc = body.get('show_prox_venc', True)
+            show_lotes = body.get('show_lotes', True)
+            show_categorias = body.get('show_categorias', False)
+            show_precio_acum = body.get('show_precio_acum', False)
+            fmt = (body.get('format') or '').lower()
+        except (json.JSONDecodeError, ValueError):
+            # Fallback a parámetros POST normales si no es JSON válido
+            selected_insumos = request.POST.getlist('insumo')
+            show_precio_unitario = str(request.POST.get('show_precio_unitario', 'true')).lower() in ('1', 'true', 'on', 'yes')
+            show_stock_total = str(request.POST.get('show_stock_total', 'true')).lower() in ('1', 'true', 'on', 'yes')
+            show_prox_venc = str(request.POST.get('show_prox_venc', 'true')).lower() in ('1', 'true', 'on', 'yes')
+            show_lotes = str(request.POST.get('show_lotes', 'true')).lower() in ('1', 'true', 'on', 'yes')
+            show_categorias = str(request.POST.get('show_categorias', 'false')).lower() in ('1', 'true', 'on', 'yes')
+            show_precio_acum = str(request.POST.get('show_precio_acum', 'false')).lower() in ('1', 'true', 'on', 'yes')
+            fmt = (request.POST.get('format') or '').lower()
+    else:
+        # GET: usar parámetros de URL
+        selected_insumos = request.GET.getlist('insumo')
+        
+        def _b(name, default=True):
+            raw = request.GET.get(name, None)
+            if raw is None and name.startswith("show_"):
+                raw = request.GET.get(name.replace("show_", "col_"), None)
+            if raw is None:
+                return default
+            return str(raw).lower() in ("1", "true", "on", "yes")
+        
+        show_precio_unitario = _b("show_precio_unitario", True)
+        show_stock_total = _b("show_stock_total", True)
+        show_prox_venc = _b("show_prox_venc", True)
+        show_lotes = _b("show_lotes", True)
+        show_categorias = _b("show_categorias", False)
+        show_precio_acum = _b("show_precio_acum", False)
+        fmt = (request.GET.get("format") or "").lower()
 
-    show_precio_unitario = _b("show_precio_unitario", True)
-    show_stock_total     = _b("show_stock_total", True)
-    show_prox_venc       = _b("show_prox_venc", True)
-    show_lotes           = _b("show_lotes", True)
-    show_categorias      = _b("show_categorias", False)
-    show_precio_acum     = _b("show_precio_acum", False)
-
-    # -------- selección por insumo (nombres) --------
-    selected_insumos = request.GET.getlist("insumo")   # lista de nombres exactos
     has_selection = bool(selected_insumos)
 
     # Base queryset de insumos (activos + categoría activa)
@@ -2720,8 +2744,6 @@ def reporte_disponibilidad(request):
         ((i.stock_total or 0) * (i.precio_unitario or 0))
         for i in insumos_qs
     )
-
-    fmt = (request.GET.get("format") or "").lower()
 
     # ------- EXPORTS (respetan filtro de insumos, mantienen columnas clásicas) -------
     if fmt == "csv":
