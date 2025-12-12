@@ -34,9 +34,11 @@
                     <span class="fs-4 text-primary">
                         {{ lote.cantidad_actual|floatformat:2 }} {{ lote.insumo.unidad_medida.nombre_corto }}
                     </span>
-                    <span class="badge bg-{{ 'danger' if lote.cantidad_actual <= 0 else 'success' }}">
-                        {{ 'Agotado' if lote.cantidad_actual <= 0 else 'En Stock' }}
-                    </span>
+                    {% if lote.cantidad_actual <= 0 %}
+                        <span class="badge bg-danger">Agotado</span>
+                    {% else %}
+                        <span class="badge bg-success">En Stock</span>
+                    {% endif %}
                 </div>
                 <div class="mb-3">
                     <strong>Fecha de Ingreso:</strong> {{ lote.fecha_ingreso }}

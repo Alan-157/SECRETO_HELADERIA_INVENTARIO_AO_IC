@@ -81,11 +81,17 @@
                 <td class="text-center">
                     <div class="btn-group btn-group-sm" role="group">
                         
+                        {# Botón Ver Detalles (visible para todos) #}
+                        <a href="{% url 'inventario:ver_detalle_lote' lote.pk %}" 
+                            class="btn btn-outline-info" title="Ver detalles">
+                            <i class="bi bi-eye"></i> Ver
+                        </a>
+                        
                         {% if not read_only %}
                             {# Botón de Edición #}
                             <a href="{% url 'inventario:editar_lote' lote.pk %}" 
                                 class="btn btn-outline-secondary" title="Editar">
-                                <i class="bi bi-pencil">Editar</i>
+                                <i class="bi bi-pencil"></i> Editar
                             </a>
                             
                             {# Botón de Eliminación #}
@@ -99,7 +105,7 @@
                                     data-objeto-nombre="Lote #{{ lote.id }}"
                                     data-objeto-tipo="Lote"
                                     title="Eliminar (Desactivar)">
-                                    <i class="bi bi-trash">Eliminar</i>
+                                    <i class="bi bi-trash"></i> Eliminar
                                 </button>
                             </form>
                         {% endif %}

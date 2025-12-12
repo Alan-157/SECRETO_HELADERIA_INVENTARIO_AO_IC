@@ -4,6 +4,8 @@ USA CACHE - NO requiere modelo ConfiguracionAlertas
 """
 from decimal import Decimal
 from django.utils import timezone
+from django.db.models import Sum, Q
+from django.db.models.functions import Coalesce
 from .models import Insumo, AlertaInsumo, InsumoLote
 from .alertas_config import alertas_activadas  # <-- Importar función del cache
 
@@ -23,38 +25,54 @@ def check_and_create_stock_alerts(insumo=None):
     if insumo:
         insumos = [insumo]
     else:
-        insumos = Insumo.objects.all()
+        insumos = Insumo.objects.filter(is_active=True)
     
     for ins in insumos:
-        stock_actual = ins.calcular_stock_actual()
+        # Calcular stock actual sumando los lotes activos
+        stock_actual = ins.lotes.filter(
+            is_active=True
+        ).aggregate(
+            total=Coalesce(Sum('cantidad_actual'), Decimal('0'))
+        )['total']
         
-        # Verificar bajo stock
-        if stock_actual <= ins.stock_minimo:
+        # Verificar SIN STOCK (stock = 0)
+        if stock_actual == Decimal('0'):
             AlertaInsumo.objects.get_or_create(
                 insumo=ins,
-                tipo='bajo_stock',
+                tipo='SIN_STOCK',
                 defaults={
-                    'mensaje': f'Stock bajo: {stock_actual} unidades (mínimo: {ins.stock_minimo})',
-                    'nivel': 'alto',
-                    'is_active': True
+                    'mensaje': f'El insumo "{ins.nombre}" no tiene stock disponible',
                 }
             )
-        
-        # Verificar sobre stock
-        if stock_actual >= ins.stock_maximo:
+        # Verificar BAJO STOCK (stock < mínimo pero > 0)
+        elif stock_actual < ins.stock_minimo:
             AlertaInsumo.objects.get_or_create(
                 insumo=ins,
-                tipo='sobre_stock',
+                tipo='BAJO_STOCK',
                 defaults={
-                    'mensaje': f'Sobre stock: {stock_actual} unidades (máximo: {ins.stock_maximo})',
-                    'nivel': 'medio',
-                    'is_active': True
+                    'mensaje': f'Stock bajo: {stock_actual} {ins.unidad_medida.nombre_corto} (mínimo: {ins.stock_minimo})',
                 }
             )
+        # Verificar STOCK EXCESIVO (stock > máximo)
+        elif stock_actual > ins.stock_maximo:
+            AlertaInsumo.objects.get_or_create(
+                insumo=ins,
+                tipo='STOCK_EXCESIVO',
+                defaults={
+                    'mensaje': f'Stock excesivo: {stock_actual} {ins.unidad_medida.nombre_corto} (máximo: {ins.stock_maximo})',
+                }
+            )
+        else:
+            # Stock en rango normal: desactivar alertas de stock existentes
+            AlertaInsumo.objects.filter(
+                insumo=ins,
+                tipo__in=['SIN_STOCK', 'BAJO_STOCK', 'STOCK_EXCESIVO'],
+                is_active=True
+            ).update(is_active=False)
 
 def check_lote_vencimiento(lote=None):
     """
-    Verifica fechas de vencimiento y crea alertas.
+    Verifica fechas de expiración de lotes y crea alertas.
     RESPETA el toggle global de alertas.
     
     Args:
@@ -69,47 +87,38 @@ def check_lote_vencimiento(lote=None):
     if lote:
         lotes = [lote]
     else:
-        lotes = InsumoLote.objects.filter(cant_actual__gt=0)
+        lotes = InsumoLote.objects.filter(
+            is_active=True,
+            cantidad_actual__gt=0
+        )
     
     hoy = timezone.now().date()
     
     for lt in lotes:
-        if not lt.fecha_vencimiento:
+        if not lt.fecha_expiracion:
             continue
         
-        dias_restantes = (lt.fecha_vencimiento - hoy).days
+        dias_restantes = (lt.fecha_expiracion - hoy).days
         
-        # Vencido
-        if dias_restantes < 0:
+        # Próximo a vencer (dentro de 7 días) o ya vencido
+        if dias_restantes <= 7:
+            if dias_restantes < 0:
+                mensaje = f'Lote #{lt.id} de "{lt.insumo.nombre}" venció hace {abs(dias_restantes)} días'
+            else:
+                mensaje = f'Lote #{lt.id} de "{lt.insumo.nombre}" vence en {dias_restantes} días'
+            
             AlertaInsumo.objects.get_or_create(
                 insumo=lt.insumo,
-                lote=lt,
-                tipo='vencido',
-                defaults={
-                    'mensaje': f'Lote {lt.numero_lote} vencido hace {abs(dias_restantes)} días',
-                    'nivel': 'critico',
-                    'is_active': True
-                }
-            )
-        # Próximo a vencer (7 días)
-        elif dias_restantes <= 7:
-            AlertaInsumo.objects.get_or_create(
-                insumo=lt.insumo,
-                lote=lt,
-                tipo='por_vencer',
-                defaults={
-                    'mensaje': f'Lote {lt.numero_lote} vence en {dias_restantes} días',
-                    'nivel': 'alto',
-                    'is_active': True
-                }
+                tipo='VENCIMIENTO_PROXIMO',
+                mensaje=mensaje,
+                defaults={}
             )
 
 def resolver_alerta(alerta_id):
-    """Marca una alerta como resuelta"""
+    """Marca una alerta como resuelta (inactiva)"""
     try:
         alerta = AlertaInsumo.objects.get(pk=alerta_id)
         alerta.is_active = False
-        alerta.fecha_resolucion = timezone.now()
         alerta.save()
         return True
     except AlertaInsumo.DoesNotExist:
@@ -120,20 +129,12 @@ def actualizar_alertas_insumo(insumo):
     Actualiza todas las alertas relacionadas a un insumo
     después de cambios en el stock.
     """
-    # Resolver alertas que ya no aplican
-    stock_actual = insumo.calcular_stock_actual()
-    
-    # Si el stock está en rango normal, resolver alertas de stock
-    if insumo.stock_minimo < stock_actual < insumo.stock_maximo:
-        AlertaInsumo.objects.filter(
-            insumo=insumo,
-            tipo__in=['bajo_stock', 'sobre_stock'],
-            is_active=True
-        ).update(
-            is_active=False,
-            fecha_resolucion=timezone.now()
-        )
+    if not alertas_activadas():
+        return
     
     # Crear nuevas alertas si es necesario
     check_and_create_stock_alerts(insumo)
-    check_lote_vencimiento()
+    
+    # Verificar vencimientos de lotes de este insumo
+    for lote in insumo.lotes.filter(is_active=True, cantidad_actual__gt=0):
+        check_lote_vencimiento(lote)
