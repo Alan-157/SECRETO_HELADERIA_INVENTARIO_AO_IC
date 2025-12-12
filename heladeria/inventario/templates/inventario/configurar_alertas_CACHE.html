@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Configuración de Alertas{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="card-title mb-0">
+                        <i class="bi bi-bell-fill me-2"></i>
+                        Configuración del Sistema de Alertas
+                    </h3>
+                </div>
+                
+                <div class="card-body">
+                    <form method="post" id="formAlertas">
+                        {% csrf_token %}
+                        
+                        <!-- Switch de Alertas -->
+                        <div class="mb-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" 
+                                       type="checkbox" 
+                                       role="switch"
+                                       id="alertas_activas" 
+                                       name="alertas_activas"
+                                       data-confirm-alertas
+                                       style="width: 3em; height: 1.5em;"
+                                       {% if alertas_activas %}checked{% endif %}>
+                                <label class="form-check-label fs-5" for="alertas_activas">
+                                    <strong>Activar generación automática de alertas</strong>
+                                </label>
+                            </div>
+                            <small class="text-muted">
+                                Controla si el sistema debe crear alertas automáticamente cuando detecte 
+                                problemas de stock (sin stock, bajo stock, stock excesivo).
+                            </small>
+                        </div>
+                        
+                        <!-- Estado Actual -->
+                        <div class="alert {% if alertas_activas %}alert-success{% else %}alert-warning{% endif %} mb-4">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    {% if alertas_activas %}
+                                        <i class="bi bi-check-circle-fill fs-3"></i>
+                                    {% else %}
+                                        <i class="bi bi-x-circle-fill fs-3"></i>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <strong class="fs-5">
+                                        {% if alertas_activas %}
+                                            ✓ Sistema de alertas ACTIVO
+                                        {% else %}
+                                            ✗ Sistema de alertas DESACTIVADO
+                                        {% endif %}
+                                    </strong>
+                                    <p class="mb-0 text-muted">
+                                        {% if alertas_activas %}
+                                            Se están generando alertas automáticamente cuando se detectan problemas.
+                                        {% else %}
+                                            No se crearán nuevas alertas. Las alertas existentes permanecen visibles.
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Botón Submit (oculto, se activa por JavaScript) -->
+                        <button type="submit" style="display: none;"></button>
+                    </form>
+                    
+                    <!-- Estadísticas de Alertas -->
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card bg-info text-white">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                        Total de Alertas
+                                    </h5>
+                                    <p class="display-4 mb-0">{{ total_alertas|default:0 }}</p>
+                                    <small>Alertas generadas en el sistema</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card bg-danger text-white">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <i class="bi bi-bell-fill me-2"></i>
+                                        Alertas Activas
+                                    </h5>
+                                    <p class="display-4 mb-0">{{ alertas_pendientes|default:0 }}</p>
+                                    <small>Requieren atención inmediata</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="card bg-success text-white">
+                                <div class="card-body">
+                                    <h5 class="card-title">
+                                        <i class="bi bi-check-circle-fill me-2"></i>
+                                        Alertas Resueltas
+                                    </h5>
+                                    <p class="display-4 mb-0">{{ alertas_resueltas|default:0 }}</p>
+                                    <small>Problemas ya solucionados</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Información adicional -->
+                    <div class="alert alert-info mt-4">
+                        <h5 class="alert-heading">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            Información sobre las alertas
+                        </h5>
+                        <ul class="mb-0">
+                            <li><strong>Alertas de bajo stock:</strong> Se generan cuando un insumo alcanza o supera su nivel mínimo.</li>
+                            <li><strong>Alertas de sobre stock:</strong> Se generan cuando un insumo excede su nivel máximo.</li>
+                            <li><strong>Alertas de vencimiento:</strong> Se generan para lotes próximos a vencer o vencidos.</li>
+                            <li><strong>Desactivar alertas:</strong> Las alertas existentes permanecen visibles, pero no se crearán nuevas.</li>
+                        </ul>
+                    </div>
+                    
+                    <!-- Acciones adicionales -->
+                    <div class="mt-4">
+                        <h5>Acciones rápidas:</h5>
+                        <div class="btn-group" role="group">
+                            <a href="{% url 'alertas' %}" class="btn btn-outline-primary">
+                                <i class="bi bi-list-ul me-2"></i>
+                                Ver todas las alertas
+                            </a>
+                            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-speedometer2 me-2"></i>
+                                Volver al Dashboard
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
