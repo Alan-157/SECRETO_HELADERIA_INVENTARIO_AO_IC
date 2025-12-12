@@ -137,11 +137,11 @@
         loadAjax(buildURL());
     });
     
-    // 2. Búsqueda mientras escribe (opcionalmente)
-    // qInput.addEventListener('input', debounce(() => {
-    //     // Si se quiere que el debounce no envíe, este listener se comenta
-    //     // y solo se usa el botón "Aplicar"
-    // }));
+    // 2. Búsqueda mientras escribe (auto-aplica con debounce)
+    qInput.addEventListener('input', debounce(() => {
+        pageInput.value = "1";
+        loadAjax(buildURL());
+    }));
 
     // 3. Cambios en selects (activan el filtro inmediatamente)
     sortSelect.addEventListener('change', () => {

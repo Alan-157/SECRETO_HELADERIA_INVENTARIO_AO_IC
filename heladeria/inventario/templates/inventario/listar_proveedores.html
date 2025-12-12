@@ -84,5 +84,64 @@
 {% endblock content %}
 
 {% block extra_js %}
-{# Se asume que el script AJAX ya está en tu base.html o se incluye aquí #}
+<script>
+(function(){
+    const form = document.getElementById('filter-form');
+    const results = document.getElementById('results');
+    if (!form || !results) return;
+
+    const pageInput = document.getElementById('page-input');
+
+    const buildURL = () => {
+        const params = new URLSearchParams(new FormData(form));
+        return `${location.pathname}?${params.toString()}`;
+    };
+
+    async function loadAjax(url){
+        try {
+            const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!resp.ok) return;
+            const data = await resp.json();
+            results.innerHTML = data.html;
+            history.replaceState({}, '', url);
+        } catch (err) {
+            console.error('Error AJAX proveedores:', err);
+        }
+    }
+
+    const debounce = (fn, ms = 300) => {
+        let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+    };
+
+    // Envío del formulario (Aplicar filtros)
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (pageInput) pageInput.value = '1';
+        loadAjax(buildURL());
+    });
+
+    // Búsqueda mientras escribe
+    const qInput = form.querySelector('input[name="q"]');
+    qInput?.addEventListener('input', debounce(() => {
+        if (pageInput) pageInput.value = '1';
+        loadAjax(buildURL());
+    }));
+
+    // Per-page y orden se manejan con enlaces data-ajax-link; por compatibilidad también escuchamos selects ocultos si aparecen
+    form.querySelectorAll('select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            if (pageInput) pageInput.value = '1';
+            loadAjax(buildURL());
+        });
+    });
+
+    // Delegación para paginación y per-page (data-ajax-link)
+    results.addEventListener('click', (e) => {
+        const a = e.target.closest('a[data-ajax-link]');
+        if (!a) return;
+        e.preventDefault();
+        loadAjax(a.href);
+    });
+})();
+</script>
 {% endblock %}

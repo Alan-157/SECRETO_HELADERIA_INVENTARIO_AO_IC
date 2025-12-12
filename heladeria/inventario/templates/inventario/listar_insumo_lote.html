@@ -129,3 +129,54 @@
   {% include "inventario/partials/insumo_lote_results.html" %}
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const form = document.getElementById('filters-form');
+  const results = document.getElementById('lotes-results');
+  if (!form || !results) return;
+
+  const buildURL = () => {
+    const params = new URLSearchParams(new FormData(form));
+    return `${location.pathname}?${params.toString()}`;
+  };
+
+  async function loadAjax(url){
+    try {
+      const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      results.innerHTML = data.html;
+      history.replaceState({}, '', url);
+    } catch (err) {
+      console.error('Error AJAX lotes:', err);
+    }
+  }
+
+  const debounce = (fn, ms = 300) => { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; };
+
+  // Submit del form (botón Aplicar)
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    loadAjax(buildURL());
+  });
+
+  // Búsqueda y filtros con cambio inmediato
+  const qInput = document.getElementById('q-input');
+  qInput?.addEventListener('input', debounce(() => loadAjax(buildURL())));
+
+  form.querySelectorAll('select').forEach(sel => {
+    sel.addEventListener('change', () => loadAjax(buildURL()));
+  });
+
+  // Paginación y links AJAX
+  results.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-ajax-link]');
+    if (!a) return;
+    e.preventDefault();
+    loadAjax(a.href);
+  });
+})();
+</script>
+{% endblock %}
