@@ -37,31 +37,52 @@ def check_and_create_stock_alerts(insumo=None):
         
         # Verificar SIN STOCK (stock = 0)
         if stock_actual == Decimal('0'):
-            AlertaInsumo.objects.get_or_create(
+            # Buscar alerta activa existente o crear nueva
+            alerta, created = AlertaInsumo.objects.get_or_create(
                 insumo=ins,
                 tipo='SIN_STOCK',
+                is_active=True,  # Solo buscar alertas activas
                 defaults={
                     'mensaje': f'El insumo "{ins.nombre}" no tiene stock disponible',
                 }
             )
+            if not created:
+                # Actualizar mensaje de alerta existente
+                alerta.mensaje = f'El insumo "{ins.nombre}" no tiene stock disponible'
+                alerta.save(update_fields=['mensaje', 'updated_at'])
+                
         # Verificar BAJO STOCK (stock < mínimo pero > 0)
         elif stock_actual < ins.stock_minimo:
-            AlertaInsumo.objects.get_or_create(
+            # Buscar alerta activa existente o crear nueva
+            alerta, created = AlertaInsumo.objects.get_or_create(
                 insumo=ins,
                 tipo='BAJO_STOCK',
+                is_active=True,  # Solo buscar alertas activas
                 defaults={
                     'mensaje': f'Stock bajo: {stock_actual} {ins.unidad_medida.nombre_corto} (mínimo: {ins.stock_minimo})',
                 }
             )
+            if not created:
+                # Actualizar mensaje de alerta existente
+                alerta.mensaje = f'Stock bajo: {stock_actual} {ins.unidad_medida.nombre_corto} (mínimo: {ins.stock_minimo})'
+                alerta.save(update_fields=['mensaje', 'updated_at'])
+                
         # Verificar STOCK EXCESIVO (stock > máximo)
         elif stock_actual > ins.stock_maximo:
-            AlertaInsumo.objects.get_or_create(
+            # Buscar alerta activa existente o crear nueva
+            alerta, created = AlertaInsumo.objects.get_or_create(
                 insumo=ins,
                 tipo='STOCK_EXCESIVO',
+                is_active=True,  # Solo buscar alertas activas
                 defaults={
                     'mensaje': f'Stock excesivo: {stock_actual} {ins.unidad_medida.nombre_corto} (máximo: {ins.stock_maximo})',
                 }
             )
+            if not created:
+                # Actualizar mensaje de alerta existente
+                alerta.mensaje = f'Stock excesivo: {stock_actual} {ins.unidad_medida.nombre_corto} (máximo: {ins.stock_maximo})'
+                alerta.save(update_fields=['mensaje', 'updated_at'])
+                
         else:
             # Stock en rango normal: desactivar alertas de stock existentes
             AlertaInsumo.objects.filter(
@@ -107,12 +128,17 @@ def check_lote_vencimiento(lote=None):
             else:
                 mensaje = f'Lote #{lt.id} de "{lt.insumo.nombre}" vence en {dias_restantes} días'
             
-            AlertaInsumo.objects.get_or_create(
+            # Buscar o crear alerta activa, actualizando el mensaje si ya existe
+            alerta, created = AlertaInsumo.objects.get_or_create(
                 insumo=lt.insumo,
                 tipo='VENCIMIENTO_PROXIMO',
-                mensaje=mensaje,
-                defaults={}
+                is_active=True,  # Solo buscar alertas activas
+                defaults={'mensaje': mensaje}
             )
+            if not created:
+                # Actualizar mensaje de alerta existente
+                alerta.mensaje = mensaje
+                alerta.save(update_fields=['mensaje', 'updated_at'])
 
 def resolver_alerta(alerta_id):
     """Marca una alerta como resuelta (inactiva)"""

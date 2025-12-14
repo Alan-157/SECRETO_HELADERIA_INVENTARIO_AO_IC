@@ -17,7 +17,7 @@
            type="text"
            name="q"
            value="{{ q|default_if_none:'' }}"
-           placeholder="Buscar por creador (nombre o correo)…">
+           placeholder="Buscar por número de orden, creador o tipo...">
   </div>
 
   <div class="col-auto">
@@ -29,6 +29,21 @@
         </option>
       {% endfor %}
     </select>
+  </div>
+
+  <div class="col-auto">
+    <div class="form-check form-switch">
+      <input class="form-check-input" 
+             type="checkbox" 
+             id="mostrar_inactivas"
+             name="mostrar_inactivas"
+             value="1"
+             {% if mostrar_inactivas %}checked{% endif %}
+             onchange="document.getElementById('filtros').submit();">
+      <label class="form-check-label" for="mostrar_inactivas">
+        Mostrar historial
+      </label>
+    </div>
   </div>
 
   <div class="col-auto">

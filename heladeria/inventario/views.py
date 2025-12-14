@@ -24,7 +24,9 @@ from .models import (
 from django.urls import reverse
 from .forms import (
     InsumoForm, CategoriaForm, SalidaLineaForm,EntradaLineaForm,EntradaLineaFormSet,SalidaLineaFormSet,
-    EntradaLineaFormSetMovimiento, SalidaLineaFormSetMovimiento, OrdenInsumoForm, InsumoLoteMetadataForm,
+    EntradaLineaFormSetMovimiento, SalidaLineaFormSetMovimiento, 
+    EntradaLineaFormSetMovimientoAjax, SalidaLineaFormSetMovimientoAjax,
+    OrdenInsumoForm, InsumoLoteMetadataForm,
     #MovimientoLineaFormSet, 
     BodegaForm, ProveedorForm,
     EntradaForm, SalidaForm, 
@@ -71,8 +73,8 @@ def list_with_filters(
 ):
     extra_context = extra_context or {}
 
-    # --- per_page (5/10/20) con sesión por lista ---
-    allowed_pp = {"5", "10", "20"}
+    # --- per_page (10/25/50) con sesión por lista ---
+    allowed_pp = {"10", "25", "50", "100"}
     per_page = request.GET.get("per_page")
     if per_page in allowed_pp:
         request.session[f"per_page_{session_prefix}"] = int(per_page)
@@ -421,7 +423,10 @@ def editar_insumo(request, insumo_id):
         messages.error(request, "No tienes permisos para editar insumos.")
         return redirect('inventario:listar_insumos')
 
-    insumo = get_object_or_404(Insumo, id=insumo_id)
+    insumo = get_object_or_404(
+        Insumo.objects.select_related('categoria', 'unidad_medida'),
+        id=insumo_id
+    )
     form = InsumoForm(request.POST or None, instance=insumo)
     if request.method == 'POST' and form.is_valid():
         form.save()
@@ -1005,19 +1010,20 @@ def eliminar_lote(request, pk):
 @login_required
 @perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
 def ver_detalle_lote(request, pk):
-    lote = get_object_or_404(
-        models.InsumoLote.objects.select_related(
+    try:
+        lote = models.InsumoLote.objects.select_related(
             'insumo__unidad_medida', 
             'bodega', 
             'proveedor', 
             'usuario'
-        ), 
-        pk=pk
-    )
+        ).get(pk=pk)
+    except models.InsumoLote.DoesNotExist:
+        messages.error(request, f"El lote #{pk} no existe o fue eliminado del sistema.")
+        return redirect('inventario:listar_lotes')
     
     # Obtener los movimientos asociados para el detalle
-    entradas = models.Entrada.objects.filter(insumo_lote=lote).order_by('-fecha')
-    salidas = models.Salida.objects.filter(insumo_lote=lote).order_by('-fecha_generada')
+    entradas = models.Entrada.objects.filter(insumo_lote=lote).select_related('ubicacion', 'usuario').order_by('-fecha')
+    salidas = models.Salida.objects.filter(insumo_lote=lote).select_related('ubicacion', 'usuario').order_by('-fecha_generada')
 
     return render(request, 'inventario/ver_detalle_lote.html', {
         'titulo': f'Detalle Lote #{pk}',
@@ -1304,6 +1310,8 @@ def registrar_movimiento(request):
 def listar_movimientos(request):
     titulo = "Movimientos de Inventario"
     q = (request.GET.get("q") or "").strip()
+    insumo_id = request.GET.get("insumo_id") or None  # Nuevo filtro por insumo
+    
     # Tamaño de página configurable y persistente por sesión
     allowed_pp = {"10", "20", "50"}
     per_page_get = request.GET.get("per_page")
@@ -1326,7 +1334,17 @@ def listar_movimientos(request):
         .order_by("-fecha_generada")
     )
 
-    # 2. Aplicación de filtros de búsqueda (q)
+    # 2. Aplicación de filtros de búsqueda
+    # Filtro por insumo específico
+    if insumo_id:
+        try:
+            insumo_id_int = int(insumo_id)
+            entradas_qs = entradas_qs.filter(insumo_id=insumo_id_int)
+            salidas_qs = salidas_qs.filter(insumo_id=insumo_id_int)
+        except (ValueError, TypeError):
+            pass
+    
+    # Filtro por texto (búsqueda general)
     if q:
         entradas_qs = entradas_qs.filter(
             Q(insumo__nombre__icontains=q) | Q(ubicacion__nombre__icontains=q) | Q(observaciones__icontains=q)
@@ -1356,12 +1374,23 @@ def listar_movimientos(request):
     
     # 4. Contexto común
     can_manage = request.user.is_superuser or user_has_role(request.user, "administrador", "encargado")
+    
+    # Obtener información del insumo seleccionado para mostrar en el filtro
+    insumo_seleccionado = None
+    if insumo_id:
+        try:
+            insumo_seleccionado = Insumo.objects.get(id=int(insumo_id))
+        except (Insumo.DoesNotExist, ValueError, TypeError):
+            pass
+    
     context = {
         "titulo": titulo,
         "entradas": entradas,
         "salidas": salidas,
         "can_manage": can_manage,
         "q": q,
+        "insumo_id": insumo_id,
+        "insumo_seleccionado": insumo_seleccionado,
         "pestaña_activa": pestaña_activa,
         "per_page": per_page,
         "is_salida_active": pestaña_activa == "salidas",
@@ -1495,6 +1524,93 @@ def api_movimientos_salidas(request):
         "pages": paginator.num_pages,
         "count": paginator.count,
         "per_page": per_page,
+    })
+
+@login_required
+def api_obtener_lotes_por_insumo(request):
+    """API para obtener lotes disponibles de un insumo específico."""
+    insumo_id = request.GET.get('insumo_id')
+    ubicacion_id = request.GET.get('ubicacion_id')  # Opcional: filtrar por bodega de la ubicación
+    
+    if not insumo_id:
+        return JsonResponse({"error": "Se requiere insumo_id"}, status=400)
+    
+    try:
+        insumo = Insumo.objects.get(id=insumo_id, is_active=True)
+    except Insumo.DoesNotExist:
+        return JsonResponse({"error": "Insumo no encontrado"}, status=404)
+    
+    # Filtrar lotes con stock disponible
+    lotes_qs = models.InsumoLote.objects.filter(
+        insumo=insumo,
+        cantidad_actual__gt=0,
+        is_active=True
+    ).select_related('bodega', 'proveedor')
+    
+    # Si se especifica ubicación, filtrar por su bodega
+    if ubicacion_id:
+        try:
+            ubicacion = models.Ubicacion.objects.get(id=ubicacion_id)
+            lotes_qs = lotes_qs.filter(bodega=ubicacion.bodega)
+        except models.Ubicacion.DoesNotExist:
+            pass
+    
+    lotes_qs = lotes_qs.order_by('fecha_expiracion')  # FIFO: primero los que expiran antes
+    
+    # Formatear resultados
+    lotes = [
+        {
+            "id": lote.id,
+            "text": f"Lote #{lote.id} - {lote.bodega.nombre} - Stock: {lote.cantidad_actual} - Exp: {lote.fecha_expiracion.strftime('%d/%m/%Y')}",
+            "cantidad_disponible": float(lote.cantidad_actual),
+            "bodega": lote.bodega.nombre,
+            "bodega_id": lote.bodega.id,
+            "fecha_expiracion": lote.fecha_expiracion.isoformat(),
+        }
+        for lote in lotes_qs
+    ]
+    
+    return JsonResponse({"results": lotes})
+
+@login_required
+def api_buscar_insumos(request):
+    """API para buscar insumos con autocompletado (Select2)."""
+    q = (request.GET.get("q") or "").strip()
+    ids = request.GET.get("ids", "").strip()  # IDs específicos para precargar
+    page = int(request.GET.get("page", 1))
+    per_page = 20
+    
+    # Filtrar insumos activos
+    qs = Insumo.objects.filter(is_active=True).select_related('categoria', 'unidad_medida')
+    
+    # Si se solicitan IDs específicos (para precargar valores existentes)
+    if ids:
+        id_list = [int(x) for x in ids.split(',') if x.isdigit()]
+        qs = Insumo.objects.filter(id__in=id_list).select_related('categoria', 'unidad_medida')
+    # Búsqueda por nombre
+    elif q:
+        qs = qs.filter(nombre__icontains=q)
+    
+    qs = qs.order_by('nombre')
+    
+    # Paginación
+    paginator = Paginator(qs, per_page)
+    page_obj = paginator.get_page(page)
+    
+    # Formato compatible con Select2
+    results = [
+        {
+            "id": insumo.id,
+            "text": f"{insumo.nombre} ({insumo.categoria.nombre if insumo.categoria else 'Sin categoría'})",
+        }
+        for insumo in page_obj
+    ]
+    
+    return JsonResponse({
+        "results": results,
+        "pagination": {
+            "more": page_obj.has_next()
+        }
     })
 
 @login_required
@@ -1765,15 +1881,15 @@ def registrar_entrada_movimiento(request):
             messages.warning(request, "El insumo solicitado no es válido.")
 
     if request.method == "POST":
-        # Usar formset con extra=1 (línea automática)
-        formset = EntradaLineaFormSetMovimiento(request.POST)
+        # Usar formset con AJAX
+        formset = EntradaLineaFormSetMovimientoAjax(request.POST)
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
             
             # CRÍTICO: Bloquear el éxito si no hay líneas válidas que procesar
             if not lineas:
                 messages.warning(request, "No se ingresó ninguna línea válida para registrar.")
-                return render(request, "inventario/registrar_entrada.html", {
+                return render(request, "inventario/m_registrar_entrada.html", {
                     "formset": formset,
                     "titulo": "Registrar Entrada de Inventario",
                 })
@@ -1818,9 +1934,9 @@ def registrar_entrada_movimiento(request):
         messages.error(request, "Revisa los errores en el formulario antes de continuar.")
 
     if formset is None:
-        formset = EntradaLineaFormSetMovimiento(initial=initial_data if initial_data else None)
+        formset = EntradaLineaFormSetMovimientoAjax(initial=initial_data if initial_data else None)
 
-    return render(request, "inventario/registrar_entrada.html", {
+    return render(request, "inventario/m_registrar_entrada.html", {
         "formset": formset,
         "titulo": "Registrar Entrada de Inventario",
     })
@@ -1851,15 +1967,15 @@ def registrar_salida_movimiento(request):
             messages.warning(request, "La orden solicitada no es válida.")
 
     if request.method == "POST":
-        # Usar formset con extra=1 (línea automática)
-        formset = SalidaLineaFormSetMovimiento(request.POST)
+        # Usar formset con AJAX
+        formset = SalidaLineaFormSetMovimientoAjax(request.POST)
         if formset.is_valid():
             lineas = [f.cleaned_data for f in formset if getattr(f, "cleaned_data", None) and not f.cleaned_data.get("DELETE")]
             
             # CRÍTICO: Bloquear el éxito si no hay líneas válidas que procesar
             if not lineas:
                 messages.warning(request, "No se ingresó ninguna línea válida para registrar.")
-                return render(request, "inventario/registrar_salida.html", {
+                return render(request, "inventario/m_registrar_salida.html", {
                     "formset": formset,
                     "titulo": "Registrar Salida de Inventario",
                     "orden": orden_obj, 
@@ -1902,9 +2018,9 @@ def registrar_salida_movimiento(request):
         messages.error(request, "Revisa los errores en el formulario antes de continuar.")
 
     if formset is None:
-        formset = SalidaLineaFormSetMovimiento(initial=initial_data if initial_data else None)
+        formset = SalidaLineaFormSetMovimientoAjax(initial=initial_data if initial_data else None)
 
-    return render(request, "inventario/registrar_salida.html", {
+    return render(request, "inventario/m_registrar_salida.html", {
         "formset": formset,
         "titulo": "Registrar Salida de Inventario",
         "orden": orden_obj,
@@ -2194,8 +2310,15 @@ def registrar_salida_orden(request, pk):
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def editar_entrada(request, pk):
-    # 1. Recuperar la entrada
-    entrada = get_object_or_404(models.Entrada, pk=pk)
+    # 1. Recuperar la entrada con select_related para optimizar
+    entrada = get_object_or_404(
+        models.Entrada.objects.select_related(
+            'insumo', 'insumo__categoria', 'insumo__unidad_medida',
+            'insumo_lote', 'insumo_lote__bodega', 'insumo_lote__proveedor',
+            'ubicacion', 'usuario'
+        ),
+        pk=pk
+    )
 
     # --- 2. INICIALIZACIÓN DE OBJETOS HISTÓRICOS Y MANEJO DE ERROR ---
     
@@ -2300,7 +2423,15 @@ def eliminar_entrada(request, pk):
 @perfil_required(allow=("administrador", "Encargado"))
 @transaction.atomic
 def editar_salida(request, pk):
-    salida = get_object_or_404(Salida, pk=pk)
+    # Recuperar la salida con select_related para optimizar
+    salida = get_object_or_404(
+        Salida.objects.select_related(
+            'insumo', 'insumo__categoria', 'insumo__unidad_medida',
+            'insumo_lote', 'insumo_lote__bodega', 'insumo_lote__proveedor',
+            'ubicacion', 'usuario'
+        ),
+        pk=pk
+    )
     old_qty = Decimal(salida.cantidad)
     lote = salida.insumo_lote
 
@@ -2471,10 +2602,18 @@ ESTADOS_ORDEN = ("PENDIENTE", "EN_CURSO", "CERRADA", "CANCELADA")
 def listar_ordenes(request):
     """Lista las órdenes y permite actualizar su estado manualmente."""
     
+    # Filtro para mostrar historial (órdenes inactivas/canceladas)
+    mostrar_inactivas = request.GET.get("mostrar_inactivas", "0") == "1"
+    
     # MODIFICADO: Se utiliza prefetch_related para optimizar la carga de detalles
+    qs = OrdenInsumo.objects.all()
+    
+    # Por defecto, solo mostrar órdenes activas
+    if not mostrar_inactivas:
+        qs = qs.filter(is_active=True)
+    
     qs = (
-        OrdenInsumo.objects.all()
-        .select_related("usuario")
+        qs.select_related("usuario")
         .prefetch_related(
             Prefetch(
                 "detalles",
@@ -2485,10 +2624,23 @@ def listar_ordenes(request):
         )
     )
 
-    # --- Búsqueda (sin cambios)
+    # --- Búsqueda mejorada: por ID de orden, usuario nombre/email, o tipo de orden
     q = (request.GET.get("q") or "").strip()
     if q:
-        qs = qs.filter(Q(usuario__name__icontains=q) | Q(usuario__email__icontains=q))
+        # Intentar buscar por número de orden si es un dígito
+        if q.isdigit():
+            qs = qs.filter(
+                Q(id=int(q)) |
+                Q(usuario__name__icontains=q) | 
+                Q(usuario__email__icontains=q)
+            )
+        else:
+            # Buscar por nombre de usuario, email, o tipo de orden
+            qs = qs.filter(
+                Q(usuario__name__icontains=q) | 
+                Q(usuario__email__icontains=q) |
+                Q(tipo_orden__icontains=q)
+            )
 
     # --- Filtro por estado (sin cambios)
     estado_f = request.GET.get("estado")
@@ -2529,6 +2681,7 @@ def listar_ordenes(request):
             "q": q,
             "estado": estado_f,
             "sort": sort,
+            "mostrar_inactivas": mostrar_inactivas,
             "ESTADOS_ORDEN": ESTADOS_ORDEN,
             "ESTADO_ORDEN_CHOICES": ESTADO_ORDEN_CHOICES,
             "read_only": read_only, # <--- Se pasa el valor actualizado
@@ -2545,8 +2698,15 @@ def orden_cambiar_estado(request, pk):
 
     if orden.estado != nuevo:
         orden.estado = nuevo
-        orden.save(update_fields=["estado", "updated_at"])
-        messages.success(request, f"Estado de la orden #{orden.id} actualizado a {nuevo}.")
+        
+        # Si la orden se cancela, desactivarla automáticamente
+        if nuevo == "CANCELADA":
+            orden.is_active = False
+            messages.warning(request, f"Orden #{orden.id} cancelada y desactivada.")
+        else:
+            messages.success(request, f"Estado de la orden #{orden.id} actualizado a {nuevo}.")
+        
+        orden.save(update_fields=["estado", "is_active", "updated_at"])
 
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JsonResponse({"ok": True})
@@ -2601,13 +2761,23 @@ def crear_orden(request):
 def editar_orden(request, pk):
     """
     Edita una orden existente. Permite eliminar detalles y agregar nuevos.
+    Optimizada para rendimiento con select_related y prefetch_related.
     """
-    orden = get_object_or_404(OrdenInsumo, pk=pk)
+    # Optimización: Cargar la orden con relaciones necesarias
+    orden = get_object_or_404(
+        OrdenInsumo.objects.select_related('usuario'),
+        pk=pk
+    )
     
     # NUEVO: Formulario principal (el campo tipo_orden se deshabilita automáticamente)
     form = OrdenInsumoForm(request.POST or None, instance=orden)
     
-    formset = OrdenInsumoDetalleEditFormSet(request.POST or None, instance=orden)
+    # Optimización: Prefetch de detalles con relaciones para evitar consultas N+1
+    formset = OrdenInsumoDetalleEditFormSet(
+        request.POST or None, 
+        instance=orden,
+        queryset=OrdenInsumoDetalle.objects.filter(orden_insumo=orden).select_related('insumo', 'insumo__unidad_medida', 'insumo__categoria')
+    )
 
     if request.method == "POST":
 

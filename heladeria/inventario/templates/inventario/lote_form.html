@@ -13,7 +13,7 @@
         <div class="alert alert-info">
             <h4 class="alert-heading">Información del Lote</h4>
             <p class="mb-0"><strong>Insumo:</strong> {{ lote.insumo.nombre }}</p>
-            <p class="mb-0"><strong>Stock Actual:</strong> {{ lote.cantidad_actual|floatformat:2 }} {{ lote.insumo.unidad_medida.nombre_corto }}</p>
+            <p class="mb-0"><strong>Stock Actual:</strong> {{ lote.cantidad_actual|floatformat:0 }} {{ lote.insumo.unidad_medida.nombre_corto }}</p>
             <p class="mb-0"><strong>Bodega:</strong> {{ lote.bodega.nombre }}</p>
         </div>
 

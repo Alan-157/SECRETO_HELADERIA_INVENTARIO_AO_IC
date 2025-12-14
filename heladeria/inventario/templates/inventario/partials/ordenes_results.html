@@ -5,6 +5,9 @@
         <div>
             <span class="fw-bold fs-5">Orden #{{ orden.id }}</span>
             <span class="badge bg-secondary ms-2">{{ orden.tipo_orden }}</span> {# Muestra el tipo de orden #}
+            {% if not orden.is_active %}
+                <span class="badge bg-danger ms-2">INACTIVA</span>
+            {% endif %}
             <small class="text-muted ms-2">
                 Creada por: {{ orden.usuario.name|default:orden.usuario.email }}
             </small>
@@ -15,7 +18,7 @@
         <div class="d-flex align-items-center gap-2">
             
             {# LÓGICA CORREGIDA PARA EL BOTÓN ATENDER SEGÚN TIPO DE ORDEN #}
-            {% if orden.estado != 'CERRADA' and orden.estado != 'CANCELADA' %}
+            {% if orden.estado != 'CERRADA' and orden.estado != 'CANCELADA' and orden.is_active %}
                 
                 {% if orden.tipo_orden == 'ENTRADA' %}
                     {# Botón para Orden de ENTRADA: USA LA VISTA DEDICADA #}
@@ -33,6 +36,7 @@
             {% endif %}
             {# FIN LÓGICA BOTÓN ATENDER #}
 
+            {% if orden.is_active %}
             <a href="{% url 'inventario:editar_orden' orden.id %}"
                     class="btn btn-sm btn-outline-secondary">
                     Editar
@@ -51,6 +55,9 @@
                         Eliminar
                     </button>
                 </form>
+            {% else %}
+                <span class="text-muted fst-italic">Orden cancelada - No se puede editar ni eliminar</span>
+            {% endif %}
 
             {# Cambio de estado por AJAX #}
             <form method="post"
@@ -92,8 +99,8 @@
                     {% for d in orden.detalles.all %}
                     <tr>
                         <td>{{ d.insumo.nombre }}</td>
-                        <td class="text-end">{{ d.cantidad_solicitada|floatformat:2 }}</td>
-                        <td class="text-end">{{ d.cantidad_atendida|floatformat:2 }}</td>
+                        <td class="text-end">{{ d.cantidad_solicitada|floatformat:0 }}</td>
+                        <td class="text-end">{{ d.cantidad_atendida|floatformat:0 }}</td>
                         <td>{{ d.insumo.unidad_medida }}</td>
                     </tr>
                     {% empty %}

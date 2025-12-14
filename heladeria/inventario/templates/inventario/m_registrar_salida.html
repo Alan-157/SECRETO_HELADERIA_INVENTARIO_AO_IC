@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
@@ -41,7 +41,7 @@
                     
                     {# 1. FORMULARIO DE PLANTILLA OCULTO PARA CLONAR #}
                     <div id="empty-form-template-salida" style="display: none;">
-                        {# Se usa formset.empty_form que ya tiene los QuerySets llenos #}
+                        {# Se usa formset.empty_form para clonar la estructura #}
                         {% include "inventario/partials/salida_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
                     </div>
 
@@ -142,7 +142,6 @@
         const hasFormErrors = card.classList.contains('border-danger'); 
         if (hasFormErrors) return; 
 
-        // Se corrigieron los nombres de las constantes de estado
         switch(status) {
             case 'OK':
                 card.classList.add('border-success');
@@ -209,7 +208,6 @@
                 })
                 .then(data => {
                     if (data.success) {
-                        // Se corrigió toFixed(0) a toFixed(2) para mejor precisión visual
                         stockDisplay.innerHTML = `
                             <div class="alert alert-sm alert-stock p-2 mt-2" data-status="${data.status}" role="alert">
                                 ${data.mensaje_ayuda}
@@ -256,10 +254,13 @@
         const formsetBody = document.getElementById('formset-body-salida');
         const addLineBtn = document.getElementById('add-line-salida');
         const totalForms = document.getElementById('id_form-TOTAL_FORMS');
-        // SE CLONA EL NODO DOM EN LUGAR DE USAR UNA CADENA DE TEXTO ESTÁTICA
         const emptyFormTpl = document.getElementById('empty-form-template-salida'); 
+        const apiUrl = "{% url 'inventario:api_buscar_insumos' %}";
 
-        // 1. Configurar listeners de stock y carga de lotes para las líneas existentes (precargadas)
+        // 1. Inicializar Select2 en los selectores de insumo existentes
+        window.initializeAllInsumoSelects(apiUrl);
+
+        // 2. Configurar listeners de stock y carga de lotes para las líneas existentes (precargadas)
         document.querySelectorAll('#formset-body-salida .movimiento-card').forEach(row => {
             setupStockInfoListener(row);
             setupLoteUbicacionSync(row);
@@ -270,7 +271,7 @@
             }
         });
         
-        // 2. Función para manejar la adición de nuevas líneas
+        // 3. Función para manejar la adición de nuevas líneas
         addLineBtn.addEventListener('click', function() {
             const index = parseInt(totalForms.value, 10);
             
@@ -292,12 +293,18 @@
             formsetBody.appendChild(newRow);
             totalForms.value = index + 1;
             
+            // Inicializar Select2 en el nuevo selector de insumo
+            const newInsumoSelect = newRow.querySelector('select[name$="-insumo"]');
+            if (newInsumoSelect && !newInsumoSelect.hasAttribute('disabled')) {
+                window.initializeInsumoSelect2(newInsumoSelect, apiUrl);
+            }
+            
             // Re-vincular el listener de stock y carga de lotes a la nueva línea
             setupStockInfoListener(newRow);
             setupLoteUbicacionSync(newRow);
         });
 
-        // 3. Manejo de eliminación (adaptado a los selectores usados en los parciales)
+        // 4. Manejo de eliminación (adaptado a los selectores usados en los parciales)
         formsetBody.addEventListener('click', (e) => {
             const delBtn = e.target.closest('.del-line');
             const markDelBtn = e.target.closest('.mark-delete-line');
@@ -324,31 +331,6 @@
                 }
             }
         });
-
-        // NOTA: Select2 deshabilitado - Los insumos están precargados en el select HTML
-        // para mantener control estricto en entradas y salidas
-        /*
-        // 4. Inicializar Select2 en selectores de insumo
-        const apiUrl = "{% url 'inventario:api_buscar_insumos' %}";
-        document.addEventListener('DOMContentLoaded', function() {
-            window.initializeAllInsumoSelects(apiUrl);
-        });
-
-        // 5. Al agregar una nueva línea, inicializar Select2 en el nuevo selector
-        const originalAddLine = document.getElementById('add-line');
-        if (originalAddLine) {
-            originalAddLine.addEventListener('click', function() {
-                setTimeout(function() {
-                    const newSelects = formsetBody.querySelectorAll('select[name*="insumo"]:not([name*="lote"]):not([data-select2-initialized])');
-                    newSelects.forEach(function(select) {
-                        if (!select.hasAttribute('disabled')) {
-                            window.initializeInsumoSelect2(select, apiUrl);
-                        }
-                    });
-                }, 100);
-            });
-        }
-        */
     });
 </script>
 

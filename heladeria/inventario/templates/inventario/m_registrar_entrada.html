@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}{{ titulo }}{% endblock %}
 
 {% block content %}
@@ -46,9 +46,9 @@
                         </div>
                     {% endif %}
 
-                    {# 1. FORMULARIO DE PLANTILLA OCULTO PARA CLONAR (Necesario para que el JS clone los SELECT con opciones) #}
+                    {# 1. FORMULARIO DE PLANTILLA OCULTO PARA CLONAR (Con Select2 habilitado) #}
                     <div id="empty-form-template-entrada" style="display: none;">
-                        {# Se usa formset.empty_form que ya tiene los QuerySets llenos #}
+                        {# Se usa formset.empty_form para clonar la estructura #}
                         {% include "inventario/partials/entrada_linea_form.html" with form=formset.empty_form prefix="__prefix__" %}
                     </div>
 
@@ -169,13 +169,16 @@
         const formsetBody = document.getElementById('formset-body');
         const addLineBtn = document.getElementById('add-line');
         const totalForms = document.getElementById('id_form-TOTAL_FORMS');
-        // SE CLONA EL NODO DOM EN LUGAR DE USAR UNA CADENA DE TEXTO ESTÁTICA
         const emptyFormTpl = document.getElementById('empty-form-template-entrada'); 
+        const apiUrl = "{% url 'inventario:api_buscar_insumos' %}";
 
-        // 1. Configurar listeners de stock para las líneas existentes (precargadas)
+        // 1. Inicializar Select2 en los selectores de insumo existentes
+        window.initializeAllInsumoSelects(apiUrl);
+
+        // 2. Configurar listeners de stock para las líneas existentes (precargadas)
         document.querySelectorAll('#formset-body .movimiento-card').forEach(setupStockInfoListener);
         
-        // 2. Función para manejar la adición de nuevas líneas
+        // 3. Función para manejar la adición de nuevas líneas
         addLineBtn.addEventListener('click', function() {
             const index = parseInt(totalForms.value, 10);
             
@@ -197,11 +200,17 @@
             formsetBody.appendChild(newRow);
             totalForms.value = index + 1;
             
+            // Inicializar Select2 en el nuevo selector de insumo
+            const newInsumoSelect = newRow.querySelector('select[name$="-insumo"]');
+            if (newInsumoSelect && !newInsumoSelect.hasAttribute('disabled')) {
+                window.initializeInsumoSelect2(newInsumoSelect, apiUrl);
+            }
+            
             // Re-vincular el listener de stock a la nueva línea
             setupStockInfoListener(newRow); 
         });
 
-        // 3. Manejo de eliminación (adaptado a los selectores usados en los parciales)
+        // 4. Manejo de eliminación (adaptado a los selectores usados en los parciales)
         formsetBody.addEventListener('click', (e) => {
             const delBtn = e.target.closest('.del-line');
             const markDelBtn = e.target.closest('.mark-delete-line');
@@ -228,31 +237,6 @@
                 }
             }
         });
-
-        // NOTA: Select2 deshabilitado - Los insumos están precargados en el select HTML
-        // para mantener control estricto en entradas y salidas
-        /*
-        // 4. Inicializar Select2 en selectores de insumo
-        const apiUrl = "{% url 'inventario:api_buscar_insumos' %}";
-        document.addEventListener('DOMContentLoaded', function() {
-            window.initializeAllInsumoSelects(apiUrl);
-        });
-
-        // 5. Al agregar una nueva línea, inicializar Select2 en el nuevo selector
-        const originalAddLine = document.getElementById('add-line');
-        if (originalAddLine) {
-            originalAddLine.addEventListener('click', function() {
-                setTimeout(function() {
-                    const newSelects = formsetBody.querySelectorAll('select[name*="insumo"]:not([name*="lote"]):not([data-select2-initialized])');
-                    newSelects.forEach(function(select) {
-                        if (!select.hasAttribute('disabled')) {
-                            window.initializeInsumoSelect2(select, apiUrl);
-                        }
-                    });
-                }, 100);
-            });
-        }
-        */
     });
 </script>
 

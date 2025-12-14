@@ -24,6 +24,8 @@ urlpatterns = [
     # --- API JSON Movimientos ---
     path('api/movimientos/entradas/', views.api_movimientos_entradas, name='api_movimientos_entradas'),
     path('api/movimientos/salidas/', views.api_movimientos_salidas, name='api_movimientos_salidas'),
+    path('api/buscar-insumos/', views.api_buscar_insumos, name='api_buscar_insumos'),
+    path('api/obtener-lotes-por-insumo/', views.api_obtener_lotes_por_insumo, name='api_obtener_lotes_por_insumo'),
 
     # --- Lotes (Agrupados y Reordenados: Específico a General) ---
     path('lotes/crear/', views.crear_lote, name='crear_lote'),

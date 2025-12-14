@@ -373,8 +373,14 @@ class Command(BaseCommand):
             espacio_disponible = max(Decimal('0'), insumo.stock_maximo - stock_actual)
             
             # Usar una cantidad aleatoria pero dentro del límite
-            if espacio_disponible > 0:
+            if espacio_disponible >= 10:
+                # Hay suficiente espacio para usar el rango completo
                 cant_inicial = Decimal(random.randint(10, min(100, int(espacio_disponible))))
+                cant_actual = Decimal(random.randint(0, int(cant_inicial)))
+            elif espacio_disponible > 0:
+                # Espacio limitado: usar lo que haya disponible
+                max_cant = max(1, int(espacio_disponible))
+                cant_inicial = Decimal(random.randint(1, max_cant))
                 cant_actual = Decimal(random.randint(0, int(cant_inicial)))
             else:
                 # Si el insumo ya está en su máximo, usar cantidad mínima
@@ -557,6 +563,9 @@ class Command(BaseCommand):
         entradas_batch = []
         salidas_batch = []
         total_creados = 0
+        
+        # Crear un diccionario para rastrear el stock disponible de cada lote
+        stock_disponible = {lote.id: lote.cantidad_actual for lote in lotes}
 
         num_entradas = cantidad // 2
         num_salidas = cantidad - num_entradas
@@ -584,6 +593,9 @@ class Command(BaseCommand):
                 observaciones="Movimiento de stress (entrada)",
             )
             entradas_batch.append(e)
+            
+            # Actualizar stock disponible después de la entrada
+            stock_disponible[lote.id] = stock_disponible.get(lote.id, Decimal('0')) + cantidad_e
 
             if len(entradas_batch) >= chunk_size:
                 Entrada.objects.bulk_create(entradas_batch)
@@ -599,16 +611,50 @@ class Command(BaseCommand):
             Entrada.objects.bulk_create(entradas_batch)
             total_creados += len(entradas_batch)
 
-        # SALIDAS
+        # SALIDAS - CON VALIDACIÓN DE STOCK
+        intentos_fallidos = 0
+        max_intentos_fallidos = num_salidas * 2  # Permitir intentos antes de abandonar
+        
         for _ in range(num_salidas):
-            lote = random.choice(lotes)
+            if intentos_fallidos > max_intentos_fallidos:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  ⚠ Se detuvieron las salidas después de {intentos_fallidos} intentos fallidos (sin stock disponible)"
+                    )
+                )
+                break
+                
+            # Filtrar solo lotes con stock disponible
+            lotes_con_stock = [l for l in lotes if stock_disponible.get(l.id, Decimal('0')) > 0]
+            
+            if not lotes_con_stock:
+                self.stdout.write(
+                    self.style.WARNING("  ⚠ No hay lotes con stock disponible para crear más salidas")
+                )
+                break
+            
+            lote = random.choice(lotes_con_stock)
             insumo = lote.insumo
             ubicacion = lote.bodega.ubicaciones.first()
             if not ubicacion:
+                intentos_fallidos += 1
                 continue
 
+            # Validar stock disponible y ajustar la cantidad de salida
+            stock_lote = stock_disponible.get(lote.id, Decimal('0'))
+            if stock_lote <= 0:
+                intentos_fallidos += 1
+                continue
+            
+            # La cantidad de salida no puede exceder el stock disponible
+            max_salida = min(stock_lote, Decimal('30'))
+            if max_salida < 1:
+                intentos_fallidos += 1
+                continue
+                
+            cantidad_s = Decimal(random.randint(1, int(max_salida)))
+
             fecha = hoy - timedelta(days=random.randint(0, 60))
-            cantidad_s = Decimal(random.randint(1, 30))
 
             s = Salida(
                 insumo=insumo,
@@ -621,6 +667,12 @@ class Command(BaseCommand):
                 observaciones="Movimiento de stress (salida)",
             )
             salidas_batch.append(s)
+            
+            # Actualizar stock disponible después de la salida
+            stock_disponible[lote.id] = stock_disponible.get(lote.id, Decimal('0')) - cantidad_s
+            
+            # Resetear contador de intentos fallidos cuando hay éxito
+            intentos_fallidos = 0
 
             if len(salidas_batch) >= chunk_size:
                 Salida.objects.bulk_create(salidas_batch)

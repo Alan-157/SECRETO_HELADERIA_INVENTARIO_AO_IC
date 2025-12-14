@@ -66,11 +66,18 @@ class UnidadMedida(BaseModel):
 
 class Insumo(BaseModel):
     categoria = models.ForeignKey(Categoria, on_delete=models.PROTECT, related_name="insumos")
-    nombre = models.CharField(max_length=35)
+    nombre = models.CharField(max_length=35, db_index=True)  # Índice para búsquedas rápidas
     stock_minimo = models.DecimalField(max_digits=10, decimal_places=2)
     stock_maximo = models.DecimalField(max_digits=10, decimal_places=2)
     unidad_medida = models.ForeignKey(UnidadMedida, on_delete=models.PROTECT, related_name="insumos_medidos") 
     precio_unitario = models.IntegerField()
+
+    class Meta:
+        ordering = ['nombre']  # Ordenamiento por defecto
+        indexes = [
+            models.Index(fields=['nombre', 'categoria']),  # Índice compuesto para filtros frecuentes
+            models.Index(fields=['is_active', 'nombre']),  # Para listar insumos activos
+        ]
 
     def __str__(self):
         return self.nombre
@@ -96,7 +103,7 @@ class Proveedor(BaseModel):
         ("SUSPENDIDO", "Suspendido"),
     ]
 
-    nombre_empresa = models.CharField(max_length=100, verbose_name="Nombre Empresa")
+    nombre_empresa = models.CharField(max_length=100, db_index=True, verbose_name="Nombre Empresa")
     rut_empresa = models.CharField(max_length=20, unique=True, verbose_name="RUT/NIT")
     # CORREGIDO: max_length reducido para evitar el error 1071 de MySQL en el índice UNIQUE
     email = models.EmailField(max_length=150, unique=True, verbose_name="Email") 
@@ -167,11 +174,19 @@ class InsumoLote(BaseModel):
         limit_choices_to={"is_active": True},
     )
 
-    fecha_ingreso = models.DateField()
-    fecha_expiracion = models.DateField()
+    fecha_ingreso = models.DateField(db_index=True)  # Índice para ordenar por fecha
+    fecha_expiracion = models.DateField(db_index=True)  # Índice para filtrar vencimientos
     cantidad_inicial = models.DecimalField(max_digits=10, decimal_places=2)
-    cantidad_actual = models.DecimalField(max_digits=10, decimal_places=2)
+    cantidad_actual = models.DecimalField(max_digits=10, decimal_places=2, db_index=True)  # Para filtrar stock>0
     usuario = models.ForeignKey(UsuarioApp, on_delete=models.PROTECT, related_name="lotes_creados")
+
+    class Meta:
+        ordering = ['-fecha_ingreso']  # Más recientes primero
+        indexes = [
+            models.Index(fields=['insumo', 'is_active', 'cantidad_actual']),  # Para listar lotes activos con stock
+            models.Index(fields=['fecha_expiracion', 'is_active']),  # Para alertas de vencimiento
+            models.Index(fields=['bodega', 'insumo']),  # Para buscar por bodega e insumo
+        ]
 
     def __str__(self):
         return f"Lote {self.id} de {self.insumo.nombre}"
@@ -259,7 +274,15 @@ class AlertaInsumo(BaseModel):
     tipo = models.CharField( #
         max_length=50, 
         choices=TIPO_ALERTA_CHOICES, # <--- MODIFICADO
-        default="BAJO_STOCK"         # <--- MODIFICADO el default
+        default="BAJO_STOCK",         # <--- MODIFICADO el default
+        db_index=True  # Para filtrar por tipo rápidamente
     )
     mensaje = models.TextField() #
     fecha = models.DateField(auto_now_add=True) #
+
+    class Meta:
+        ordering = ['-fecha', '-id']  # Más recientes primero
+        indexes = [
+            models.Index(fields=['insumo', 'is_active', 'tipo']),  # Para filtrar alertas activas por insumo y tipo
+            models.Index(fields=['is_active', 'fecha']),  # Para listar alertas activas ordenadas
+        ]

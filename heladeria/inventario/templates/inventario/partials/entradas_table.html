@@ -39,7 +39,12 @@
             
             <form method="post" action="{% url 'inventario:eliminar_entrada' mov.pk %}" class="d-inline">
               {% csrf_token %}
-              <button type="submit" class="btn btn-sm btn-outline-danger" data-delete-form title="Eliminar Entrada">
+              <button type="button" 
+                      class="btn btn-sm btn-outline-danger" 
+                      data-confirm-delete="true"
+                      data-objeto-nombre="Entrada #{{ mov.pk }}"
+                      data-objeto-tipo="entrada"
+                      title="Eliminar Entrada">
                 <i class="bi bi-trash"></i> Eliminar
               </button>
             </form>
