@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% load static %}
-{% comment %} Se elimina {% load inventario_tags %} para evitar el error {% endcomment %}
 
 {% block title %}{{ titulo }}{% endblock %}
 
@@ -31,33 +30,14 @@
 
                     <div class="col-md-7 d-flex justify-content-end align-items-center">
                         
-                        {# SELECTOR DE ELEMENTOS POR PÁGINA (OPCIONES MANUALES) #}
+                        {# SELECTOR DE ELEMENTOS POR PÁGINA #}
                         <small class="text-muted me-2">Mostrar:</small>
-                        
-                        {% for pp in '10' %} 
-                        <a href="?page=1&per_page={{ pp }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}" 
-                           class="btn btn-sm btn-outline-secondary me-2 {% if pp|add:0 == proveedores.paginator.per_page %}active{% endif %}"
-                           data-ajax-link>
-                            {{ pp }}
-                        </a>
-                        {% endfor %}
-                        {% for pp in '25' %} 
-                        <a href="?page=1&per_page={{ pp }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}" 
-                           class="btn btn-sm btn-outline-secondary me-2 
-                           {% if pp|add:0 == proveedores.paginator.per_page %}active{% endif %}"
-                           data-ajax-link>
-                            {{ pp }}
-                        </a>
-                        {% endfor %}
-                        {% for pp in '50' %} 
-                        <a href="?page=1&per_page={{ pp }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}" 
-                           class="btn btn-sm btn-outline-secondary me-2 
-                           {% if pp|add:0 == proveedores.paginator.per_page %}active{% endif %}"
-                           data-ajax-link>
-                            {{ pp }}
-                        </a>
-                        {% endfor %}
-
+                        <select class="form-select form-select-sm me-3" id="per-page-selector" style="width: auto;">
+                            <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+                            <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                        </select>
 
                         {# Botón para Crear Nuevo Proveedor #}
                         {% if not read_only %}
@@ -84,64 +64,36 @@
 {% endblock content %}
 
 {% block extra_js %}
+<script src="{% static 'js/paginadores.js' %}"></script>
 <script>
-(function(){
-    const form = document.getElementById('filter-form');
-    const results = document.getElementById('results');
-    if (!form || !results) return;
-
-    const pageInput = document.getElementById('page-input');
-
-    const buildURL = () => {
-        const params = new URLSearchParams(new FormData(form));
-        return `${location.pathname}?${params.toString()}`;
-    };
-
-    async function loadAjax(url){
-        try {
-            const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-            if (!resp.ok) return;
-            const data = await resp.json();
-            results.innerHTML = data.html;
-            history.replaceState({}, '', url);
-        } catch (err) {
-            console.error('Error AJAX proveedores:', err);
-        }
-    }
-
-    const debounce = (fn, ms = 300) => {
-        let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-    };
-
-    // Envío del formulario (Aplicar filtros)
-    form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        if (pageInput) pageInput.value = '1';
-        loadAjax(buildURL());
+// Inicializar paginador AJAX para proveedores
+document.addEventListener('DOMContentLoaded', function() {
+    initAjaxPaginator({
+        formSelector: '#filter-form',
+        resultsSelector: '#results',
+        searchDelay: 300
     });
-
-    // Búsqueda mientras escribe
-    const qInput = form.querySelector('input[name="q"]');
-    qInput?.addEventListener('input', debounce(() => {
-        if (pageInput) pageInput.value = '1';
-        loadAjax(buildURL());
-    }));
-
-    // Per-page y orden se manejan con enlaces data-ajax-link; por compatibilidad también escuchamos selects ocultos si aparecen
-    form.querySelectorAll('select').forEach(sel => {
-        sel.addEventListener('change', () => {
-            if (pageInput) pageInput.value = '1';
-            loadAjax(buildURL());
+    
+    // Handler para el selector de elementos por página
+    const perPageSelector = document.getElementById('per-page-selector');
+    if (perPageSelector) {
+        perPageSelector.addEventListener('change', function() {
+            const currentUrl = new URL(window.location.href);
+            const params = new URLSearchParams(currentUrl.search);
+            params.set('page', '1');
+            params.set('per_page', this.value);
+            
+            const newUrl = '?' + params.toString();
+            const resultsContainer = document.querySelector('#results');
+            
+            // Cargar por AJAX usando la función de paginadores.js
+            if (typeof loadContentAjax === 'function') {
+                loadContentAjax(newUrl, resultsContainer);
+            } else {
+                window.location.href = newUrl;
+            }
         });
-    });
-
-    // Delegación para paginación y per-page (data-ajax-link)
-    results.addEventListener('click', (e) => {
-        const a = e.target.closest('a[data-ajax-link]');
-        if (!a) return;
-        e.preventDefault();
-        loadAjax(a.href);
-    });
-})();
+    }
+});
 </script>
 {% endblock %}

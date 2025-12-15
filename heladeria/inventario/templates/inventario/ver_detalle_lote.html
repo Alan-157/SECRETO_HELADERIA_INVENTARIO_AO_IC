@@ -32,7 +32,7 @@
                 <div class="mb-3">
                     <strong>Stock Actual:</strong> 
                     <span class="fs-4 text-primary">
-                        {{ lote.cantidad_actual|floatformat:2 }} {{ lote.insumo.unidad_medida.nombre_corto }}
+                        {{ lote.cantidad_actual|floatformat:0 }} {{ lote.insumo.unidad_medida.nombre_corto }}
                     </span>
                     {% if lote.cantidad_actual <= 0 %}
                         <span class="badge bg-danger">Agotado</span>
@@ -60,15 +60,15 @@
                 <h5 class="mb-0">Resumen de Movimientos</h5>
             </div>
             <div class="card-body">
-                <p><strong>Cantidad Inicial:</strong> {{ lote.cantidad_inicial|floatformat:2 }}</p>
-                <p><strong>Total Entradas (Inicial + Posteriores):</strong> {{ lote.cantidad_inicial|floatformat:2 }}</p>
+                <p><strong>Cantidad Inicial:</strong> {{ lote.cantidad_inicial|floatformat:0 }}</p>
+                <p><strong>Total Entradas (Inicial + Posteriores):</strong> {{ lote.cantidad_inicial|floatformat:0 }}</p>
                 <p><strong>Total Salidas:</strong> {{ salidas|length }} movimientos</p>
                 <p><strong>Última Actualización:</strong> {{ lote.updated_at|date:"Y-m-d H:i" }}</p>
                 
                 <hr>
                 
                 <a href="{% url 'inventario:editar_lote' lote.pk %}" class="btn btn-sm btn-outline-primary">
-                    Editar Metadatos
+                    Editar datos
                 </a>
             </div>
         </div>

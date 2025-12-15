@@ -38,7 +38,12 @@
                         </a>
                         <form method="post" action="{% url 'inventario:eliminar_proveedor' proveedor.pk %}" class="d-inline">
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-sm btn-outline-danger" data-delete-form title="Eliminar Proveedor">
+                            <button type="button" 
+                                    class="btn btn-sm btn-outline-danger" 
+                                    data-confirm-delete="true"
+                                    data-objeto-nombre="{{ proveedor.nombre_empresa }}"
+                                    data-objeto-tipo="proveedor"
+                                    title="Eliminar Proveedor">
                                 <i class="bi bi-trash"></i> Eliminar
                             </button>
                         </form>
@@ -54,39 +59,89 @@
     </tbody>
 </table>
 
-{# Lógica de Paginación (sin 'split' en la llamada) #}
+{# Paginación Mejorada con Números de Página #}
 {% if proveedores.has_other_pages %}
-<nav aria-label="Paginación" class="mt-2">
+<nav aria-label="Paginación" class="mt-3">
   <ul class="pagination justify-content-center">
+    
+    {# Botón Primera Página #}
+    {% if proveedores.number > 1 %}
+      <li class="page-item">
+        <a class="page-link" data-ajax-link
+           href="?page=1&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}"
+           title="Primera página">
+          ««
+        </a>
+      </li>
+    {% endif %}
     
     {# Botón Anterior #}
     {% if proveedores.has_previous %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ proveedores.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
-          « Anterior
+           href="?page={{ proveedores.previous_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}"
+           title="Página anterior">
+          ‹
         </a>
       </li>
-    {% else %}
-      <li class="page-item disabled"><span class="page-link">« Anterior</span></li>
     {% endif %}
 
-    {# Indicador de Página Actual #}
-    <li class="page-item disabled">
-      <span class="page-link">Página {{ proveedores.number }} de {{ proveedores.paginator.num_pages }}</span>
-    </li>
+    {# Números de Página #}
+    {% for num in proveedores.paginator.page_range %}
+      {% if proveedores.number == num %}
+        <li class="page-item active">
+          <span class="page-link">{{ num }}</span>
+        </li>
+      {% elif num > proveedores.number|add:'-3' and num < proveedores.number|add:'3' %}
+        <li class="page-item">
+          <a class="page-link" data-ajax-link
+             href="?page={{ num }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+            {{ num }}
+          </a>
+        </li>
+      {% elif num == 1 or num == proveedores.paginator.num_pages %}
+        <li class="page-item">
+          <a class="page-link" data-ajax-link
+             href="?page={{ num }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
+            {{ num }}
+          </a>
+        </li>
+      {% elif num == proveedores.number|add:'-3' or num == proveedores.number|add:'3' %}
+        <li class="page-item disabled">
+          <span class="page-link">...</span>
+        </li>
+      {% endif %}
+    {% endfor %}
 
     {# Botón Siguiente #}
     {% if proveedores.has_next %}
       <li class="page-item">
         <a class="page-link" data-ajax-link
-           href="?page={{ proveedores.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}">
-          Siguiente »
+           href="?page={{ proveedores.next_page_number }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}"
+           title="Página siguiente">
+          ›
         </a>
       </li>
-    {% else %}
-      <li class="page-item disabled"><span class="page-link">Siguiente »</span></li>
+    {% endif %}
+    
+    {# Botón Última Página #}
+    {% if proveedores.number < proveedores.paginator.num_pages %}
+      <li class="page-item">
+        <a class="page-link" data-ajax-link
+           href="?page={{ proveedores.paginator.num_pages }}&per_page={{ per_page }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if order %}&order={{ order }}{% endif %}{% if sort %}&sort={{ sort }}{% endif %}"
+           title="Última página">
+          »»
+        </a>
+      </li>
     {% endif %}
   </ul>
+  
+  {# Información adicional #}
+  <div class="text-center mt-2">
+    <small class="text-muted">
+      Página {{ proveedores.number }} de {{ proveedores.paginator.num_pages }} 
+      ({{ proveedores.paginator.count }} proveedor{{ proveedores.paginator.count|pluralize:"es" }} en total)
+    </small>
+  </div>
 </nav>
 {% endif %}

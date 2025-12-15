@@ -20,10 +20,64 @@ from .models import (
     UnidadMedida,
     AlertaInsumo,
     TIPO_ORDEN_CHOICES,
+    TIPO_ALERTA_CHOICES,
 )
 
 
 TIPO_CHOICES = (("ENTRADA", "Entrada"), ("SALIDA", "Salida"))
+
+
+# Widget personalizado para agregar data-bodega-id a las opciones de ubicación
+class UbicacionSelectWidget(forms.Select):
+    """Widget Select que agrega el atributo data-bodega-id a cada opción"""
+    
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        
+        if value:
+            try:
+                # Extraer el valor real si es un ModelChoiceIteratorValue
+                if hasattr(value, 'value'):
+                    value = value.value
+                
+                ubicacion = Ubicacion.objects.select_related('bodega').get(pk=value)
+                option['attrs']['data-bodega-id'] = str(ubicacion.bodega.id)
+            except (Ubicacion.DoesNotExist, ValueError, TypeError):
+                pass
+        
+        return option
+
+
+# Campo personalizado para usar con Select2 AJAX
+class AjaxModelChoiceField(forms.ModelChoiceField):
+    """
+    ModelChoiceField personalizado que permite selecciones fuera del queryset inicial.
+    Útil cuando se usa con Select2 AJAX donde el queryset está vacío inicialmente.
+    """
+    def validate(self, value):
+        # Si el queryset está vacío (para AJAX), omitir la validación de pertenencia
+        if not self.queryset.exists() and value:
+            return
+        # De lo contrario, usar la validación normal
+        return super().validate(value)
+    
+    def to_python(self, value):
+        """Convierte el ID recibido en una instancia del modelo."""
+        if value in self.empty_values:
+            return None
+        try:
+            # Si el queryset está vacío, buscar directamente en el modelo
+            if not self.queryset.exists():
+                key = self.to_field_name or 'pk'
+                value = self.queryset.model.objects.get(**{key: value})
+            else:
+                value = super().to_python(value)
+        except (ValueError, TypeError, self.queryset.model.DoesNotExist):
+            raise forms.ValidationError(
+                self.error_messages['invalid_choice'],
+                code='invalid_choice',
+            )
+        return value
 
 
 class OrdenInsumoForm(forms.ModelForm): 
@@ -192,22 +246,43 @@ class UnidadMedidaForm(forms.ModelForm):
 #  ÓRDENES
 # ==========================================
 class OrdenInsumoDetalleForm(forms.ModelForm):
+    # Usar el campo personalizado para AJAX
+    insumo = AjaxModelChoiceField(
+        queryset=Insumo.objects.none(),
+        label="Insumo",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    
     class Meta:
         model = OrdenInsumoDetalle
         fields = ("insumo", "cantidad_solicitada")
         widgets = {
-            "insumo": forms.Select(attrs={"class": "form-select"}),
             "cantidad_solicitada": forms.NumberInput(
                 attrs={"class": "form-control", "min": "0.01", "step": "0.01"}
             ),
         }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Si ya hay un insumo seleccionado (edición), cargar ese
+        if self.instance and self.instance.pk and self.instance.insumo:
+            self.fields['insumo'].queryset = Insumo.objects.filter(
+                id=self.instance.insumo.id
+            )
+        # Para creación, el queryset vacío ya está definido en el campo
+
+    def clean_insumo(self):
+        """Validación adicional: verificar que el insumo esté activo"""
+        insumo = self.cleaned_data.get('insumo')
+        if insumo and not insumo.is_active:
+            raise forms.ValidationError("El insumo seleccionado no está activo.")
+        return insumo
 
     def clean_cantidad_solicitada(self):
         v = self.cleaned_data.get("cantidad_solicitada")
         if v is None or v <= 0:
             raise forms.ValidationError("La cantidad debe ser mayor a 0.")
         return v
-
 
 class BaseOrdenDetalleFormSet(BaseInlineFormSet):
     def clean(self):
@@ -217,33 +292,39 @@ class BaseOrdenDetalleFormSet(BaseInlineFormSet):
         count_valid = 0
 
         for form in self.forms:
-            if not hasattr(form, "cleaned_data"):
+            # Optimización: Skip early si no hay cleaned_data
+            if not hasattr(form, "cleaned_data") or not form.cleaned_data:
                 continue
 
             cd = form.cleaned_data
 
+            # Skip si está marcado para borrar
             if cd.get("DELETE", False):
                 continue
 
             insumo = cd.get("insumo")
             cantidad = cd.get("cantidad_solicitada")
 
+            # Skip si no hay datos relevantes
             if not insumo and not cantidad:
                 continue
 
             count_valid += 1
 
+            # Validación de duplicados - usar ID directamente es más rápido
             if insumo:
-                if insumo.id in insumos_vistos:
+                insumo_id = insumo.id if hasattr(insumo, 'id') else insumo
+                if insumo_id in insumos_vistos:
                     form.add_error(
                         "insumo",
                         f"El insumo '{insumo.nombre}' está duplicado en la orden."
                     )
                 else:
-                    insumos_vistos.add(insumo.id)
+                    insumos_vistos.add(insumo_id)
 
         if count_valid == 0:
             raise forms.ValidationError("Debes agregar al menos un ítem a la orden.")
+
 
 
 OrdenInsumoDetalleCreateFormSet = inlineformset_factory(
@@ -270,7 +351,12 @@ OrdenInsumoDetalleEditFormSet = inlineformset_factory(
 # ==========================================
 class EntradaLineaForm(forms.Form):
     # Campos base
-    insumo = forms.ModelChoiceField(queryset=Insumo.objects.filter(is_active=True), label="Insumo", widget=forms.Select(attrs={"class": "form-select"}))
+    # Precarga todos los insumos activos para control estricto de entrada
+    insumo = forms.ModelChoiceField(
+        queryset=Insumo.objects.filter(is_active=True).select_related('categoria', 'unidad_medida').order_by('nombre'),
+        label="Insumo", 
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
     ubicacion = forms.ModelChoiceField(queryset=Ubicacion.objects.select_related("bodega"), label="Ubicación", widget=forms.Select(attrs={"class": "form-select"}))
     fecha = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), label="Fecha de Entrada")
     
@@ -339,8 +425,17 @@ class EntradaLineaForm(forms.Form):
 
 # --- FORMULARIO DE LÍNEA PARA SALIDA ---
 class SalidaLineaForm(forms.Form):
-    insumo = forms.ModelChoiceField(queryset=Insumo.objects.filter(is_active=True), label="Insumo", widget=forms.Select(attrs={"class": "form-select"}))
-    ubicacion = forms.ModelChoiceField(queryset=Ubicacion.objects.select_related("bodega"), label="Ubicación", widget=forms.Select(attrs={"class": "form-select"}))
+    # Precarga todos los insumos activos para control estricto de salida
+    insumo = forms.ModelChoiceField(
+        queryset=Insumo.objects.filter(is_active=True).select_related('categoria', 'unidad_medida').order_by('nombre'),
+        label="Insumo",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    ubicacion = forms.ModelChoiceField(
+        queryset=Ubicacion.objects.select_related("bodega"), 
+        label="Ubicación", 
+        widget=UbicacionSelectWidget(attrs={"class": "form-select"})
+    )
     fecha = forms.DateField(widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), label="Fecha de Salida")
     
     # MODIFICADO: CONVERTIDO A INTEGERFIELD
@@ -361,13 +456,20 @@ class SalidaLineaForm(forms.Form):
         }),
     )
     
-    # Lote Existente (Específico de SALIDA)
-    insumo_lote = forms.ModelChoiceField(
-        queryset=InsumoLote.objects.select_related("insumo", "bodega"),
+    # Lote Existente (Específico de SALIDA) - Se carga dinámicamente por AJAX
+    insumo_lote = AjaxModelChoiceField(
+        queryset=InsumoLote.objects.none(),  # Inicia vacío, se carga por JavaScript
         required=True, # Obligatorio para una salida
         label="Lote de Origen",
         widget=forms.Select(attrs={"class": "form-select"})
     )
+    
+    def clean_insumo_lote(self):
+        """Validación adicional: verificar que el lote tenga stock"""
+        lote = self.cleaned_data.get('insumo_lote')
+        if lote and lote.cantidad_actual <= 0:
+            raise forms.ValidationError("El lote seleccionado no tiene stock disponible.")
+        return lote
     
     observaciones = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2, "class": "form-control"}), label="Observaciones")
 
@@ -398,6 +500,183 @@ SalidaLineaFormSet = formset_factory(SalidaLineaForm, extra=1, can_delete=True)
 EntradaLineaFormSetMovimiento = formset_factory(EntradaLineaForm, extra=1, can_delete=True)
 SalidaLineaFormSetMovimiento = formset_factory(SalidaLineaForm, extra=1, can_delete=True)
 
+# ==========================================
+#  FORMULARIOS CON AJAX PARA MOVIMIENTOS
+# ==========================================
+class EntradaLineaFormAjax(forms.Form):
+    """Formulario de entrada con AJAX para búsqueda de insumos (usado desde listar_movimientos)"""
+    # Campo con AJAX
+    insumo = AjaxModelChoiceField(
+        queryset=Insumo.objects.none(),
+        label="Insumo",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    
+    ubicacion = forms.ModelChoiceField(
+        queryset=Ubicacion.objects.select_related("bodega"), 
+        label="Ubicación", 
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    fecha = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), 
+        label="Fecha de Entrada"
+    )
+    
+    cantidad = forms.IntegerField(
+        min_value=1, label="Cantidad", 
+        validators=[
+            MinValueValidator(1, message="La cantidad debe ser un número entero mayor que cero."),
+            MaxValueValidator(99999, message="La cantidad no puede exceder 99,999 (5 dígitos enteros).")
+        ],
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "type": "number",
+            "step": "1",
+            "min": "1",
+            "max": "99999",
+            "maxlength": "5",
+            "oninput": "this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>5)this.value=this.value.slice(0,5)",
+        }),
+    )
+
+    proveedor = forms.ModelChoiceField(
+        queryset=Proveedor.objects.filter(estado='ACTIVO'), 
+        required=True,
+        label="Proveedor", 
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    fecha_expiracion = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), 
+        label="Fecha de expiración"
+    )
+    
+    observaciones = forms.CharField(
+        required=False, 
+        widget=forms.Textarea(attrs={"rows": 2, "class": "form-control"}), 
+        label="Observaciones"
+    )
+    
+    def clean_insumo(self):
+        """Validación adicional: verificar que el insumo esté activo"""
+        insumo = self.cleaned_data.get('insumo')
+        if insumo and not insumo.is_active:
+            raise forms.ValidationError("El insumo seleccionado no está activo.")
+        return insumo
+
+    def clean(self):
+        cd = super().clean()
+        fexp = cd.get('fecha_expiracion')
+        fecha = cd.get('fecha')
+        insumo = cd.get('insumo')
+        cantidad_int = cd.get('cantidad')
+        
+        if cantidad_int is not None:
+            cd['cantidad'] = Decimal(cantidad_int)
+        
+        cantidad = cd.get('cantidad')
+        
+        if not fexp:
+            self.add_error("fecha_expiracion", "La fecha de expiración es requerida para el lote de entrada.")
+        if fexp and fecha and fexp < fecha:
+            self.add_error("fecha_expiracion", "La fecha de expiración no puede ser anterior a la fecha de entrada.")
+
+        if insumo and cantidad and cantidad > 0:
+            stock_data = insumo.lotes.filter(is_active=True).aggregate(
+                stock_actual=Coalesce(Sum('cantidad_actual'), Decimal("0.00"), output_field=DecimalField())
+            )
+            stock_actual = stock_data['stock_actual']
+            stock_proyectado = stock_actual + cantidad
+
+            if stock_proyectado > insumo.stock_maximo:
+                max_permisible = insumo.stock_maximo - stock_actual
+                self.add_error("cantidad", f"La entrada excede el stock máximo ({int(insumo.stock_maximo)}). Máximo a entrar: {int(max_permisible)}")
+
+        return cd
+
+
+class SalidaLineaFormAjax(forms.Form):
+    """Formulario de salida con AJAX para búsqueda de insumos (usado desde listar_movimientos)"""
+    # Campo con AJAX
+    insumo = AjaxModelChoiceField(
+        queryset=Insumo.objects.none(),
+        label="Insumo",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    
+    ubicacion = forms.ModelChoiceField(
+        queryset=Ubicacion.objects.select_related("bodega"), 
+        label="Ubicación", 
+        widget=UbicacionSelectWidget(attrs={"class": "form-select"})
+    )
+    fecha = forms.DateField(
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}), 
+        label="Fecha de Salida"
+    )
+    
+    cantidad = forms.IntegerField(
+        min_value=1, label="Cantidad", 
+        validators=[
+            MinValueValidator(1, message="La cantidad debe ser un número entero mayor que cero."),
+            MaxValueValidator(99999, message="La cantidad no puede exceder 99,999 (5 dígitos enteros).")
+        ],
+        widget=forms.NumberInput(attrs={
+            "class": "form-control",
+            "type": "number",
+            "step": "1",
+            "min": "1",
+            "max": "99999",
+            "maxlength": "5",
+            "oninput": "this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>5)this.value=this.value.slice(0,5)",
+        }),
+    )
+    
+    insumo_lote = AjaxModelChoiceField(
+        queryset=InsumoLote.objects.none(),  # Inicia vacío, se carga por JavaScript
+        required=True,
+        label="Lote de Origen",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    
+    def clean_insumo_lote(self):
+        """Validación adicional: verificar que el lote tenga stock"""
+        lote = self.cleaned_data.get('insumo_lote')
+        if lote and lote.cantidad_actual <= 0:
+            raise forms.ValidationError("El lote seleccionado no tiene stock disponible.")
+        return lote
+    
+    observaciones = forms.CharField(
+        required=False, 
+        widget=forms.Textarea(attrs={"rows": 2, "class": "form-control"}), 
+        label="Observaciones"
+    )
+    
+    def clean_insumo(self):
+        """Validación adicional: verificar que el insumo esté activo"""
+        insumo = self.cleaned_data.get('insumo')
+        if insumo and not insumo.is_active:
+            raise forms.ValidationError("El insumo seleccionado no está activo.")
+        return insumo
+    
+    def clean(self):
+        cd = super().clean()
+        lote = cd.get('insumo_lote')
+        cant_int = cd.get('cantidad')
+        
+        if cant_int is not None:
+            cd['cantidad'] = Decimal(cant_int)
+        
+        cant = cd.get('cantidad')
+        
+        if lote and cant and cant > lote.cantidad_actual:
+            self.add_error("cantidad", f"Stock insuficiente en el lote. Disponible: {lote.cantidad_actual}")
+        
+        return cd
+
+# Formsets para movimientos con AJAX
+EntradaLineaFormSetMovimientoAjax = formset_factory(EntradaLineaFormAjax, extra=1, can_delete=True)
+SalidaLineaFormSetMovimientoAjax = formset_factory(SalidaLineaFormAjax, extra=1, can_delete=True)
+
+
 class EntradaForm(forms.ModelForm):
     # MODIFICADO: De DecimalField a IntegerField (para edición individual)
     cantidad = forms.IntegerField(
@@ -416,6 +695,19 @@ class EntradaForm(forms.ModelForm):
             "oninput": "this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>5)this.value=this.value.slice(0,5)" 
         }),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Optimización: Solo cargar el insumo de la instancia actual (campo deshabilitado)
+        if self.instance and self.instance.pk:
+            self.fields['insumo'].queryset = Insumo.objects.filter(id=self.instance.insumo_id)
+            self.fields['insumo_lote'].queryset = InsumoLote.objects.filter(id=self.instance.insumo_lote_id)
+        else:
+            # No debería usarse para creación (usar formsets), pero por seguridad
+            self.fields['insumo'].queryset = Insumo.objects.none()
+            self.fields['insumo_lote'].queryset = InsumoLote.objects.none()
+        # Ubicación sí se puede cambiar, pero optimizamos la carga
+        self.fields['ubicacion'].queryset = Bodega.objects.filter(is_active=True)
 
     class Meta:
         model = Entrada
@@ -449,6 +741,19 @@ class SalidaForm(forms.ModelForm):
             "oninput": "this.value=this.value.replace(/[^0-9]/g,'');if(this.value.length>5)this.value=this.value.slice(0,5)"
         }),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Optimización: Solo cargar el insumo de la instancia actual (campo deshabilitado)
+        if self.instance and self.instance.pk:
+            self.fields['insumo'].queryset = Insumo.objects.filter(id=self.instance.insumo_id)
+            self.fields['insumo_lote'].queryset = InsumoLote.objects.filter(id=self.instance.insumo_lote_id)
+        else:
+            # No debería usarse para creación (usar formsets), pero por seguridad
+            self.fields['insumo'].queryset = Insumo.objects.none()
+            self.fields['insumo_lote'].queryset = InsumoLote.objects.none()
+        # Ubicación sí se puede cambiar, pero optimizamos la carga
+        self.fields['ubicacion'].queryset = Bodega.objects.filter(is_active=True)
 
     class Meta:
         model = Salida
@@ -491,27 +796,39 @@ class BodegaForm(forms.ModelForm):
         return nombre
 
 class AlertaForm(forms.ModelForm):
-    # Definimos opciones de tipo de alerta, aunque ya pueden estar en el modelo
-    TIPO_ALERTA_CHOICES = [
-        ("STOCK_BAJO", "Stock Bajo"),
-        ("PROX_VENCER", "Próximo a Vencer"),
-        ("SIN_STOCK", "Sin Stock"),
-        ("OTRO", "Otro"),
-    ]
-
+    # Usar las opciones del modelo directamente
     tipo = forms.ChoiceField(
         choices=TIPO_ALERTA_CHOICES,
         widget=forms.Select(attrs={"class": "form-select"}),
         label="Tipo de Alerta"
     )
     
+    # Usar el campo personalizado para AJAX
+    insumo = AjaxModelChoiceField(
+        queryset=Insumo.objects.none(),
+        label="Insumo",
+        widget=forms.Select(attrs={"class": "form-select"})
+    )
+    
     class Meta:
         model = AlertaInsumo
         fields = ("insumo", "tipo", "mensaje")
         widgets = {
-            "insumo": forms.Select(attrs={"class": "form-select"}),
             "mensaje": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
         }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Si está editando, cargar el insumo actual
+        if self.instance and self.instance.pk and self.instance.insumo:
+            self.fields['insumo'].queryset = Insumo.objects.filter(id=self.instance.insumo_id)
+
+    def clean_insumo(self):
+        """Validación adicional: verificar que el insumo esté activo"""
+        insumo = self.cleaned_data.get('insumo')
+        if insumo and not insumo.is_active:
+            raise forms.ValidationError("El insumo seleccionado no está activo.")
+        return insumo
 
     def clean(self):
         cleaned_data = super().clean()
@@ -520,14 +837,14 @@ class AlertaForm(forms.ModelForm):
 
         # Relleno automático del mensaje si está vacío (para comodidad del usuario)
         if not mensaje:
-            if tipo == "STOCK_BAJO":
+            if tipo == "BAJO_STOCK":
                 cleaned_data['mensaje'] = "El insumo ha alcanzado el nivel de stock mínimo."
-            elif tipo == "PROX_VENCER":
+            elif tipo == "VENCIMIENTO_PROXIMO":
                 cleaned_data['mensaje'] = "Revisar lotes con fechas de expiración cercanas."
             elif tipo == "SIN_STOCK":
                 cleaned_data['mensaje'] = "El insumo se ha quedado sin stock."
-            elif tipo == "OTRO":
-                cleaned_data['mensaje'] = "Alerta manual generada por el usuario."
+            elif tipo == "STOCK_EXCESIVO":
+                cleaned_data['mensaje'] = "El insumo ha superado el nivel de stock máximo."
         
         return cleaned_data
     

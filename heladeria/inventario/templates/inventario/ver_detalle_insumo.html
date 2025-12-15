@@ -55,13 +55,13 @@
                             <td>
                                 {% with sa=insumo.stock_actual|default:0 sm=insumo.stock_minimo|default:0 sx=insumo.stock_maximo|default:0 %}
                                 {% if sa < sm %}
-                                    <span class="badge bg-danger fs-6">{{ sa|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</span>
+                                    <span class="badge bg-danger fs-6">{{ sa|floatformat:0 }} {{ insumo.unidad_medida.nombre_corto }}</span>
                                     <small class="text-danger d-block">⚠️ Bajo stock</small>
                                 {% elif sa > sx and sx > 0 %}
-                                    <span class="badge bg-warning text-dark fs-6">{{ sa|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</span>
+                                    <span class="badge bg-warning text-dark fs-6">{{ sa|floatformat:0 }} {{ insumo.unidad_medida.nombre_corto }}</span>
                                     <small class="text-warning d-block">⚠️ Sobre stock</small>
                                 {% else %}
-                                    <span class="badge bg-success fs-6">{{ sa|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</span>
+                                    <span class="badge bg-success fs-6">{{ sa|floatformat:0 }} {{ insumo.unidad_medida.nombre_corto }}</span>
                                     <small class="text-success d-block">✓ Stock normal</small>
                                 {% endif %}
                                 {% endwith %}
@@ -69,11 +69,11 @@
                         </tr>
                         <tr>
                             <th>Stock Mínimo:</th>
-                            <td>{{ insumo.stock_minimo|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</td>
+                            <td>{{ insumo.stock_minimo|floatformat:0 }} {{ insumo.unidad_medida.nombre_corto }}</td>
                         </tr>
                         <tr>
                             <th>Stock Máximo:</th>
-                            <td>{{ insumo.stock_maximo|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</td>
+                            <td>{{ insumo.stock_maximo|floatformat:0 }} {{ insumo.unidad_medida.nombre_corto }}</td>
                         </tr>
                         <tr>
                             <th>Lotes Activos:</th>
@@ -140,7 +140,7 @@
                                 <tr>
                                     <td><strong>#{{ lote.id }}</strong></td>
                                     <td>{{ lote.bodega.nombre|default:"Sin bodega" }}</td>
-                                    <td class="text-center">{{ lote.cantidad_actual|floatformat:2 }}</td>
+                                    <td class="text-center">{{ lote.cantidad_actual|floatformat:0 }}</td>
                                     <td>{{ lote.fecha_ingreso|date:"d/m/Y" }}</td>
                                     <td>
                                         {% if lote.fecha_expiracion %}
@@ -177,7 +177,7 @@
                         <div class="list-group-item px-0">
                             <div class="d-flex justify-content-between">
                                 <div>
-                                    <strong>{{ entrada.cantidad|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</strong>
+                                    <strong>{{ entrada.cantidad|floatformat:0 }} {{ insumo.unidad_medida.nombre_corto }}</strong>
                                     <br>
                                     <small class="text-muted">
                                         {{ entrada.ubicacion.nombre|default:"Sin ubicación" }}
@@ -216,7 +216,7 @@
                         <div class="list-group-item px-0">
                             <div class="d-flex justify-content-between">
                                 <div>
-                                    <strong>{{ salida.cantidad|floatformat:2 }} {{ insumo.unidad_medida.nombre_corto }}</strong>
+                                    <strong>{{ salida.cantidad|floatformat:0 }} {{ insumo.unidad_medida.nombre_corto }}</strong>
                                     <br>
                                     <small class="text-muted">
                                         Tipo: {{ salida.get_tipo_display }}

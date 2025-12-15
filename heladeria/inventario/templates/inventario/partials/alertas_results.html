@@ -49,7 +49,12 @@
         {% if alerta.is_active and not read_only %}
             <form method="post" action="{% url 'inventario:eliminar_alerta' alerta.id %}" class="d-inline">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-outline-danger" title="Marcar como revisada" data-delete-form>
+                <button type="button" 
+                        class="btn btn-sm btn-outline-danger" 
+                        title="Marcar como revisada" 
+                        data-confirm-delete="true"
+                        data-objeto-nombre="Alerta de {{ alerta.insumo.nombre }}"
+                        data-objeto-tipo="alerta">
                     <i class="bi bi-x-circle"></i> Revisada
                 </button>
             </form>

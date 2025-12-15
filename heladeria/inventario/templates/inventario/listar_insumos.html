@@ -164,6 +164,12 @@
         const a = e.target.closest('a[data-ajax-link]');
         if (a){
             e.preventDefault();
+            // Extraer el número de página del href y actualizar el input hidden
+            const url = new URL(a.href);
+            const page = url.searchParams.get('page');
+            if (page) {
+                pageInput.value = page;
+            }
             loadAjax(a.href);
             return;
         }

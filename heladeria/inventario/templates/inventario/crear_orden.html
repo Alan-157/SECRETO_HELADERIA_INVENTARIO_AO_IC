@@ -113,6 +113,12 @@
   const totalEl = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
   const tbody = document.getElementById("formset-body");
   const tpl = document.getElementById("empty-form-template").innerHTML;
+  const apiUrl = "{% url 'inventario:api_buscar_insumos' %}";
+
+  // Inicializar Select2 en los selects existentes usando la función global
+  document.addEventListener('DOMContentLoaded', function() {
+    window.initializeAllInsumoSelects(apiUrl);
+  });
 
   document.getElementById("add-row").addEventListener("click", () => {
     const index = parseInt(totalEl.value);
@@ -130,6 +136,13 @@
     });
 
     tbody.appendChild(row);
+    
+    // Inicializar Select2 en el nuevo select de insumo usando la función global
+    const newInsumoSelect = row.querySelector('select[name*="insumo"]:not([name*="lote"])');
+    if (newInsumoSelect && !newInsumoSelect.hasAttribute('disabled')) {
+      window.initializeInsumoSelect2(newInsumoSelect, apiUrl);
+    }
+    
     totalEl.value = index + 1;
   });
 })();
