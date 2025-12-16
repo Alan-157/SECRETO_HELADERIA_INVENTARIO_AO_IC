@@ -698,29 +698,18 @@ class EntradaForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Optimización: Solo cargar el insumo de la instancia actual (campo deshabilitado)
-        if self.instance and self.instance.pk:
-            self.fields['insumo'].queryset = Insumo.objects.filter(id=self.instance.insumo_id)
-            self.fields['insumo_lote'].queryset = InsumoLote.objects.filter(id=self.instance.insumo_lote_id)
-        else:
-            # No debería usarse para creación (usar formsets), pero por seguridad
-            self.fields['insumo'].queryset = Insumo.objects.none()
-            self.fields['insumo_lote'].queryset = InsumoLote.objects.none()
         # Ubicación sí se puede cambiar, pero optimizamos la carga
-        self.fields['ubicacion'].queryset = Bodega.objects.filter(is_active=True)
+        self.fields['ubicacion'].queryset = Ubicacion.objects.filter(is_active=True).select_related('bodega')
 
     class Meta:
         model = Entrada
-        # Incluye insumo_lote para que el usuario sepa qué lote está editando
-        fields = ["insumo", "insumo_lote", "ubicacion", "cantidad", "fecha", "observaciones", "tipo"]
-        exclude = ["usuario", "orden", "detalle"]
+        # Solo campos editables (insumo, insumo_lote y tipo no son editables)
+        fields = ["ubicacion", "cantidad", "fecha", "observaciones"]
+        exclude = ["usuario", "orden", "detalle", "insumo", "insumo_lote", "tipo"]
         widgets = {
-            "insumo": forms.Select(attrs={"class": "form-select", "disabled": True}), # Se bloquea
-            "insumo_lote": forms.Select(attrs={"class": "form-select", "disabled": True}), # Se bloquea
             "ubicacion": forms.Select(attrs={"class": "form-select"}),
             "fecha": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "observaciones": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            "tipo": forms.TextInput(attrs={"class": "form-control", "disabled": True}),
         }
 
 class SalidaForm(forms.ModelForm):
@@ -744,28 +733,18 @@ class SalidaForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Optimización: Solo cargar el insumo de la instancia actual (campo deshabilitado)
-        if self.instance and self.instance.pk:
-            self.fields['insumo'].queryset = Insumo.objects.filter(id=self.instance.insumo_id)
-            self.fields['insumo_lote'].queryset = InsumoLote.objects.filter(id=self.instance.insumo_lote_id)
-        else:
-            # No debería usarse para creación (usar formsets), pero por seguridad
-            self.fields['insumo'].queryset = Insumo.objects.none()
-            self.fields['insumo_lote'].queryset = InsumoLote.objects.none()
         # Ubicación sí se puede cambiar, pero optimizamos la carga
-        self.fields['ubicacion'].queryset = Bodega.objects.filter(is_active=True)
+        self.fields['ubicacion'].queryset = Ubicacion.objects.filter(is_active=True).select_related('bodega')
 
     class Meta:
         model = Salida
-        fields = ["insumo", "insumo_lote", "ubicacion", "cantidad", "fecha_generada", "observaciones", "tipo"]
-        exclude = ["usuario", "orden", "detalle"]
+        # Solo campos editables (insumo, insumo_lote y tipo no son editables)
+        fields = ["ubicacion", "cantidad", "fecha_generada", "observaciones"]
+        exclude = ["usuario", "orden", "detalle", "insumo", "insumo_lote", "tipo"]
         widgets = {
-            "insumo": forms.Select(attrs={"class": "form-select", "disabled": True}),
-            "insumo_lote": forms.Select(attrs={"class": "form-select", "disabled": True}),
             "ubicacion": forms.Select(attrs={"class": "form-select"}),
             "fecha_generada": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
             "observaciones": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            "tipo": forms.TextInput(attrs={"class": "form-control", "disabled": True}),
         }
 
 # ==========================================

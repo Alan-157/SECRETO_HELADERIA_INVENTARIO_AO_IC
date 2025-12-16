@@ -11,17 +11,24 @@
       {% csrf_token %}
       {{ form.non_field_errors }}
       <div class="row g-3">
-        {# Ajusta los campos según tu form: EntradaForm / SalidaForm #}
+        {# Campos no editables - mostrar como información de solo lectura #}
         <div class="col-md-6">
           <label class="form-label">Insumo</label>
-          {{ form.insumo }}
-          {{ form.insumo.errors }}
+          <input type="text" class="form-control" value="{{ insumo.nombre }}" disabled>
+          <small class="text-muted">Este campo no es editable</small>
         </div>
         <div class="col-md-6">
           <label class="form-label">Lote</label>
-          {{ form.insumo_lote }}
-          {{ form.insumo_lote.errors }}
+          <input type="text" class="form-control" value="{{ lote }}" disabled>
+          <small class="text-muted">Este campo no es editable</small>
         </div>
+        <div class="col-md-6">
+          <label class="form-label">Tipo</label>
+          <input type="text" class="form-control" value="{{ tipo }}" disabled>
+          <small class="text-muted">Este campo no es editable</small>
+        </div>
+        
+        {# Campos editables #}
         <div class="col-md-6">
           <label class="form-label">Ubicación</label>
           {{ form.ubicacion }}
@@ -40,20 +47,6 @@
           {{ form.cantidad }}
           {{ form.cantidad.errors }}
         </div>
-        {# Solo ENTRADA avanzada: campos extra si los usas en tu form de línea #}
-        {% if form.fields.crear_nuevo_lote %}
-        <div class="col-md-6">
-          <div class="form-check mt-4">
-            {{ form.crear_nuevo_lote }} <label class="form-check-label">Crear nuevo lote</label>
-          </div>
-          {{ form.crear_nuevo_lote.errors }}
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Fecha de expiración</label>
-          {{ form.fecha_expiracion }}
-          {{ form.fecha_expiracion.errors }}
-        </div>
-        {% endif %}
 
         {% if form.observaciones %}
         <div class="col-12">

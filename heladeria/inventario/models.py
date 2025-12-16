@@ -206,6 +206,14 @@ class OrdenInsumo(BaseModel):
         verbose_name="Tipo de Orden"
     )
 
+    class Meta:
+        ordering = ['-fecha', '-id']
+        indexes = [
+            models.Index(fields=['estado', 'is_active']),  # Para filtros por estado
+            models.Index(fields=['fecha', 'is_active']),  # Para ordenar por fecha
+            models.Index(fields=['is_active', 'estado', 'fecha']),  # Índice compuesto para queries comunes
+        ]
+
     def __str__(self):
         # MODIFICADO: Incluir el tipo de orden
         return f"Orden #{self.id} - {self.tipo_orden} - {self.estado}"
@@ -246,6 +254,14 @@ class Entrada(BaseModel):
     tipo = models.CharField(max_length=50, default="COMPRA")
     observaciones = models.TextField(blank=True, null=True)
 
+    class Meta:
+        ordering = ['-fecha', '-id']  # Ordenamiento por defecto
+        indexes = [
+            models.Index(fields=['fecha', 'is_active']),  # Para filtros por fecha y activos
+            models.Index(fields=['insumo', 'fecha']),  # Para búsquedas por insumo
+            models.Index(fields=['insumo_lote', 'is_active']),  # Para movimientos por lote
+        ]
+
     def __str__(self):
         return f"Entrada {self.cantidad} de {self.insumo.nombre}"
 
@@ -261,6 +277,14 @@ class Salida(BaseModel):
     usuario = models.ForeignKey(UsuarioApp, on_delete=models.PROTECT)
     tipo = models.CharField(max_length=50, default="VENTA")
     observaciones = models.TextField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-fecha_generada', '-id']  # Ordenamiento por defecto
+        indexes = [
+            models.Index(fields=['fecha_generada', 'is_active']),  # Para filtros por fecha y activos
+            models.Index(fields=['insumo', 'fecha_generada']),  # Para búsquedas por insumo
+            models.Index(fields=['insumo_lote', 'is_active']),  # Para movimientos por lote
+        ]
 
     def __str__(self):
         return f"Salida {self.cantidad} de {self.insumo.nombre}"

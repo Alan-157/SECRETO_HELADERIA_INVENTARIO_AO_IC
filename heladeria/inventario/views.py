@@ -136,21 +136,40 @@ def list_with_filters(
 # --- DASHBOARD (ACTUALIZADO: Interactivo) ---
 @login_required
 def dashboard_view(request):
-    # Cuentas totales
+    # OPTIMIZACIÓN: Cuentas totales usando valores en cache cuando sea posible
+    # Para 100k+ registros, estas consultas deben ser rápidas con índices apropiados
     total_insumos = Insumo.objects.filter(is_active=True).count()
     total_bodegas = Bodega.objects.filter(is_active=True).count()
-    ordenes_pendientes_count = OrdenInsumo.objects.filter(estado='PENDIENTE').count()
+    ordenes_pendientes_count = OrdenInsumo.objects.filter(estado='PENDIENTE', is_active=True).count()
     visitas = request.session.get('visitas', 0)
     request.session['visitas'] = visitas + 1
 
-    # --- Listas para el Dashboard (Top 5) ---
-    top_insumos = Insumo.objects.filter(is_active=True).select_related('categoria', 'unidad_medida').order_by('-created_at')[:5] 
-    top_bodegas = Bodega.objects.filter(is_active=True).order_by('-created_at')[:5]
-    top_ordenes = OrdenInsumo.objects.filter(estado='PENDIENTE').select_related('usuario').order_by('-fecha')[:5] 
+    # OPTIMIZACIÓN: Listas para el Dashboard (Top 5) - usar only() para cargar solo campos necesarios
+    top_insumos = Insumo.objects.filter(is_active=True).select_related(
+        'categoria', 'unidad_medida'
+    ).only(
+        'id', 'nombre', 'created_at', 
+        'categoria__nombre', 'unidad_medida__nombre_corto'
+    ).order_by('-created_at')[:5] 
     
-    # NUEVO: Alertas (Top 5 más recientes)
-    top_alertas = models.AlertaInsumo.objects.filter(is_active=True).select_related('insumo').order_by('-fecha')[:5] # MODIFICADO
-    total_alertas = models.AlertaInsumo.objects.filter(is_active=True).count() # MODIFICADO
+    top_bodegas = Bodega.objects.filter(is_active=True).only(
+        'id', 'nombre', 'direccion', 'created_at'
+    ).order_by('-created_at')[:5]
+    
+    # OPTIMIZACIÓN: Prefetch solo campos necesarios del usuario
+    top_ordenes = OrdenInsumo.objects.filter(
+        estado='PENDIENTE', is_active=True
+    ).select_related('usuario').only(
+        'id', 'fecha', 'estado', 'tipo_orden', 'usuario__name', 'usuario__email'
+    ).order_by('-fecha')[:5] 
+    
+    # OPTIMIZACIÓN: Alertas con only() para reducir datos
+    top_alertas = models.AlertaInsumo.objects.filter(
+        is_active=True
+    ).select_related('insumo').only(
+        'id', 'tipo', 'mensaje', 'fecha', 'insumo__nombre'
+    ).order_by('-fecha')[:5]
+    total_alertas = models.AlertaInsumo.objects.filter(is_active=True).count()
 
     context = {
         'total_insumos': total_insumos,
@@ -482,6 +501,7 @@ def eliminar_insumo(request, insumo_id):
 
 # --- VER DETALLE DE INSUMO ---
 @login_required
+@login_required
 def ver_detalle_insumo(request, insumo_id):
     """Vista para ver los detalles completos de un insumo."""
     insumo = get_object_or_404(
@@ -511,6 +531,9 @@ def ver_detalle_insumo(request, insumo_id):
     # Obtener alertas activas
     alertas_activas = insumo.alertas.filter(is_active=True).order_by('-fecha')
     
+    # Determinar si es solo lectura (bodeguero no puede acceder a ciertas funciones)
+    read_only = not (request.user.is_superuser or user_has_role(request.user, "Administrador", "Encargado"))
+    
     context = {
         'insumo': insumo,
         'lotes': lotes,
@@ -518,6 +541,7 @@ def ver_detalle_insumo(request, insumo_id):
         'salidas_recientes': salidas_recientes,
         'alertas_activas': alertas_activas,
         'titulo': f'Detalles de {insumo.nombre}',
+        'read_only': read_only,
     }
     
     return render(request, 'inventario/ver_detalle_insumo.html', context)
@@ -856,6 +880,8 @@ def exportar_lotes(request):
 # --- LISTAR LOTES DE INSUMO ---
 @login_required
 @perfil_required(allow=("administrador", "Encargado"), readonly_for=("Bodeguero",))
+@login_required
+@perfil_required(allow=("administrador", "Encargado"))
 def listar_insumos_lote(request):
     hoy = date.today()
 
@@ -1008,7 +1034,7 @@ def eliminar_lote(request, pk):
     )
     
 @login_required
-@perfil_required(allow=("administrador", "Encargado", "Bodeguero"))
+@perfil_required(allow=("administrador", "Encargado"))
 def ver_detalle_lote(request, pk):
     try:
         lote = models.InsumoLote.objects.select_related(
@@ -2320,34 +2346,13 @@ def editar_entrada(request, pk):
         pk=pk
     )
 
-    # --- 2. INICIALIZACIÓN DE OBJETOS HISTÓRICOS Y MANEJO DE ERROR ---
-    
-    try:
-        # Intentamos obtener el Insumo y el Lote directamente por PK
-        historic_insumo = models.Insumo.objects.get(pk=entrada.insumo_id)
-        historic_lote = models.InsumoLote.objects.get(pk=entrada.insumo_lote_id)
-    except (models.Insumo.DoesNotExist, models.InsumoLote.DoesNotExist):
-        # Si el objeto maestro no existe, lo notificamos y terminamos la edición.
-        messages.error(request, f"No se puede editar el movimiento #{pk}: El insumo o lote asociado ya no existe en el sistema.")
-        return redirect("inventario:listar_movimientos")
+    # Obtener valores originales que no son editables
+    historic_insumo = entrada.insumo
+    historic_lote = entrada.insumo_lote
+    historic_tipo = entrada.tipo
 
     # 3. Inicializar el formulario
     form = EntradaForm(request.POST or None, instance=entrada)
-    
-    # 4. Inyectar dinámicamente los objetos históricos al QuerySet del Formulario
-    # Esto evita el error "Insumo matching query does not exist." durante la inicialización.
-    
-    # A) Ajustar el queryset del campo 'insumo'
-    insumo_field = form.fields['insumo']
-    # Si el insumo histórico no está en el queryset actual (ej. por filtro is_active), lo añadimos usando OR.
-    if not insumo_field.queryset.filter(pk=historic_insumo.pk).exists():
-        insumo_field.queryset = insumo_field.queryset | models.Insumo.objects.filter(pk=historic_insumo.pk)
-
-    # B) Ajustar el queryset del campo 'insumo_lote'
-    lote_field = form.fields['insumo_lote']
-    if not lote_field.queryset.filter(pk=historic_lote.pk).exists():
-        lote_field.queryset = lote_field.queryset | models.InsumoLote.objects.filter(pk=historic_lote.pk)
-
 
     # --- 5. RESTO DE LA LÓGICA DE POST ---
     old_qty = Decimal(entrada.cantidad)
@@ -2362,9 +2367,16 @@ def editar_entrada(request, pk):
             messages.error(request, f"Error al editar: La nueva cantidad excedería el stock del lote, resultando en stock negativo ({lote.cantidad_actual + delta:.2f}).")
             return render(request, "inventario/editar_movimiento.html", {"form": form, "titulo": "Editar Entrada"})
 
+        # Guardar sin commit para preservar campos no editables
+        entrada_editada = form.save(commit=False)
+        # Restaurar campos no editables
+        entrada_editada.insumo = historic_insumo
+        entrada_editada.insumo_lote = historic_lote
+        entrada_editada.tipo = historic_tipo
+        entrada_editada.save()
+
         lote.cantidad_actual += delta
         lote.save(update_fields=["cantidad_actual"])
-        form.save()
 
         if entrada.detalle_id:
             det = entrada.detalle
@@ -2385,7 +2397,11 @@ def editar_entrada(request, pk):
         "titulo": "Editar Entrada",
         "cancel_url": reverse("inventario:listar_movimientos"),
         "campo_fecha": form["fecha"],                 
-        "errores_fecha": form["fecha"].errors,       
+        "errores_fecha": form["fecha"].errors,
+        # Pasar información de campos no editables para mostrar en el template
+        "insumo": historic_insumo,
+        "lote": historic_lote,
+        "tipo": historic_tipo,
     },
 )
 
@@ -2432,10 +2448,15 @@ def editar_salida(request, pk):
         ),
         pk=pk
     )
+    
+    # Obtener valores originales que no son editables
+    historic_insumo = salida.insumo
+    historic_lote = salida.insumo_lote
+    historic_tipo = salida.tipo
+    
     old_qty = Decimal(salida.cantidad)
     lote = salida.insumo_lote
 
-    # REMOVIDA: from .forms import SalidaForm (ahora importada globalmente)
     form = SalidaForm(request.POST or None, instance=salida)
     if request.method == "POST" and form.is_valid():
         nueva = Decimal(form.cleaned_data["cantidad"])
@@ -2447,9 +2468,17 @@ def editar_salida(request, pk):
             messages.error(request, f"Error al editar: La nueva salida excede el stock actual del lote, resultando en stock negativo ({lote.cantidad_actual - delta:.2f}).")
             return render(request, "inventario/editar_movimiento.html", {"form": form, "titulo": "Editar Salida"})
 
+        # Guardar sin commit para preservar campos no editables
+        salida_editada = form.save(commit=False)
+        # Restaurar campos no editables
+        salida_editada.insumo = historic_insumo
+        salida_editada.insumo_lote = historic_lote
+        salida_editada.tipo = historic_tipo
+        salida_editada.save()
+
         lote.cantidad_actual -= delta
         lote.save(update_fields=["cantidad_actual"])
-        form.save()
+        
         messages.success(request, "Salida modificada correctamente.")
         return redirect("inventario:listar_movimientos")
 
@@ -2462,6 +2491,10 @@ def editar_salida(request, pk):
         "cancel_url": reverse("inventario:listar_movimientos"),
         "campo_fecha": form["fecha_generada"],        # ✅ BoundField seguro
         "errores_fecha": form["fecha_generada"].errors,
+        # Pasar información de campos no editables para mostrar en el template
+        "insumo": historic_insumo,
+        "lote": historic_lote,
+        "tipo": historic_tipo,
     },
 )
 
@@ -2629,11 +2662,8 @@ def listar_ordenes(request):
     if q:
         # Intentar buscar por número de orden si es un dígito
         if q.isdigit():
-            qs = qs.filter(
-                Q(id=int(q)) |
-                Q(usuario__name__icontains=q) | 
-                Q(usuario__email__icontains=q)
-            )
+            # Buscar por ID que contenga el número o coincida exactamente
+            qs = qs.filter(Q(id__icontains=q))
         else:
             # Buscar por nombre de usuario, email, o tipo de orden
             qs = qs.filter(
@@ -2657,6 +2687,11 @@ def listar_ordenes(request):
         "id": "id", "fecha": "fecha", "estado": "estado", "usuario": "usuario__name",
         "creado": "created_at", "actualizado": "updated_at",
     }
+
+    # Si se está mostrando el historial, ordenar por is_active (False primero) antes del orden principal
+    if mostrar_inactivas:
+        # is_active=False (eliminadas) primero, luego is_active=True
+        qs = qs.order_by("is_active")
 
     # CORRECCIÓN CLAVE: El botón 'Nueva orden' se muestra si el usuario es Admin, Encargado, o Bodeguero.
     read_only = not (
@@ -2819,8 +2854,10 @@ def eliminar_orden(request, pk):
         return redirect("inventario:listar_ordenes")
 
     if request.method == "POST":
-        orden.delete()
-        messages.success(request, "Orden eliminada.")
+        # Soft delete: marcar como inactiva en lugar de eliminar permanentemente
+        orden.is_active = False
+        orden.save(update_fields=["is_active"])
+        messages.success(request, "Orden eliminada. Puedes verla en el historial.")
         return redirect("inventario:listar_ordenes")
 
     # puedes reutilizar una plantilla genérica de confirmación

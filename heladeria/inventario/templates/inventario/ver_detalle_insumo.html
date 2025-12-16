@@ -264,10 +264,12 @@
                            class="btn btn-warning">
                             <i class="bi bi-pencil"></i> Editar Insumo
                         </a>
+                        {% if not read_only %}
                         <a href="{% url 'inventario:listar_lotes' %}?q={{ insumo.nombre|urlencode }}" 
                            class="btn btn-info">
                             <i class="bi bi-boxes"></i> Ver Todos los Lotes
                         </a>
+                        {% endif %}
                     </div>
                 </div>
             </div>
