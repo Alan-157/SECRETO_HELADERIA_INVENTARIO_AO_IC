@@ -93,12 +93,4 @@ python manage.py runserver
 **Frontend:** [http://localhost:8000](http://localhost:8000)
 **Panel de administración:** [http://localhost:8000/admin/](http://localhost:8000/admin/)
 
-## Contribución
-1. Haz un fork del repositorio.
-2. Crea una nueva rama (`git checkout -b feature/nueva-funcionalidad`).
-3. Haz tus cambios y confirma (`git commit -m "Agrega nueva funcionalidad"`).
-4. Envía un Pull Request.
 
-## Licencia
-Este proyecto se distribuye bajo la licencia MIT.  
-Consulta el archivo `LICENSE` para más detalles.
